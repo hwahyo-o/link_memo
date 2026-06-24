@@ -291,16 +291,18 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, linkWithCredential, linkWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // [빌드 환경 적용] Vite 환경 변수를 주입받되, 객체가 정의되지 않은 일반 브라우저 미리보기 상황에서도 에러가 나지 않도록 옵셔널 체이닝 및 대체 연산자를 적용했습니다.
         const firebaseConfig = {
-            apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-            authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-            projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-            storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-            messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-            appId: import.meta.env.VITE_FIREBASE_APP_ID
+            apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "",
+            authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "",
+            projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "",
+            storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "",
+            messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+            appId: import.meta.env?.VITE_FIREBASE_APP_ID || ""
         };
 
-        let configToUse = myFirebaseConfig;
+        // 정의된 firebaseConfig를 할당하여 브라우저 에러(myFirebaseConfig undefined)를 방지합니다.
+        let configToUse = firebaseConfig;
         if (typeof __firebase_config !== 'undefined') {
             const parsedConfig = JSON.parse(__firebase_config);
             if (Object.keys(parsedConfig).length > 0) configToUse = parsedConfig;
@@ -323,9 +325,6 @@
         const loginScreen = document.getElementById('loginScreen');
         const mainApp = document.getElementById('mainApp');
         const userInfoDisplay = document.getElementById('userInfoDisplay');
-
-        // [버그 수정] 강제 자동 로그인 로직(autoLoginForPreview) 삭제됨
-        // 이제 onAuthStateChanged가 기존 로그인된 세션이 있는지 확인하고 처리합니다.
 
         // ------------------ 사용자 상태 & UI 갱신 ------------------
         function updateHeaderUI(user) {
@@ -905,7 +904,6 @@
                         const commentDiv = document.createElement('div');
                         commentDiv.className = 'text-xs text-gray-500 px-1.5 pb-1 break-words text-center leading-snug w-full';
                         commentDiv.textContent = item.comment;
-                        linkCard.appendChild(commentDiv);
                     }
 
                     gridContainer.appendChild(linkCard);
