@@ -291,18 +291,28 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, linkWithCredential, linkWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // [오류 해결!] Vite 번들러가 정적 문자열 치환을 확실하게 인식하도록 순수 텍스트 형식으로 교체했습니다.
-        // 또한 샌드박스 미리보기 환경 등에서 'import.meta.env' 객체 유무를 에러 없이 검증하기 위해 typeof 가드를 둘러싸 두었습니다.
-        const isViteEnv = typeof import.meta !== "undefined" && typeof import.meta.env !== "undefined";
-        
+        // [구조 수정] 에러 위험이 있던 런타임 검증을 제거하고, Vite의 빌드 타임 치환기능을 100% 온전하게 흡수할 수 있는 대입 블록 구조로 변경했습니다.
         const firebaseConfig = {
-            apiKey: isViteEnv ? import.meta.env.VITE_FIREBASE_API_KEY : "",
-            authDomain: isViteEnv ? import.meta.env.VITE_FIREBASE_AUTH_DOMAIN : "",
-            projectId: isViteEnv ? import.meta.env.VITE_FIREBASE_PROJECT_ID : "",
-            storageBucket: isViteEnv ? import.meta.env.VITE_FIREBASE_STORAGE_BUCKET : "",
-            messagingSenderId: isViteEnv ? import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID : "",
-            appId: isViteEnv ? import.meta.env.VITE_FIREBASE_APP_ID : ""
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
         };
+
+        // Vite 빌드 시 "import.meta.env.VITE_..." 구문 전체가 실제 시크릿 값으로 자동 치환됩니다.
+        // 일반 브라우저나 로컬 미리보기 환경 등 빌드 프로세스가 없을 때는 try-catch에 의해 안전하게 에러가 가로채져 작동이 멈추지 않습니다.
+        try {
+            firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+            firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+            firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+            firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+            firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
+            firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID;
+        } catch (e) {
+            console.warn("Vite environment object is unavailable. Fallback variables will be used.");
+        }
 
         // 정의된 firebaseConfig를 할당하되, Canvas Workspace 상의 데이터 연동 변수가 존재하면 오버라이드합니다.
         let configToUse = firebaseConfig;
@@ -315,8 +325,7 @@
         const mainApp = document.getElementById('mainApp');
         const userInfoDisplay = document.getElementById('userInfoDisplay');
 
-        // [화이트아웃 완벽 가드] 만약 Firebase 설정 정보가 아예 누락되어 있을 경우 백지를 띄우지 않고 
-        // 화면 잠금 해제와 함께 경고 안내 팝업을 표시합니다.
+        // [안전 가드] Firebase API Key 값이 비어 있을 경우 화면 잠금을 풀고 경고 안내 팝업을 표시합니다.
         if (!configToUse || !configToUse.apiKey) {
             console.error("Firebase Configuration is missing or empty.");
             loginScreen.classList.remove('hidden');
