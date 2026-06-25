@@ -291,28 +291,21 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, linkWithCredential, linkWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // [구조 수정] 에러 위험이 있던 런타임 검증을 제거하고, Vite의 빌드 타임 치환기능을 100% 온전하게 흡수할 수 있는 대입 블록 구조로 변경했습니다.
-        const firebaseConfig = {
-            apiKey: "",
-            authDomain: "",
-            projectId: "",
-            storageBucket: "",
-            messagingSenderId: "",
-            appId: ""
+        // [구조 수정 완결판] Vite가 HTML 내부 스크립트에서도 환경 변수를 확실히 치환할 수 있도록 HTML 템플릿 문법(%변수명%)을 사용합니다.
+        const getEnv = (val, keyName) => {
+            // 깃허브 Actions에서 빌드 시 %변수명% 텍스트가 실제 시크릿 값으로 교체됩니다. 
+            // 로컬/미리보기 환경처럼 빌드가 되지 않아 원본 텍스트가 그대로 남아있다면 빈 문자열을 반환합니다.
+            return val !== keyName ? val : "";
         };
 
-        // Vite 빌드 시 "import.meta.env.VITE_..." 구문 전체가 실제 시크릿 값으로 자동 치환됩니다.
-        // 일반 브라우저나 로컬 미리보기 환경 등 빌드 프로세스가 없을 때는 try-catch에 의해 안전하게 에러가 가로채져 작동이 멈추지 않습니다.
-        try {
-            firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-            firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
-            firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-            firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
-            firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
-            firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID;
-        } catch (e) {
-            console.warn("Vite environment object is unavailable. Fallback variables will be used.");
-        }
+        const firebaseConfig = {
+            apiKey: getEnv("%VITE_FIREBASE_API_KEY%", "%" + "VITE_FIREBASE_API_KEY" + "%"),
+            authDomain: getEnv("%VITE_FIREBASE_AUTH_DOMAIN%", "%" + "VITE_FIREBASE_AUTH_DOMAIN" + "%"),
+            projectId: getEnv("%VITE_FIREBASE_PROJECT_ID%", "%" + "VITE_FIREBASE_PROJECT_ID" + "%"),
+            storageBucket: getEnv("%VITE_FIREBASE_STORAGE_BUCKET%", "%" + "VITE_FIREBASE_STORAGE_BUCKET" + "%"),
+            messagingSenderId: getEnv("%VITE_FIREBASE_MESSAGING_SENDER_ID%", "%" + "VITE_FIREBASE_MESSAGING_SENDER_ID" + "%"),
+            appId: getEnv("%VITE_FIREBASE_APP_ID%", "%" + "VITE_FIREBASE_APP_ID" + "%")
+        };
 
         // 정의된 firebaseConfig를 할당하되, Canvas Workspace 상의 데이터 연동 변수가 존재하면 오버라이드합니다.
         let configToUse = firebaseConfig;
