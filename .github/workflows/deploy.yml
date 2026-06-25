@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -24,8 +24,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -35,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Patch Firebase config for branch Pages
+      - name: Verify Firebase secrets
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
@@ -45,19 +43,12 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
         run: |
-          python -c 'import os,re; from pathlib import Path; p=Path("index.html"); text=p.read_text(encoding="utf-8"); v={"apiKey":os.getenv("VITE_FIREBASE_API_KEY") or "AIzaSyBJFs1rgUPZqjwZt2wgNuKBXH3uxDpZFXc","authDomain":os.getenv("VITE_FIREBASE_AUTH_DOMAIN") or "link-note-c8c1d.firebaseapp.com","projectId":os.getenv("VITE_FIREBASE_PROJECT_ID") or "link-note-c8c1d","storageBucket":os.getenv("VITE_FIREBASE_STORAGE_BUCKET") or "link-note-c8c1d.firebasestorage.app","messagingSenderId":os.getenv("VITE_FIREBASE_MESSAGING_SENDER_ID") or "993879795668","appId":os.getenv("VITE_FIREBASE_APP_ID") or "1:993879795668:web:f1401e2c4da1c6cc50d841","measurementId":os.getenv("VITE_FIREBASE_MEASUREMENT_ID") or "G-C468ZCLCWH"}; config="const firebaseConfig = {\n            apiKey: \"%s\",\n            authDomain: \"%s\",\n            projectId: \"%s\",\n            storageBucket: \"%s\",\n            messagingSenderId: \"%s\",\n            appId: \"%s\",\n            measurementId: \"%s\"\n        };" % (v["apiKey"],v["authDomain"],v["projectId"],v["storageBucket"],v["messagingSenderId"],v["appId"],v["measurementId"]); text=re.sub(r"const firebaseConfig = \{\s*apiKey: \"[^\"]*\",\s*authDomain: \"[^\"]*\",\s*projectId: \"[^\"]*\",\s*storageBucket: \"[^\"]*\",\s*messagingSenderId: \"[^\"]*\",\s*appId: \"[^\"]*\",\s*measurementId: \"[^\"]*\"\s*\};", config, text, count=1); repl={"firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY;":"firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;","firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;":"firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain;","firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;":"firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;","firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;":"firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;","firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;":"firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId;","firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID;":"firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId;","firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID;":"firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfig.measurementId;"}; [globals().__setitem__("text", text.replace(a,b)) for a,b in repl.items()]; p.write_text(text, encoding="utf-8", newline="")'
-          if ! git diff --quiet -- index.html; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add index.html
-            git commit -m "Set Firebase config fallback for Pages"
-            git push
-          fi
-
-      - name: Verify Firebase config
-        run: |
-          grep -q 'apiKey: "AIza' index.html
-          grep -q 'firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;' index.html
+          test -n "$VITE_FIREBASE_API_KEY"
+          test -n "$VITE_FIREBASE_AUTH_DOMAIN"
+          test -n "$VITE_FIREBASE_PROJECT_ID"
+          test -n "$VITE_FIREBASE_STORAGE_BUCKET"
+          test -n "$VITE_FIREBASE_MESSAGING_SENDER_ID"
+          test -n "$VITE_FIREBASE_APP_ID"
 
       - name: Build
         env:
