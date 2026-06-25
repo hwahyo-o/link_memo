@@ -293,24 +293,24 @@
 
         // [구조 복구 완료] HTML 템플릿 우회 기법을 제거하고 Vite가 제일 잘 이해하는 정석적인 문법으로 돌려놓았습니다.
         const firebaseConfig = {
-            apiKey: "",
-            authDomain: "",
-            projectId: "",
-            storageBucket: "",
-            messagingSenderId: "",
-            appId: "",
-            measurementId: ""
+            apiKey: "AIzaSyBJFs1rgUPZqjwZt2wgNuKBXH3uxDpZFXc",
+            authDomain: "link-note-c8c1d.firebaseapp.com",
+            projectId: "link-note-c8c1d",
+            storageBucket: "link-note-c8c1d.firebasestorage.app",
+            messagingSenderId: "993879795668",
+            appId: "1:993879795668:web:f1401e2c4da1c6cc50d841",
+            measurementId: "G-C468ZCLCWH"
         };
 
         // 깃허브 Actions에서 생성한 .env 파일을 읽어들여 빌드 시 이곳의 값들을 무조건 채워 넣습니다.
         try {
-            firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-            firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
-            firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-            firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
-            firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
-            firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID;
-            firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID;
+            firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;
+            firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain;
+            firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+            firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;
+            firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId;
+            firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId;
+            firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfig.measurementId;
         } catch (e) {
             console.warn("Vite 환경 변수를 사용할 수 없어 기본/폴백 설정을 시도합니다.");
         }
