@@ -291,21 +291,27 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, linkWithCredential, linkWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // [구조 수정 완결판] Vite가 HTML 내부 스크립트에서도 환경 변수를 확실히 치환할 수 있도록 HTML 템플릿 문법(%변수명%)을 사용합니다.
-        const getEnv = (val, keyName) => {
-            // 깃허브 Actions에서 빌드 시 %변수명% 텍스트가 실제 시크릿 값으로 교체됩니다. 
-            // 로컬/미리보기 환경처럼 빌드가 되지 않아 원본 텍스트가 그대로 남아있다면 빈 문자열을 반환합니다.
-            return val !== keyName ? val : "";
+        // [구조 복구 완료] HTML 템플릿 우회 기법을 제거하고 Vite가 제일 잘 이해하는 정석적인 문법으로 돌려놓았습니다.
+        const firebaseConfig = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
         };
 
-        const firebaseConfig = {
-            apiKey: getEnv("%VITE_FIREBASE_API_KEY%", "%" + "VITE_FIREBASE_API_KEY" + "%"),
-            authDomain: getEnv("%VITE_FIREBASE_AUTH_DOMAIN%", "%" + "VITE_FIREBASE_AUTH_DOMAIN" + "%"),
-            projectId: getEnv("%VITE_FIREBASE_PROJECT_ID%", "%" + "VITE_FIREBASE_PROJECT_ID" + "%"),
-            storageBucket: getEnv("%VITE_FIREBASE_STORAGE_BUCKET%", "%" + "VITE_FIREBASE_STORAGE_BUCKET" + "%"),
-            messagingSenderId: getEnv("%VITE_FIREBASE_MESSAGING_SENDER_ID%", "%" + "VITE_FIREBASE_MESSAGING_SENDER_ID" + "%"),
-            appId: getEnv("%VITE_FIREBASE_APP_ID%", "%" + "VITE_FIREBASE_APP_ID" + "%")
-        };
+        // 깃허브 Actions에서 생성한 .env 파일을 읽어들여 빌드 시 이곳의 값들을 무조건 채워 넣습니다.
+        try {
+            firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+            firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+            firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+            firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+            firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
+            firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID;
+        } catch (e) {
+            console.warn("Vite 환경 변수를 사용할 수 없어 기본/폴백 설정을 시도합니다.");
+        }
 
         // 정의된 firebaseConfig를 할당하되, Canvas Workspace 상의 데이터 연동 변수가 존재하면 오버라이드합니다.
         let configToUse = firebaseConfig;
@@ -940,7 +946,7 @@
                         const commentDiv = document.createElement('div');
                         commentDiv.className = 'text-xs text-gray-500 px-1.5 pb-1 break-words text-center leading-snug w-full';
                         commentDiv.textContent = item.comment;
-                        // [버그 수정] 생성된 코멘트 엘리먼트를 실제 linkCard 부모 엘리먼트에 장착합니다.
+                        // 생성된 코멘트 엘리먼트를 부모 요소에 장착합니다.
                         linkCard.appendChild(commentDiv);
                     }
 
