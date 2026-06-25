@@ -45,63 +45,7 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
         run: |
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          values = {
-              "apiKey": os.environ.get("VITE_FIREBASE_API_KEY") or "AIzaSyBJFs1rgUPZqjwZt2wgNuKBXH3uxDpZFXc",
-              "authDomain": os.environ.get("VITE_FIREBASE_AUTH_DOMAIN") or "link-note-c8c1d.firebaseapp.com",
-              "projectId": os.environ.get("VITE_FIREBASE_PROJECT_ID") or "link-note-c8c1d",
-              "storageBucket": os.environ.get("VITE_FIREBASE_STORAGE_BUCKET") or "link-note-c8c1d.firebasestorage.app",
-              "messagingSenderId": os.environ.get("VITE_FIREBASE_MESSAGING_SENDER_ID") or "993879795668",
-              "appId": os.environ.get("VITE_FIREBASE_APP_ID") or "1:993879795668:web:f1401e2c4da1c6cc50d841",
-              "measurementId": os.environ.get("VITE_FIREBASE_MEASUREMENT_ID") or "G-C468ZCLCWH",
-          }
-
-          path = Path("index.html")
-          text = path.read_text(encoding="utf-8")
-          config = '''const firebaseConfig = {
-            apiKey: "%s",
-            authDomain: "%s",
-            projectId: "%s",
-            storageBucket: "%s",
-            messagingSenderId: "%s",
-            appId: "%s",
-            measurementId: "%s"
-        };''' % (
-              values["apiKey"],
-              values["authDomain"],
-              values["projectId"],
-              values["storageBucket"],
-              values["messagingSenderId"],
-              values["appId"],
-              values["measurementId"],
-          )
-
-          text = re.sub(
-              r'''const firebaseConfig = \{\s*apiKey: "[^"]*",\s*authDomain: "[^"]*",\s*projectId: "[^"]*",\s*storageBucket: "[^"]*",\s*messagingSenderId: "[^"]*",\s*appId: "[^"]*",\s*measurementId: "[^"]*"\s*\};''',
-              config,
-              text,
-              count=1,
-          )
-
-          replacements = {
-              "firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY;": "firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;",
-              "firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;": "firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain;",
-              "firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;": "firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;",
-              "firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;": "firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;",
-              "firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;": "firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId;",
-              "firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID;": "firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId;",
-              "firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID;": "firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfig.measurementId;",
-          }
-          for old, new in replacements.items():
-              text = text.replace(old, new)
-
-          path.write_text(text, encoding="utf-8", newline="")
-          PY
-
+          python -c 'import os,re; from pathlib import Path; p=Path("index.html"); text=p.read_text(encoding="utf-8"); v={"apiKey":os.getenv("VITE_FIREBASE_API_KEY") or "AIzaSyBJFs1rgUPZqjwZt2wgNuKBXH3uxDpZFXc","authDomain":os.getenv("VITE_FIREBASE_AUTH_DOMAIN") or "link-note-c8c1d.firebaseapp.com","projectId":os.getenv("VITE_FIREBASE_PROJECT_ID") or "link-note-c8c1d","storageBucket":os.getenv("VITE_FIREBASE_STORAGE_BUCKET") or "link-note-c8c1d.firebasestorage.app","messagingSenderId":os.getenv("VITE_FIREBASE_MESSAGING_SENDER_ID") or "993879795668","appId":os.getenv("VITE_FIREBASE_APP_ID") or "1:993879795668:web:f1401e2c4da1c6cc50d841","measurementId":os.getenv("VITE_FIREBASE_MEASUREMENT_ID") or "G-C468ZCLCWH"}; config="const firebaseConfig = {\n            apiKey: \"%s\",\n            authDomain: \"%s\",\n            projectId: \"%s\",\n            storageBucket: \"%s\",\n            messagingSenderId: \"%s\",\n            appId: \"%s\",\n            measurementId: \"%s\"\n        };" % (v["apiKey"],v["authDomain"],v["projectId"],v["storageBucket"],v["messagingSenderId"],v["appId"],v["measurementId"]); text=re.sub(r"const firebaseConfig = \{\s*apiKey: \"[^\"]*\",\s*authDomain: \"[^\"]*\",\s*projectId: \"[^\"]*\",\s*storageBucket: \"[^\"]*\",\s*messagingSenderId: \"[^\"]*\",\s*appId: \"[^\"]*\",\s*measurementId: \"[^\"]*\"\s*\};", config, text, count=1); repl={"firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY;":"firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;","firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;":"firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain;","firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;":"firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;","firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;":"firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;","firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;":"firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId;","firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID;":"firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId;","firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID;":"firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfig.measurementId;"}; [globals().__setitem__("text", text.replace(a,b)) for a,b in repl.items()]; p.write_text(text, encoding="utf-8", newline="")'
           if ! git diff --quiet -- index.html; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
