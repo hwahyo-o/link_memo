@@ -291,26 +291,57 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, EmailAuthProvider, linkWithCredential, linkWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // [빌드 환경 적용] Vite 환경 변수를 주입받되, 객체가 정의되지 않은 일반 브라우저 미리보기 상황에서도 에러가 나지 않도록 옵셔널 체이닝 및 대체 연산자를 적용했습니다.
+        // [오류 해결!] Vite 번들러가 정적 문자열 치환을 확실하게 인식하도록 순수 텍스트 형식으로 교체했습니다.
+        // 또한 샌드박스 미리보기 환경 등에서 'import.meta.env' 객체 유무를 에러 없이 검증하기 위해 typeof 가드를 둘러싸 두었습니다.
+        const isViteEnv = typeof import.meta !== "undefined" && typeof import.meta.env !== "undefined";
+        
         const firebaseConfig = {
-            apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "",
-            authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "",
-            projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "",
-            storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "",
-            messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-            appId: import.meta.env?.VITE_FIREBASE_APP_ID || ""
+            apiKey: isViteEnv ? import.meta.env.VITE_FIREBASE_API_KEY : "",
+            authDomain: isViteEnv ? import.meta.env.VITE_FIREBASE_AUTH_DOMAIN : "",
+            projectId: isViteEnv ? import.meta.env.VITE_FIREBASE_PROJECT_ID : "",
+            storageBucket: isViteEnv ? import.meta.env.VITE_FIREBASE_STORAGE_BUCKET : "",
+            messagingSenderId: isViteEnv ? import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID : "",
+            appId: isViteEnv ? import.meta.env.VITE_FIREBASE_APP_ID : ""
         };
 
-        // 정의된 firebaseConfig를 할당하여 브라우저 에러(myFirebaseConfig undefined)를 방지합니다.
+        // 정의된 firebaseConfig를 할당하되, Canvas Workspace 상의 데이터 연동 변수가 존재하면 오버라이드합니다.
         let configToUse = firebaseConfig;
         if (typeof __firebase_config !== 'undefined') {
             const parsedConfig = JSON.parse(__firebase_config);
             if (Object.keys(parsedConfig).length > 0) configToUse = parsedConfig;
         }
 
-        const app = initializeApp(configToUse);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        const loginScreen = document.getElementById('loginScreen');
+        const mainApp = document.getElementById('mainApp');
+        const userInfoDisplay = document.getElementById('userInfoDisplay');
+
+        // [화이트아웃 완벽 가드] 만약 Firebase 설정 정보가 아예 누락되어 있을 경우 백지를 띄우지 않고 
+        // 화면 잠금 해제와 함께 경고 안내 팝업을 표시합니다.
+        if (!configToUse || !configToUse.apiKey) {
+            console.error("Firebase Configuration is missing or empty.");
+            loginScreen.classList.remove('hidden');
+            loginScreen.classList.add('flex');
+            
+            setTimeout(() => {
+                customAlert(`
+                    <div class="text-center">
+                        <i class="fa-solid fa-triangle-exclamation text-yellow-500 text-3xl mb-2"></i><br>
+                        <b class="text-lg">Firebase 설정 누락 안내</b><br>
+                        <span class="text-sm text-red-500 font-semibold">API Key 값이 감지되지 않았습니다.</span>
+                    </div>
+                    <div class="mt-4 text-xs text-gray-600 bg-gray-50 p-3 rounded text-left leading-relaxed">
+                        <b>해결 방법:</b><br>
+                        1. 깃허브 Repository의 <b>Settings > Secrets and variables > Actions</b>에 시크릿 변수(API Key 등)가 제대로 등록되어 있는지 체크해 주세요.<br><br>
+                        2. 깃허브 Pages 배포 소스가 <b>GitHub Actions</b> 방식으로 빌드 및 발행되는지 저장소 Pages 설정 탭을 점검해 보세요.
+                    </div>
+                `);
+            }, 600);
+        }
+
+        // Firebase 설정이 있을 때만 정상 초기화 진행
+        const app = (configToUse && configToUse.apiKey) ? initializeApp(configToUse) : null;
+        const auth = app ? getAuth(app) : null;
+        const db = app ? getFirestore(app) : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-github-memo-app';
 
         let currentUser = null;
@@ -322,17 +353,11 @@
         let draggedItem = null;
         let isFirstLoad = true;
 
-        const loginScreen = document.getElementById('loginScreen');
-        const mainApp = document.getElementById('mainApp');
-        const userInfoDisplay = document.getElementById('userInfoDisplay');
-
         // ------------------ 사용자 상태 & UI 갱신 ------------------
         function updateHeaderUI(user) {
-            // 이메일 정보가 없는 커스텀 토큰 로그인이나 익명 로그인을 모두 '게스트 사용자'로 통일
             const isGuest = user.isAnonymous || !user.email;
             const userIdentifier = isGuest ? '게스트 사용자' : user.email;
 
-            // 게스트인 경우에만 [계정 연동] 버튼 표시
             const linkBtnHtml = isGuest ?
                 `<button onclick="window.openLinkAccountModal()" class="text-xs bg-green-100 text-green-700 hover:bg-green-600 hover:text-white px-3 py-1.5 rounded transition-colors font-semibold shadow-sm mr-2 border border-green-200">
                     <i class="fa-solid fa-link mr-1"></i>계정 연동
@@ -346,33 +371,36 @@
             `;
         }
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                loginScreen.classList.add('hidden');
-                loginScreen.classList.remove('flex');
-                mainApp.classList.remove('hidden');
+        if (auth) {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    loginScreen.classList.add('hidden');
+                    loginScreen.classList.remove('flex');
+                    mainApp.classList.remove('hidden');
 
-                updateHeaderUI(user);
-                loadDataFromFirestore();
-            } else {
-                currentUser = null;
-                loginScreen.classList.remove('hidden');
-                loginScreen.classList.add('flex');
-                mainApp.classList.add('hidden');
-                if (unsubscribeSnapshot) {
-                    unsubscribeSnapshot();
-                    unsubscribeSnapshot = null;
+                    updateHeaderUI(user);
+                    loadDataFromFirestore();
+                } else {
+                    currentUser = null;
+                    loginScreen.classList.remove('hidden');
+                    loginScreen.classList.add('flex');
+                    mainApp.classList.add('hidden');
+                    if (unsubscribeSnapshot) {
+                        unsubscribeSnapshot();
+                        unsubscribeSnapshot = null;
+                    }
+                    categories = ['업무', '학습', '개인', '도구', '기타'];
+                    activeTab = categories[0];
+                    linkData = {};
+                    isFirstLoad = true;
                 }
-                categories = ['업무', '학습', '개인', '도구', '기타'];
-                activeTab = categories[0];
-                linkData = {};
-                isFirstLoad = true;
-            }
-        });
+            });
+        }
 
         // ------------------ 인증 및 계정 연동 관련 ------------------
         window.handleEmailLogin = async () => {
+            if (!auth) return;
             const email = document.getElementById('loginEmail').value;
             const password = document.getElementById('loginPassword').value;
             if (!email || !password) return customAlert("이메일과 비밀번호를 모두 입력해주세요.");
@@ -381,6 +409,7 @@
         };
 
         window.handleEmailRegister = async () => {
+            if (!auth) return;
             const email = document.getElementById('loginEmail').value;
             const password = document.getElementById('loginPassword').value;
             if (!email || !password) return customAlert("이메일과 비밀번호를 모두 입력해주세요.");
@@ -389,6 +418,7 @@
         };
 
         window.handleGoogleLogin = async () => {
+            if (!auth) return;
             const provider = new GoogleAuthProvider();
             try { await signInWithPopup(auth, provider); }
             catch (error) {
@@ -408,6 +438,7 @@
         };
 
         window.handleGuestLogin = async () => {
+            if (!auth) return;
             try {
                 // 미리보기 환경을 위한 토큰 로그인을 먼저 시도합니다. 실패 시 일반 익명 로그인 진행.
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -431,6 +462,7 @@
         };
 
         window.handleLogout = async () => {
+            if (!auth) return;
             customConfirm("로그아웃 하시겠습니까?", async () => {
                 await signOut(auth);
                 document.getElementById('loginEmail').value = '';
@@ -450,6 +482,7 @@
         };
 
         window.handleEmailLink = async () => {
+            if (!auth || !auth.currentUser) return;
             const email = document.getElementById('linkEmailInput').value;
             const password = document.getElementById('linkPasswordInput').value;
             if (!email || !password) return customAlert("이메일과 비밀번호를 모두 입력해주세요.");
@@ -470,6 +503,7 @@
         };
 
         window.handleGoogleLink = async () => {
+            if (!auth || !auth.currentUser) return;
             const provider = new GoogleAuthProvider();
             try {
                 const userCred = await linkWithPopup(auth.currentUser, provider);
@@ -516,7 +550,7 @@
         }
 
         function loadDataFromFirestore() {
-            if (!currentUser) return;
+            if (!currentUser || !db) return;
             const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'memoData', 'main');
 
             unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
@@ -551,7 +585,7 @@
         }
 
         async function saveData() {
-            if (!currentUser) return;
+            if (!currentUser || !db) return;
             const docRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'memoData', 'main');
             try { await setDoc(docRef, { categories: categories, linkData: linkData }); }
             catch (error) { customAlert("클라우드 저장에 실패했습니다."); }
@@ -904,6 +938,8 @@
                         const commentDiv = document.createElement('div');
                         commentDiv.className = 'text-xs text-gray-500 px-1.5 pb-1 break-words text-center leading-snug w-full';
                         commentDiv.textContent = item.comment;
+                        // [버그 수정] 생성된 코멘트 엘리먼트를 실제 linkCard 부모 엘리먼트에 장착합니다.
+                        linkCard.appendChild(commentDiv);
                     }
 
                     gridContainer.appendChild(linkCard);
