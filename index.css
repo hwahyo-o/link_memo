@@ -46,9 +46,15 @@ body.is-subcategory-dragging .subcategory-panel {
 }
 
 /* Main tab menu */
+#tabsContainer {
+    overflow: visible;
+    flex-wrap: wrap;
+}
+
 .tab-menu-panel {
     max-height: min(24rem, 70vh);
     overflow-y: auto;
+    z-index: 80;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
@@ -63,6 +69,10 @@ body.is-subcategory-dragging .subcategory-panel {
 /* Image attachment */
 .image-preview-chip {
     min-height: 2.75rem;
+}
+
+.image-preview-chip:not(.hidden) {
+    display: flex;
 }
 
 .link-has-image::after {
