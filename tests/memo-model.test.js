@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isCommentOnlyMemo, normalizeMemoInput } from '../src/features/memos/model.js';
+import { countLineBreaks, getMemoPreviewKind, hasLongComment, isCommentOnlyMemo, normalizeMemoInput } from '../src/features/memos/model.js';
 
 describe('normalizeMemoInput', () => {
     it('requires a title', () => {
@@ -38,5 +38,26 @@ describe('isCommentOnlyMemo', () => {
     it('keeps link and image items in card mode', () => {
         expect(isCommentOnlyMemo({ comment: 'memo', url: 'https://example.com' })).toBe(false);
         expect(isCommentOnlyMemo({ comment: 'memo', imageId: 'image_1' })).toBe(false);
+    });
+});
+
+describe('long comment previews', () => {
+    it('requires at least ten line breaks', () => {
+        expect(hasLongComment(Array(10).fill('line').join('\n'))).toBe(false);
+        expect(hasLongComment(Array(11).fill('line').join('\n'))).toBe(true);
+    });
+
+    it('counts LF and CRLF as one break each', () => {
+        expect(countLineBreaks('a\nb\r\nc')).toBe(2);
+        expect(hasLongComment(Array(11).fill('line').join('\r\n'))).toBe(true);
+    });
+
+    it.each([
+        [{ comment: Array(11).fill('line').join('\n') }, 'text'],
+        [{ imageId: 'image_1' }, 'image'],
+        [{ imageId: 'image_1', comment: Array(11).fill('line').join('\n') }, 'combined'],
+        [{ comment: 'short' }, 'none']
+    ])('classifies preview content', (item, expected) => {
+        expect(getMemoPreviewKind(item)).toBe(expected);
     });
 });

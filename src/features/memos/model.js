@@ -41,3 +41,22 @@ export function normalizeHttpUrl(value) {
 export function isCommentOnlyMemo(item) {
     return Boolean(item?.comment?.trim()) && !item?.url && !item?.imageId;
 }
+
+export const LONG_COMMENT_BREAK_THRESHOLD = 10;
+
+export function countLineBreaks(value) {
+    return (String(value ?? '').match(/\n/g) || []).length;
+}
+
+export function hasLongComment(value, threshold = LONG_COMMENT_BREAK_THRESHOLD) {
+    return countLineBreaks(value) >= threshold;
+}
+
+export function getMemoPreviewKind(item) {
+    const hasImage = Boolean(item?.imageId);
+    const hasText = hasLongComment(item?.comment);
+    if (hasImage && hasText) return 'combined';
+    if (hasText) return 'text';
+    if (hasImage) return 'image';
+    return 'none';
+}

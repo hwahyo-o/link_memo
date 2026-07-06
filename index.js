@@ -6,7 +6,7 @@ import {
     deleteUser, doc, setDoc, onSnapshot, deleteDoc, auth, db, appId, hasFirebaseConfig
 } from "./src/services/firebase-client.js";
 import { clearUserImages, deleteImage, getImage, saveImageFile as persistImageFile } from "./src/storage/image-store.js";
-import { isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "./src/features/memos/model.js";
+import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "./src/features/memos/model.js";
 import { createModalController } from "./src/ui/modal.js";
 import { createHoldActions } from "./src/features/tabs/hold-actions.js";
 
@@ -29,6 +29,12 @@ const imagePreviewName = document.getElementById('imagePreviewName');
 const imagePreviewModal = document.getElementById('imagePreviewModal');
 const imagePreviewModalImg = document.getElementById('imagePreviewModalImg');
 const imagePreviewModalTitle = document.getElementById('imagePreviewModalTitle');
+const previewTabs = document.getElementById('previewTabs');
+const previewTextTab = document.getElementById('previewTextTab');
+const previewImageTab = document.getElementById('previewImageTab');
+const previewTextStage = document.getElementById('previewTextStage');
+const previewImageStage = document.getElementById('previewImageStage');
+const previewTextContent = document.getElementById('previewTextContent');
 const settingsModal = document.getElementById('settingsModal');
 const darkModeToggle = document.getElementById('darkModeToggle');
 const categoryFolderGrid = document.getElementById('categoryFolderGrid');
@@ -54,6 +60,7 @@ let isDeletingAccount = false;
 let selectedImageFile = null;
 let previewObjectUrl = null;
 let modalObjectUrl = null;
+let previewRequestId = 0;
 let hoverPreviewTimer = null;
 let longPressTimer = null;
 let deleteReauthMode = 'none';
@@ -842,6 +849,7 @@ function createLinkCard(item, subIndex, linkIndex) {
 
     const box = document.createElement('div');
     const commentOnly = isCommentOnlyMemo(item);
+    const previewKind = getMemoPreviewKind(item);
     box.className = `relative bg-white border border-gray-200 group-hover:border-blue-300 rounded-lg shadow-sm group-hover:shadow-md overflow-hidden flex items-stretch min-h-[3.5rem] w-full ${item.imageId ? 'link-has-image' : ''} ${commentOnly ? 'comment-accordion-shell' : ''}`;
     const primary = document.createElement(item.url ? 'a' : 'button');
     primary.className = 'link-primary flex-1 flex items-center justify-center p-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors w-full overflow-hidden cursor-pointer';
@@ -879,10 +887,10 @@ function createLinkCard(item, subIndex, linkIndex) {
         } else {
             primary.type = 'button';
             primary.title = '첨부 이미지 보기';
-            primary.onclick = () => showImagePreview(item);
+            primary.onclick = () => showContentPreview(item);
         }
-        if (item.imageId) attachImagePreviewHandlers(primary, item);
     }
+    if (previewKind !== 'none') attachPreviewHandlers(primary, item);
 
     const actions = document.createElement('div');
     actions.className = 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 transition-opacity';
@@ -914,15 +922,23 @@ function createRoundActionButton(icon, title, onClick, baseClass = 'bg-gray-100 
     return button;
 }
 
-function attachImagePreviewHandlers(target, item) {
+function setPreviewMode(mode) {
+    const showText = mode === 'text';
+    previewTextTab.setAttribute('aria-selected', String(showText));
+    previewImageTab.setAttribute('aria-selected', String(!showText));
+    previewTextStage.classList.toggle('hidden', !showText);
+    previewImageStage.classList.toggle('hidden', showText);
+}
+
+function attachPreviewHandlers(target, item) {
     let suppressNextClick = false;
-    target.addEventListener('mouseenter', () => { hoverPreviewTimer = setTimeout(() => showImagePreview(item), 360); });
+    target.addEventListener('mouseenter', () => { hoverPreviewTimer = setTimeout(() => showContentPreview(item), 360); });
     target.addEventListener('mouseleave', clearPreviewTimers);
-    target.addEventListener('focus', () => showImagePreview(item));
+    target.addEventListener('focus', () => showContentPreview(item));
     target.addEventListener('pointerdown', () => {
         longPressTimer = setTimeout(() => {
             suppressNextClick = true;
-            showImagePreview(item);
+            showContentPreview(item);
         }, 520);
     });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach(eventName => target.addEventListener(eventName, () => {
@@ -941,25 +957,42 @@ function clearPreviewTimers() {
     clearTimeout(longPressTimer);
 }
 
-async function showImagePreview(item) {
+async function showContentPreview(item) {
     clearPreviewTimers();
-    const imageRecord = await getImage(item.imageId);
-    if (!imageRecord?.blob) return;
+    const kind = getMemoPreviewKind(item);
+    if (kind === 'none') return;
+    const requestId = ++previewRequestId;
+    const hasText = kind === 'text' || kind === 'combined';
+    const imageRecord = item.imageId ? await getImage(item.imageId) : null;
+    if (requestId !== previewRequestId) return;
+    const hasImage = Boolean(imageRecord?.blob);
+    if (!hasText && !hasImage) return;
+
     if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
-    modalObjectUrl = URL.createObjectURL(imageRecord.blob);
-    imagePreviewModalTitle.textContent = item.text || '첨부 이미지';
-    imagePreviewModalImg.src = modalObjectUrl;
+    modalObjectUrl = hasImage ? URL.createObjectURL(imageRecord.blob) : null;
+    imagePreviewModalTitle.textContent = item.text || '미리보기';
+    previewTextContent.textContent = hasText ? item.comment : '';
+    previewTextTab.classList.toggle('hidden', !hasText);
+    previewImageTab.classList.toggle('hidden', !hasImage);
+    previewTabs.classList.toggle('hidden', !(hasText && hasImage));
+    if (hasImage) imagePreviewModalImg.src = modalObjectUrl;
+    else imagePreviewModalImg.removeAttribute('src');
+    setPreviewMode(hasText ? 'text' : 'image');
     imagePreviewModal.classList.remove('hidden');
 }
 
 function hideImagePreview() {
     clearPreviewTimers();
+    previewRequestId += 1;
     imagePreviewModal.classList.add('hidden');
     imagePreviewModalImg.removeAttribute('src');
+    previewTextContent.textContent = '';
     if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
     modalObjectUrl = null;
 }
 window.hideImagePreview = hideImagePreview;
+previewTextTab.onclick = () => setPreviewMode('text');
+previewImageTab.onclick = () => setPreviewMode('image');
 
 window.handleKeyPress = event => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {

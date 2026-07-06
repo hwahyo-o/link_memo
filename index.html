@@ -133,18 +133,24 @@
         </div>
     </div>
 
-    <div id="imagePreviewModal" class="image-preview-backdrop hidden fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="imagePreviewModal" class="image-preview-backdrop hidden fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="imagePreviewModalTitle">
         <div class="image-preview-dialog modal-surface bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden">
             <div class="modal-header flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                <h3 id="imagePreviewModalTitle" class="app-heading font-bold text-gray-800 truncate">첨부 이미지</h3>
-                <button onclick="window.hideImagePreview()" class="icon-command w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center" title="닫기"><i class="fa-solid fa-xmark"></i></button>
+                <h3 id="imagePreviewModalTitle" class="app-heading font-bold text-gray-800 truncate">미리보기</h3>
+                <button onclick="window.hideImagePreview()" class="icon-command w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center" title="닫기" aria-label="미리보기 닫기"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
             </div>
-            <div class="image-preview-stage bg-gray-50 p-4 flex items-center justify-center">
+            <div id="previewTabs" class="preview-tabs hidden px-4 pt-3 gap-2" role="tablist" aria-label="미리보기 유형">
+                <button id="previewTextTab" type="button" class="preview-tab" role="tab">텍스트</button>
+                <button id="previewImageTab" type="button" class="preview-tab" role="tab">이미지</button>
+            </div>
+            <div id="previewTextStage" class="preview-text-stage hidden bg-gray-50 p-4 overflow-auto" role="tabpanel">
+                <pre id="previewTextContent" class="preview-text-content"></pre>
+            </div>
+            <div id="previewImageStage" class="image-preview-stage hidden bg-gray-50 p-4 items-center justify-center" role="tabpanel">
                 <img id="imagePreviewModalImg" alt="첨부 이미지 미리보기" class="max-w-full object-contain rounded-lg shadow-sm">
             </div>
         </div>
     </div>
-
     <div id="settingsModal" class="modal-backdrop hidden fixed inset-0 bg-black/50 z-[65] flex items-center justify-center backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
         <div class="modal-surface bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
             <div class="modal-header flex items-center justify-between px-5 py-4 border-b border-gray-200">
