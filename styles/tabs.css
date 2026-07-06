@@ -1,9 +1,43 @@
+.tab-bar {
+    --tab-row-height: 3rem;
+}
+
+.tab-bar,
+.tab-menu-wrap,
+.tab-menu-button,
+.tabs-scroll-viewport,
+.tabs-scroll-list,
+.tab-add-button,
+.tab-button {
+    box-sizing: border-box;
+    height: var(--tab-row-height);
+    min-height: var(--tab-row-height);
+}
+
+.tab-button {
+    align-items: center;
+    overflow-y: hidden;
+}
+
 .tab-actions {
     position: relative;
     z-index: 2;
+    flex: 0 0 auto;
+    align-items: center;
+    height: 1.75rem;
+    line-height: 1;
 }
 
 .tab-actions button {
+    display: inline-flex;
+    flex: 0 0 1.75rem;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    line-height: 1;
     border-radius: 9999px;
 }
 
