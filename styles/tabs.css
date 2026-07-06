@@ -7,6 +7,11 @@
     border-radius: 9999px;
 }
 
+@media (hover: hover) and (pointer: fine) {
+    .tab-button:hover .tab-actions {
+        display: inline-flex !important;
+    }
+}
 .tab-actions button:focus-visible {
     outline: 2px solid #2563eb;
     outline-offset: 1px;
