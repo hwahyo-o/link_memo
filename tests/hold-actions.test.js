@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createHoldActions, TAB_ACTION_DELAY } from '../src/features/tabs/hold-actions.js';
 
 describe('createHoldActions', () => {
-    it('opens only after the 1.5-second delay', () => {
+    it('opens only after the one-second delay', () => {
         vi.useFakeTimers();
         const onOpen = vi.fn();
         const controller = createHoldActions({ onOpen, onClose: vi.fn() });

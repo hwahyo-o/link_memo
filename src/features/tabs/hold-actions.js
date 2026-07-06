@@ -1,4 +1,4 @@
-export const TAB_ACTION_DELAY = 1500;
+export const TAB_ACTION_DELAY = 1000;
 
 export function createHoldActions({
     delay = TAB_ACTION_DELAY,
