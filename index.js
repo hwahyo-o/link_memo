@@ -1,33 +1,23 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import {
-    getAuth,
-    signInWithCustomToken,
-    signInAnonymously,
-    onAuthStateChanged,
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    signOut,
-    GoogleAuthProvider,
-    signInWithPopup,
-    EmailAuthProvider,
-    linkWithCredential,
-    linkWithPopup,
-    reauthenticateWithCredential,
-    reauthenticateWithPopup,
-    deleteUser
-} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    signInWithCustomToken, signInAnonymously, onAuthStateChanged,
+    signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
+    GoogleAuthProvider, signInWithPopup, EmailAuthProvider, linkWithCredential,
+    linkWithPopup, reauthenticateWithCredential, reauthenticateWithPopup,
+    deleteUser, doc, setDoc, onSnapshot, deleteDoc, auth, db, appId, hasFirebaseConfig
+} from "./src/services/firebase-client.js";
+import { clearUserImages, deleteImage, getImage, saveImageFile as persistImageFile } from "./src/storage/image-store.js";
+import { isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "./src/features/memos/model.js";
+import { createModalController } from "./src/ui/modal.js";
+import { createHoldActions } from "./src/features/tabs/hold-actions.js";
 
 const DEFAULT_CATEGORIES = ['업무', '학습', '개인', '도구', '기타'];
 const DEFAULT_COLUMNS = 3;
 const VALID_COLUMNS = [3, 4, 5, 6];
 
-const modal = document.getElementById('customModal');
-const modalTitle = document.getElementById('modalTitle');
-const modalMessage = document.getElementById('modalMessage');
-const modalInput = document.getElementById('modalInput');
-const modalCancelBtn = document.getElementById('modalCancelBtn');
-const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+const { customAlert, customConfirm, customPrompt } = createModalController();
+window.customAlert = customAlert;
+window.customConfirm = customConfirm;
+window.customPrompt = customPrompt;
 const loginScreen = document.getElementById('loginScreen');
 const homeLanding = document.getElementById('homeLanding');
 const mainApp = document.getElementById('mainApp');
@@ -49,7 +39,6 @@ const accountDeletePassword = document.getElementById('accountDeletePassword');
 const accountDeleteStatus = document.getElementById('accountDeleteStatus');
 const accountDeleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn');
 
-let currentModalCallback = null;
 let currentUser = null;
 let unsubscribeSnapshot = null;
 let categories = [...DEFAULT_CATEGORIES];
@@ -58,6 +47,7 @@ let linkData = {};
 let uiPreferences = createDefaultPreferences(activeTab);
 let draggedItem = null;
 let draggedTab = null;
+let activeTabActionController = null;
 let draggedSubcategoryId = null;
 let isFirstLoad = true;
 let isDeletingAccount = false;
@@ -84,112 +74,11 @@ function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>\"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[character]));
 }
 
-function openModal({ type, title, message, defaultValue = '', onConfirm = null }) {
-    modalTitle.textContent = title;
-    modalMessage.textContent = message;
-    currentModalCallback = onConfirm;
-    modalInput.value = defaultValue;
-    modalInput.classList.add('hidden');
-    modalCancelBtn.classList.add('hidden');
-    modalInput.onkeydown = null;
-
-    if (type === 'prompt') {
-        modalInput.classList.remove('hidden');
-        modalCancelBtn.classList.remove('hidden');
-        modalInput.style.height = 'auto';
-        setTimeout(() => {
-            modalInput.style.height = `${Math.min(modalInput.scrollHeight, 200)}px`;
-            modalInput.focus();
-        }, 50);
-        modalInput.onkeydown = event => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                confirmModal();
-            }
-        };
-    } else if (type === 'confirm') {
-        modalCancelBtn.classList.remove('hidden');
-    }
-
-    modal.classList.remove('hidden');
-}
-
-function closeModal() {
-    modal.classList.add('hidden');
-    currentModalCallback = null;
-}
-
-function confirmModal() {
-    const value = modalInput.value;
-    const callback = currentModalCallback;
-    closeModal();
-    if (callback) callback(value);
-}
-
-function customAlert(message) {
-    openModal({ type: 'alert', title: '알림', message });
-}
-
-function customConfirm(message, onConfirm) {
-    openModal({ type: 'confirm', title: '확인', message, onConfirm });
-}
-
-function customPrompt(message, defaultValue, onConfirm) {
-    openModal({ type: 'prompt', title: '입력', message, defaultValue, onConfirm });
-}
-
-modalInput.addEventListener('input', function () {
-    this.style.height = 'auto';
-    this.style.height = `${Math.min(this.scrollHeight, 200)}px`;
-});
-modalConfirmBtn.onclick = confirmModal;
-modalCancelBtn.onclick = closeModal;
-window.customAlert = customAlert;
-window.customConfirm = customConfirm;
-window.customPrompt = customPrompt;
-
-const firebaseConfig = {
-    apiKey: "AIzaSyBJFs1rgUPZqjwZt2wgNuKBXH3uxDpZFXc",
-    authDomain: "link-note-c8c1d.firebaseapp.com",
-    projectId: "link-note-c8c1d",
-    storageBucket: "link-note-c8c1d.firebasestorage.app",
-    messagingSenderId: "993879795668",
-    appId: "1:993879795668:web:f1401e2c4da1c6cc50d841",
-    measurementId: "G-C468ZCLCWH"
-};
-
-try {
-    firebaseConfig.apiKey = import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;
-    firebaseConfig.authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain;
-    firebaseConfig.projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;
-    firebaseConfig.storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket;
-    firebaseConfig.messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId;
-    firebaseConfig.appId = import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId;
-    firebaseConfig.measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfig.measurementId;
-} catch (error) {
-    console.warn('Vite 환경 변수를 사용할 수 없어 기본 설정을 사용합니다.');
-}
-
-let configToUse = firebaseConfig;
-if (typeof __firebase_config !== 'undefined') {
-    try {
-        const parsedConfig = JSON.parse(__firebase_config);
-        if (Object.keys(parsedConfig).length > 0) configToUse = parsedConfig;
-    } catch (error) {
-        console.warn('외부 Firebase 설정을 읽지 못했습니다.');
-    }
-}
-
-if (!configToUse?.apiKey) {
+if (!hasFirebaseConfig) {
     loginScreen.classList.remove('hidden');
     loginScreen.classList.add('flex');
     setTimeout(() => customAlert('Firebase 설정이 누락되었습니다. GitHub Actions Secrets와 Pages 배포 설정을 확인해주세요.'), 500);
 }
-
-const app = configToUse?.apiKey ? initializeApp(configToUse) : null;
-const auth = app ? getAuth(app) : null;
-const db = app ? getFirestore(app) : null;
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-github-memo-app';
 
 function getDataDocRef(user = currentUser) {
     if (!db || !user) return null;
@@ -291,7 +180,7 @@ function renderHomeLanding() {
     categoryFolderGrid.dataset.columns = String(uiPreferences.folderColumns);
     categories.forEach(category => {
         const count = (linkData[category] || []).reduce((sum, subcategory) => sum + (subcategory.links?.length || 0), 0);
-        categoryFolderGrid.appendChild(createFolderButton(category, 'fa-folder', 'text-amber-500', () => showMain(category), `${count}개 링크`));
+        categoryFolderGrid.appendChild(createFolderButton(category, 'fa-folder', 'text-amber-500', () => showMain(category), `${count}개 항목`));
     });
 }
 
@@ -413,78 +302,13 @@ window.handleGoogleLink = async () => {
     }
 };
 
-function openImageDb() {
-    return new Promise((resolve, reject) => {
-        if (!('indexedDB' in window)) return reject(new Error('IndexedDB 미지원'));
-        const request = indexedDB.open('linkMemoImages', 1);
-        request.onupgradeneeded = () => {
-            const imageDb = request.result;
-            if (!imageDb.objectStoreNames.contains('images')) imageDb.createObjectStore('images', { keyPath: 'id' });
-        };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
-
-async function imageDbTransaction(mode, handler) {
-    const imageDb = await openImageDb();
-    return new Promise((resolve, reject) => {
-        const transaction = imageDb.transaction('images', mode);
-        const request = handler(transaction.objectStore('images'));
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-        transaction.oncomplete = () => imageDb.close();
-        transaction.onerror = () => {
-            imageDb.close();
-            reject(transaction.error);
-        };
-    });
-}
-
 async function saveImageFile(file, oldImageId = null) {
     if (!file) return oldImageId;
-    const id = createId('img');
-    await imageDbTransaction('readwrite', store => store.put({ id, userId: currentUser?.uid || 'guest', blob: file, name: file.name, type: file.type, createdAt: Date.now() }));
-    if (oldImageId) deleteImage(oldImageId).catch(() => {});
-    return id;
-}
-
-async function getImage(imageId) {
-    if (!imageId) return null;
-    try {
-        return await imageDbTransaction('readonly', store => store.get(imageId));
-    } catch (error) {
-        console.warn('이미지를 불러오지 못했습니다.', error);
-        return null;
-    }
-}
-
-async function deleteImage(imageId) {
-    if (!imageId) return;
-    try {
-        await imageDbTransaction('readwrite', store => store.delete(imageId));
-    } catch (error) {
-        console.warn('이미지를 삭제하지 못했습니다.', error);
-    }
-}
-
-async function clearUserImages(userId) {
-    if (!userId) return;
-    const imageDb = await openImageDb();
-    await new Promise((resolve, reject) => {
-        const transaction = imageDb.transaction('images', 'readwrite');
-        const cursorRequest = transaction.objectStore('images').openCursor();
-        cursorRequest.onsuccess = event => {
-            const cursor = event.target.result;
-            if (!cursor) return;
-            if (cursor.value?.userId === userId) cursor.delete();
-            cursor.continue();
-        };
-        cursorRequest.onerror = () => reject(cursorRequest.error);
-        transaction.oncomplete = resolve;
-        transaction.onerror = () => reject(transaction.error);
+    return persistImageFile(file, {
+        id: createId('img'),
+        userId: currentUser?.uid || 'guest',
+        oldImageId
     });
-    imageDb.close();
 }
 
 function resetSelectedImage() {
@@ -535,7 +359,8 @@ function migrateDataFormat() {
                 if (!Array.isArray(subcategory.links)) { subcategory.links = []; modified = true; }
                 subcategory.links.forEach(link => {
                     if (!link.id) { link.id = createId('link'); modified = true; }
-                    if (typeof link.url !== 'string') { link.url = link.url || ''; modified = true; }
+                    const normalizedUrl = normalizeHttpUrl(link.url);
+                    if (link.url !== normalizedUrl) { link.url = normalizedUrl; modified = true; }
                     if (!link.createdAt) { link.createdAt = Date.now(); modified = true; }
                     if (!link.updatedAt) { link.updatedAt = link.createdAt; modified = true; }
                 });
@@ -612,6 +437,7 @@ function initApp() {
 }
 
 function renderTabs() {
+    activeTabActionController?.cancel();
     const tabsContainer = document.getElementById('tabsContainer');
     tabsContainer.innerHTML = '';
 
@@ -668,8 +494,90 @@ function createTabButton(category) {
     tabButton.className = `tab-button group flex items-center px-5 py-3 font-medium text-sm cursor-pointer ${isActive ? 'is-active text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 border-b-2 border-transparent'}`;
     tabButton.draggable = true;
     tabButton.dataset.category = category;
-    tabButton.onclick = () => showMain(category);
+    tabButton.setAttribute('role', 'tab');
+    tabButton.setAttribute('tabindex', '0');
+    tabButton.setAttribute('aria-selected', String(isActive));
+
+    const label = document.createElement('span');
+    label.textContent = category;
+    const actions = document.createElement('span');
+    actions.className = 'tab-actions hidden ml-2 items-center gap-1';
+    actions.setAttribute('aria-label', `${category} 탭 관리`);
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'text-gray-400 hover:text-blue-600 p-1';
+    editButton.title = '탭 이름 수정';
+    editButton.setAttribute('aria-label', `${category} 탭 이름 수정`);
+    editButton.innerHTML = '<i class="fa-solid fa-pen-to-square text-xs" aria-hidden="true"></i>';
+    editButton.onclick = event => { event.stopPropagation(); window.editMainCategory(category); };
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'text-gray-400 hover:text-red-500 p-1';
+    deleteButton.title = '탭 삭제';
+    deleteButton.setAttribute('aria-label', `${category} 탭 삭제`);
+    deleteButton.innerHTML = '<i class="fa-solid fa-trash-can text-xs" aria-hidden="true"></i>';
+    deleteButton.onclick = event => { event.stopPropagation(); window.deleteMainCategory(category); };
+    actions.append(editButton, deleteButton);
+    tabButton.append(label, actions);
+
+    let controller;
+    let pointerIsDown = false;
+    let touchHoldPending = false;
+    let suppressNextActivation = false;
+    controller = createHoldActions({
+        onOpen: () => {
+            if (touchHoldPending) suppressNextActivation = true;
+            if (activeTabActionController && activeTabActionController !== controller) activeTabActionController.cancel();
+            activeTabActionController = controller;
+            actions.classList.remove('hidden');
+            actions.classList.add('inline-flex');
+        },
+        onClose: () => {
+            actions.classList.add('hidden');
+            actions.classList.remove('inline-flex');
+            if (activeTabActionController === controller) activeTabActionController = null;
+        }
+    });
+
+    tabButton.onclick = event => {
+        if (event.target.closest('.tab-actions')) return;
+        if (suppressNextActivation) {
+            event.preventDefault();
+            event.stopPropagation();
+            suppressNextActivation = false;
+            return;
+        }
+        controller.cancel();
+        showMain(category);
+    };
+    tabButton.onkeydown = event => {
+        if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('.tab-actions')) {
+            event.preventDefault();
+            showMain(category);
+        }
+        if (event.key === 'Escape') controller.cancel();
+    };
+    tabButton.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') controller.start(); });
+    tabButton.addEventListener('pointerleave', () => { if (!tabButton.contains(document.activeElement)) controller.cancel(); });
+    tabButton.addEventListener('pointerdown', event => {
+        pointerIsDown = true;
+        if (event.pointerType !== 'mouse') {
+            touchHoldPending = true;
+            controller.start();
+        }
+    });
+    ['pointerup', 'pointercancel'].forEach(name => tabButton.addEventListener(name, event => {
+        pointerIsDown = false;
+        if (event.pointerType !== 'mouse' && !controller.isOpen()) controller.cancel();
+        touchHoldPending = false;
+    }));
+    tabButton.addEventListener('focusin', () => { if (!pointerIsDown) controller.open(); });
+    tabButton.addEventListener('focusout', event => { if (!tabButton.contains(event.relatedTarget)) controller.cancel(); });
     tabButton.addEventListener('dragstart', event => {
+        if (event.target.closest('button')) return event.preventDefault();
+        controller.cancel();
         draggedTab = category;
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', category);
@@ -695,26 +603,8 @@ function createTabButton(category) {
         renderTabs();
         renderHomeLanding();
     });
-
-    const label = document.createElement('span');
-    label.textContent = category;
-    tabButton.appendChild(label);
-    if (isActive) {
-        const editButton = document.createElement('button');
-        editButton.className = 'ml-2 text-gray-400 hover:text-blue-600';
-        editButton.title = '탭 이름 수정';
-        editButton.innerHTML = '<i class="fa-solid fa-pen-to-square text-xs"></i>';
-        editButton.onclick = event => { event.stopPropagation(); window.editMainCategory(category); };
-        const deleteButton = document.createElement('button');
-        deleteButton.className = 'ml-1 text-gray-400 hover:text-red-500';
-        deleteButton.title = '탭 삭제';
-        deleteButton.innerHTML = '<i class="fa-solid fa-trash-can text-xs"></i>';
-        deleteButton.onclick = event => { event.stopPropagation(); window.deleteMainCategory(category); };
-        tabButton.append(editButton, deleteButton);
-    }
     return tabButton;
 }
-
 window.addMainCategory = () => {
     customPrompt('새 탭 이름을 입력하세요.', '', async newCategory => {
         const name = newCategory.trim();
@@ -884,7 +774,7 @@ function createSubcategoryPanel(subcategory, subIndex) {
     if (!subcategory.links.length) {
         const note = document.createElement('div');
         note.className = 'col-span-full text-center text-sm text-gray-400 py-2 italic pointer-events-none';
-        note.textContent = '저장된 링크가 없습니다. 링크를 추가하거나 이곳으로 드래그하세요.';
+        note.textContent = '저장된 항목이 없습니다. 항목을 추가하거나 이곳으로 드래그하세요.';
         grid.appendChild(note);
     }
     subcategory.links.forEach((item, linkIndex) => grid.appendChild(createLinkCard(item, subIndex, linkIndex)));
@@ -951,21 +841,48 @@ function createLinkCard(item, subIndex, linkIndex) {
     });
 
     const box = document.createElement('div');
-    box.className = `relative bg-white border border-gray-200 group-hover:border-blue-300 rounded-lg shadow-sm group-hover:shadow-md overflow-hidden flex items-stretch min-h-[3.5rem] w-full ${item.imageId ? 'link-has-image' : ''}`;
+    const commentOnly = isCommentOnlyMemo(item);
+    box.className = `relative bg-white border border-gray-200 group-hover:border-blue-300 rounded-lg shadow-sm group-hover:shadow-md overflow-hidden flex items-stretch min-h-[3.5rem] w-full ${item.imageId ? 'link-has-image' : ''} ${commentOnly ? 'comment-accordion-shell' : ''}`;
     const primary = document.createElement(item.url ? 'a' : 'button');
     primary.className = 'link-primary flex-1 flex items-center justify-center p-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors w-full overflow-hidden cursor-pointer';
     primary.draggable = false;
-    primary.innerHTML = `<span class="font-medium truncate w-full text-center leading-tight">${escapeHtml(item.text)}</span>`;
-    if (item.url) {
-        primary.href = item.url;
-        primary.target = '_blank';
-        primary.rel = 'noopener noreferrer';
-    } else {
+
+    let commentPanel = null;
+    if (commentOnly) {
         primary.type = 'button';
-        primary.title = '첨부 이미지 보기';
-        primary.onclick = () => showImagePreview(item);
+        primary.classList.add('comment-accordion-trigger');
+        primary.setAttribute('aria-expanded', 'false');
+        const chevron = document.createElement('i');
+        chevron.className = 'fa-solid fa-chevron-down text-xs text-gray-400 mr-2 comment-accordion-chevron';
+        chevron.setAttribute('aria-hidden', 'true');
+        const title = document.createElement('span');
+        title.className = 'font-medium truncate text-center leading-tight';
+        title.textContent = item.text;
+        primary.append(chevron, title);
+        commentPanel = document.createElement('div');
+        commentPanel.className = 'comment-accordion-content hidden';
+        commentPanel.textContent = item.comment;
+        primary.onclick = () => {
+            const opening = primary.getAttribute('aria-expanded') !== 'true';
+            primary.setAttribute('aria-expanded', String(opening));
+            commentPanel.classList.toggle('hidden', !opening);
+        };
+    } else {
+        const title = document.createElement('span');
+        title.className = 'font-medium truncate w-full text-center leading-tight';
+        title.textContent = item.text;
+        primary.appendChild(title);
+        if (item.url) {
+            primary.href = item.url;
+            primary.target = '_blank';
+            primary.rel = 'noopener noreferrer';
+        } else {
+            primary.type = 'button';
+            primary.title = '첨부 이미지 보기';
+            primary.onclick = () => showImagePreview(item);
+        }
+        if (item.imageId) attachImagePreviewHandlers(primary, item);
     }
-    if (item.imageId) attachImagePreviewHandlers(primary, item);
 
     const actions = document.createElement('div');
     actions.className = 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 transition-opacity';
@@ -975,19 +892,18 @@ function createLinkCard(item, subIndex, linkIndex) {
         createRoundActionButton('fa-regular fa-image', item.imageId ? '이미지 교체' : '이미지 추가', event => { event.preventDefault(); event.stopPropagation(); window.editLinkImage(subIndex, linkIndex); })
     );
     if (item.imageId) actions.appendChild(createRoundActionButton('fa-solid fa-trash-can', '이미지 제거', event => { event.preventDefault(); event.stopPropagation(); window.removeLinkImage(subIndex, linkIndex); }, 'bg-orange-100 text-orange-600'));
-    actions.appendChild(createRoundActionButton('fa-solid fa-xmark', '링크 삭제', event => { event.preventDefault(); event.stopPropagation(); window.deleteLink(subIndex, linkIndex); }, 'bg-red-100 text-red-500'));
+    actions.appendChild(createRoundActionButton('fa-solid fa-xmark', '항목 삭제', event => { event.preventDefault(); event.stopPropagation(); window.deleteLink(subIndex, linkIndex); }, 'bg-red-100 text-red-500'));
     box.append(primary, actions);
     card.appendChild(box);
-
-    if (item.comment) {
+    if (commentPanel) card.appendChild(commentPanel);
+    if (!commentOnly && item.comment) {
         const comment = document.createElement('div');
-        comment.className = 'text-xs text-gray-500 px-1.5 pb-1 break-words text-center leading-snug w-full';
+        comment.className = 'memo-comment text-xs text-gray-500 px-1.5 pb-1 break-words text-center leading-snug w-full';
         comment.textContent = item.comment;
         card.appendChild(comment);
     }
     return card;
 }
-
 function createRoundActionButton(icon, title, onClick, baseClass = 'bg-gray-100 text-gray-500') {
     const button = document.createElement('button');
     button.type = 'button';
@@ -1046,7 +962,10 @@ function hideImagePreview() {
 window.hideImagePreview = hideImagePreview;
 
 window.handleKeyPress = event => {
-    if (event.key === 'Enter') window.saveLink();
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        window.saveLink();
+    }
 };
 
 window.saveLink = async () => {
@@ -1055,22 +974,24 @@ window.saveLink = async () => {
     const urlInput = document.getElementById('linkUrl');
     const commentInput = document.getElementById('linkComment');
     const subIndex = Number(select.value);
-    const text = textInput.value.trim();
-    let url = urlInput.value.trim();
-    const comment = commentInput.value.trim();
+    const result = normalizeMemoInput({
+        text: textInput.value,
+        url: urlInput.value,
+        comment: commentInput.value,
+        hasImage: Boolean(selectedImageFile)
+    });
 
     if (!Number.isInteger(subIndex) || !linkData[activeTab]?.[subIndex]) return customAlert('저장할 소분류를 먼저 추가해주세요.');
-    if (!text) return customAlert('버튼에 표시될 텍스트를 입력해주세요.');
-    if (!url && !selectedImageFile) return customAlert('링크 또는 이미지 중 하나를 입력해주세요.');
-    if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+    if (!result.ok) return customAlert(result.error);
+    const { text, url, comment } = result.value;
 
     let imageId = null;
     if (selectedImageFile) {
         try {
             imageId = await saveImageFile(selectedImageFile);
         } catch (error) {
-            if (!url) return customAlert('이미지 저장에 실패했습니다. 다시 시도해주세요.');
-            customAlert('이미지 저장에 실패해 링크만 저장합니다.');
+            if (!url && !comment.trim()) return customAlert('이미지 저장에 실패했습니다. 다시 시도해주세요.');
+            customAlert('이미지 저장에 실패해 입력 가능한 내용만 저장합니다.');
         }
     }
 
@@ -1084,7 +1005,6 @@ window.saveLink = async () => {
     resetSelectedImage();
     textInput.focus();
 };
-
 window.deleteLink = (subIndex, linkIndex) => {
     customConfirm('이 항목을 삭제하시겠습니까?', async () => {
         const [removed] = linkData[activeTab][subIndex].links.splice(linkIndex, 1);
@@ -1110,7 +1030,8 @@ window.editLinkText = (subIndex, linkIndex) => {
 window.editLinkComment = (subIndex, linkIndex) => {
     const link = linkData[activeTab][subIndex].links[linkIndex];
     customPrompt('코멘트를 입력하세요.', link.comment || '', async value => {
-        link.comment = value.trim();
+        if (!value.trim() && !link.url && !link.imageId) return customAlert('링크, 이미지 또는 코멘트 중 하나는 유지해야 합니다.');
+        link.comment = value;
         link.updatedAt = Date.now();
         await saveData();
         renderLinks();
@@ -1141,7 +1062,7 @@ window.editLinkImage = (subIndex, linkIndex) => {
 window.removeLinkImage = (subIndex, linkIndex) => {
     const link = linkData[activeTab][subIndex].links[linkIndex];
     if (!link.imageId) return;
-    if (!link.url) return customAlert('URL이 없는 이미지 전용 항목에서는 이미지를 제거할 수 없습니다. 항목을 삭제하거나 이미지를 교체해주세요.');
+    if (!link.url && !link.comment?.trim()) return customAlert('링크나 코멘트가 없는 이미지 전용 항목에서는 이미지를 제거할 수 없습니다.');
     customConfirm('첨부 이미지를 제거하시겠습니까?', async () => {
         await deleteImage(link.imageId);
         delete link.imageId;
@@ -1295,6 +1216,7 @@ accountDeleteModal.addEventListener('click', event => { if (event.target === acc
 
 document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
+    activeTabActionController?.cancel();
     document.querySelectorAll('.tab-menu-panel').forEach(panel => panel.classList.add('hidden'));
     hideImagePreview();
     closeSettingsModal();

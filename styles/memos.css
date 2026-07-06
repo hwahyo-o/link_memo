@@ -1,0 +1,36 @@
+.memo-comment,
+.comment-accordion-content {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.comment-accordion-shell {
+    border-bottom-left-radius: 0.5rem;
+    border-bottom-right-radius: 0.5rem;
+}
+
+.comment-accordion-trigger[aria-expanded="true"] .comment-accordion-chevron {
+    transform: rotate(180deg);
+}
+
+.comment-accordion-chevron {
+    transition: transform 0.2s ease;
+}
+
+.comment-accordion-content {
+    margin-top: -0.15rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #dbeafe;
+    border-top: 0;
+    border-radius: 0 0 0.5rem 0.5rem;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .comment-accordion-chevron {
+        transition: none;
+    }
+}

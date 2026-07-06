@@ -1,0 +1,20 @@
+.tab-actions {
+    position: relative;
+    z-index: 2;
+}
+
+.tab-actions button {
+    border-radius: 9999px;
+}
+
+.tab-actions button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tab-button,
+    .tab-actions {
+        transition: none !important;
+    }
+}

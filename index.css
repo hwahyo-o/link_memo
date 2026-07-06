@@ -1,3 +1,7 @@
+@import url('./styles/tabs.css');
+@import url('./styles/memos.css');
+@import url('./styles/theme-features.css');
+
 /* Drag states */
 body.is-dragging .link-card * {
     pointer-events: none;
