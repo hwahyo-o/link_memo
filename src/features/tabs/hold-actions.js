@@ -1,7 +1,7 @@
-export const TAB_ACTION_DELAY = 1000;
+export const TAB_TOUCH_HOLD_DELAY = 1000;
 
 export function createHoldActions({
-    delay = TAB_ACTION_DELAY,
+    delay = TAB_TOUCH_HOLD_DELAY,
     onOpen,
     onClose,
     setTimer = setTimeout,

@@ -559,7 +559,7 @@ function createTabButton(category) {
         }
         if (event.key === 'Escape') controller.cancel();
     };
-    tabButton.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') controller.start(); });
+    tabButton.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') controller.open(); });
     tabButton.addEventListener('pointerleave', () => { if (!tabButton.contains(document.activeElement)) controller.cancel(); });
     tabButton.addEventListener('pointerdown', event => {
         pointerIsDown = true;
