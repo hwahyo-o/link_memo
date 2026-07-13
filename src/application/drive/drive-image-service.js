@@ -4,35 +4,35 @@ import {
     normalizeDriveConnection
 } from "../../domain/drive/drive-connection.js";
 
-// Application: Drive와 로컬 이미지 저장소를 조합해 업로드·마이그레이션·미리보기를 처리합니다.
-export function createDriveImageService({ localImageRepository, driveImageRepository }) {
-    async function connect(connection) {
-        const folderId = await driveImageRepository.ensureFolder(normalizeDriveConnection(connection).folderId, { interactive: true });
+// Application: 최초 권한 연결은 명시적 사용자 동작으로만 수행하고, 이후 이미지 요청은 서버 세션으로 처리합니다.
+export function createDriveImageService({ localImageRepository, driveImageRepository, driveCodeProvider }) {
+    async function connect(connection, { loginHint = "" } = {}) {
+        const authorizationCode = await driveCodeProvider.requestCode({ loginHint });
+        const remote = await driveImageRepository.connect(authorizationCode);
         return {
             permissionGranted: true,
             promptedAt: Date.now(),
-            folderId,
-            connectedAt: Date.now()
+            folderId: remote.folderId,
+            connectedAt: remote.connectedAt || Date.now()
         };
     }
 
     async function restoreSession(connection) {
         if (!canUseDrive(connection)) return false;
         try {
-            await driveImageRepository.ensureFolder(connection.folderId);
-            return true;
-        } catch (error) {
+            const session = await driveImageRepository.restoreSession();
+            return session.active === true;
+        } catch {
             return false;
         }
     }
 
     async function upload(file, connection) {
         if (!canUseDrive(connection)) return { driveImage: null, connection: normalizeDriveConnection(connection) };
-        const folderId = await driveImageRepository.ensureFolder(connection.folderId);
-        const fileMetadata = await driveImageRepository.upload(file, folderId);
+        const fileMetadata = await driveImageRepository.upload(file);
         return {
             driveImage: createDriveImageReference(fileMetadata),
-            connection: { ...normalizeDriveConnection(connection), folderId, connectedAt: Date.now() }
+            connection: { ...normalizeDriveConnection(connection), connectedAt: Date.now() }
         };
     }
 
@@ -47,6 +47,11 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
         }
         const local = item?.imageId ? await localImageRepository.get(item.imageId) : null;
         return local?.blob ? { blob: local.blob, source: "local" } : null;
+    }
+
+    function prefetchImage(item, connection) {
+        if (!item?.driveImage?.fileId || !canUseDrive(connection)) return;
+        void driveImageRepository.prefetch(item.driveImage.fileId);
     }
 
     async function migrateExistingImages(linkData, connection) {
@@ -76,12 +81,9 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
 
     async function removeDriveImage(reference) {
         if (!reference?.fileId) return;
-        try {
-            await driveImageRepository.remove(reference.fileId);
-        } catch (error) {
-            console.warn("Drive 이미지 삭제 실패", error);
-        }
+        try { await driveImageRepository.remove(reference.fileId); }
+        catch (error) { console.warn("Drive 이미지 삭제 실패", error); }
     }
 
-    return { connect, restoreSession, upload, loadImage, migrateExistingImages, removeDriveImage };
+    return { connect, restoreSession, upload, loadImage, prefetchImage, migrateExistingImages, removeDriveImage };
 }
