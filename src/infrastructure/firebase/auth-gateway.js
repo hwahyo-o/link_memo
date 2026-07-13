@@ -16,4 +16,4 @@ export {
     reauthenticateWithCredential,
     reauthenticateWithPopup,
     deleteUser
-} from "./firebase-client.js";
+} from "../../services/firebase-client.js";
