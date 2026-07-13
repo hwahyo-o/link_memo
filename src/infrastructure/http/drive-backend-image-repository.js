@@ -64,7 +64,7 @@ export function createDriveBackendImageRepository({ auth, baseUrl = import.meta.
 
     return {
         async connect(authorizationCode) {
-            const response = await authorizedFetch("/drive/connect", {
+            const response = await authorizedFetch("/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ authorizationCode })
@@ -72,11 +72,11 @@ export function createDriveBackendImageRepository({ auth, baseUrl = import.meta.
             return response.json();
         },
         async restoreSession() {
-            const response = await authorizedFetch("/drive/session");
+            const response = await authorizedFetch("/session");
             return response.json();
         },
         async upload(file) {
-            const response = await authorizedFetch("/drive/upload", {
+            const response = await authorizedFetch("/upload", {
                 method: "POST",
                 headers: {
                     "Content-Type": file.type || "application/octet-stream",
@@ -88,7 +88,7 @@ export function createDriveBackendImageRepository({ auth, baseUrl = import.meta.
         },
         async download(fileId) {
             return cache.getOrLoad(fileId, async () => {
-                const response = await authorizedFetch(`/drive/image/${encodeURIComponent(fileId)}`);
+                const response = await authorizedFetch(`/image/${encodeURIComponent(fileId)}`);
                 return response.blob();
             });
         },
@@ -98,7 +98,7 @@ export function createDriveBackendImageRepository({ auth, baseUrl = import.meta.
         },
         async remove(fileId) {
             if (!fileId) return;
-            await authorizedFetch(`/drive/image/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+            await authorizedFetch(`/image/${encodeURIComponent(fileId)}`, { method: "DELETE" });
         },
         clearCache() {
             cache.clear();
