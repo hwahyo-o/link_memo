@@ -1,4 +1,4 @@
-import { db, appId, doc, setDoc, onSnapshot, deleteDoc } from "../firebase/firebase-client.js";
+import { db, appId, doc, setDoc, onSnapshot, deleteDoc } from "../../services/firebase-client.js";
 
 // Infrastructure: Firestore 문서 구조와 SDK 호출을 이 모듈 안에 가둡니다.
 export function createFirestoreMemoRepository({ database = db, applicationId = appId } = {}) {
