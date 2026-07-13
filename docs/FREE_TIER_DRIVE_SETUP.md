@@ -19,52 +19,52 @@ Firebase 프로젝트 **link-note-c8c1d**와 같은 Google Cloud 프로젝트에
    https://hwahyo-o.github.io
    ```
 
-6. Client ID와 Client secret을 보관합니다. Secret은 GitHub 또는 소스 코드에 넣지 않습니다.
+6. Client ID와 Client secret을 보관합니다. Client secret은 GitHub 또는 소스 코드에 넣지 않습니다.
 
 ## 2. Cloudflare: 무료 Worker와 D1
 
-1. Cloudflare 계정에서 **Workers & Pages > D1 SQL Database > Create**를 선택합니다.
-2. 이름을 `link-memo-drive-credentials`로 입력하고 생성합니다.
-3. 생성 화면의 Database ID를 복사해 `workers/drive-api/wrangler.jsonc`의 `REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID`를 교체합니다.
-4. Worker 작업 폴더에서 의존성을 설치합니다.
+1. Cloudflare에서 D1 데이터베이스 **link-memo-drive-credentials**를 생성합니다.
+2. Database ID `d41f773d-25d1-4be5-8671-d15f83693cbf`는 이미 main의 Worker 설정에 반영되어 있습니다.
+3. **Workers & Pages > Create > Worker**에서 Worker 이름을 `link-memo-drive-api`로 생성하고, 초기 기본 코드는 그대로 한 번 배포합니다.
+4. Worker의 **Settings > Variables and Secrets**에서 아래 세 항목을 모두 **Secret**으로 추가합니다.
+
+   | 이름 | 값 |
+   |---|---|
+   | `GOOGLE_CLIENT_ID` | 1단계에서 만든 Web OAuth Client ID |
+   | `GOOGLE_CLIENT_SECRET` | 1단계에서 만든 Client secret |
+   | `TOKEN_ENCRYPTION_KEY` | base64 형식의 정확히 32바이트 난수 |
+
+   난수는 로컬에서 아래 명령으로 생성할 수 있습니다. 출력값은 복사 후 안전하게 보관하고 소스 코드에는 넣지 않습니다.
 
    ```bash
-   cd workers/drive-api
-   npm install
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
    ```
 
-5. D1 스키마를 적용합니다.
+5. Cloudflare Account API Token을 생성합니다. 권한은 해당 계정에만 제한하고 다음을 부여합니다.
+   - **Workers Scripts: Edit**
+   - **D1: Edit**
 
-   ```bash
-   npx wrangler d1 execute link-memo-drive-credentials --remote --file=./schema.sql
-   ```
+6. Cloudflare 대시보드에서 Account ID를 복사합니다.
 
-6. Worker Secret을 등록합니다. `TOKEN_ENCRYPTION_KEY`는 base64 형식의 **정확히 32바이트 난수**여야 합니다.
+## 3. GitHub Actions로 Worker 배포
 
-   ```bash
-   npx wrangler secret put GOOGLE_CLIENT_ID
-   npx wrangler secret put GOOGLE_CLIENT_SECRET
-   npx wrangler secret put TOKEN_ENCRYPTION_KEY
-   ```
-
-7. Worker를 배포합니다.
-
-   ```bash
-   npm run deploy
-   ```
-
-8. 출력된 Worker URL(예: `https://link-memo-drive-api.<account>.workers.dev`)을 복사합니다.
-
-## 3. GitHub Pages 빌드 설정
-
-저장소 **Settings > Secrets and variables > Actions**에서 아래 Repository secret을 설정합니다.
+저장소 **Settings > Secrets and variables > Actions**에서 아래 Repository secret을 추가합니다.
 
 | 이름 | 값 |
 |---|---|
+| `CLOUDFLARE_API_TOKEN` | 2단계에서 만든 제한된 Cloudflare API Token |
+| `CLOUDFLARE_ACCOUNT_ID` | 2단계의 Cloudflare Account ID |
 | `VITE_GOOGLE_OAUTH_CLIENT_ID` | Google Cloud Web OAuth Client ID |
-| `VITE_DRIVE_WORKER_URL` | 2단계에서 배포한 Worker URL |
+| `VITE_DRIVE_WORKER_URL` | 첫 Worker 배포 뒤 출력된 Worker URL |
 
-그 다음 GitHub Actions의 **Deploy to GitHub Pages** 워크플로를 다시 실행합니다.
+1. 처음에는 `CLOUDFLARE_API_TOKEN`과 `CLOUDFLARE_ACCOUNT_ID`만 등록합니다.
+2. GitHub **Actions > Deploy Drive Worker > Run workflow**를 실행합니다.
+3. 워크플로는 D1의 `schema.sql`을 안전하게 재실행하고 Worker를 배포합니다.
+4. 완료 로그의 Worker URL(예: `https://link-memo-drive-api.<account>.workers.dev`)을 복사합니다.
+5. 그 URL을 `VITE_DRIVE_WORKER_URL`에 등록합니다.
+6. GitHub **Actions > Deploy to GitHub Pages > Run workflow**를 실행합니다.
+
+Worker 소스가 main에 변경될 때마다 `Deploy Drive Worker`가 자동 실행됩니다. Cloudflare API Token은 GitHub Secret으로만 보관되며, Worker의 Google OAuth·암호화 Secret은 Cloudflare에서만 보관됩니다.
 
 ## 4. 검증
 
@@ -73,15 +73,6 @@ Firebase 프로젝트 **link-note-c8c1d**와 같은 Google Cloud 프로젝트에
 3. `link-memo-img` 폴더와 업로드된 이미지를 확인합니다.
 4. 새로고침·다른 기기에서 같은 사이트 계정으로 로그인한 뒤 이미지를 열어 봅니다.
 5. 이미지 hover/click 중에는 Google 로그인 창이나 계정 선택 창이 열리지 않아야 합니다.
-
-## 보안 원칙
-
-- Firebase Firestore에는 `permissionGranted` 같은 상태만 저장합니다.
-- Refresh Token은 D1의 AES-GCM 암호문으로만 저장합니다.
-- Worker는 Firebase ID Token과 Google OAuth ID Token의 이메일 일치를 확인합니다.
-- Worker는 `https://hwahyo-o.github.io` Origin만 허용합니다.
-- D1 데이터베이스와 Worker Secret에는 브라우저·GitHub Actions·Firestore에서 직접 접근할 수 없습니다.
-
 
 ## 5. Firestore 권한 확인
 
@@ -97,3 +88,11 @@ match /driveCredentials/{uid} {
 ```
 
 기존에 `match /{document=**}`로 모든 로그인 사용자에게 읽기·쓰기를 허용한 규칙이 있다면 제거하거나 메모 경로로 좁혀야 합니다. Firestore 규칙은 허용 규칙이 하나라도 맞으면 접근을 허용합니다.
+
+## 보안 원칙
+
+- Firebase Firestore에는 `permissionGranted` 같은 상태만 저장합니다.
+- Refresh Token은 D1의 AES-GCM 암호문으로만 저장합니다.
+- Worker는 Firebase ID Token과 Google OAuth ID Token의 이메일 일치를 확인합니다.
+- Worker는 `https://hwahyo-o.github.io` Origin만 허용합니다.
+- D1 데이터베이스와 Worker Secret에는 브라우저·GitHub Actions·Firestore에서 직접 접근할 수 없습니다.
