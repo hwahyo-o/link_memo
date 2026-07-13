@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHoldActions, TAB_TOUCH_HOLD_DELAY } from '../src/features/tabs/hold-actions.js';
+import { createHoldActions, TAB_TOUCH_HOLD_DELAY } from '../src/presentation/interactions/hold-actions.js';
 
 describe('createHoldActions', () => {
     it('opens immediately when requested directly', () => {
