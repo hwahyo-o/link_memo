@@ -50,7 +50,7 @@ export function createDriveBackendImageRepository({ auth, baseUrl = import.meta.
         const user = auth?.currentUser;
         if (!user) throw new Error("DRIVE_BACKEND_AUTH_REQUIRED");
         const idToken = await user.getIdToken();
-        const response = await fetch(`${baseUrl.replace(/\\/$/, "")}${path}`, {
+        const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
             ...options,
             headers: { Authorization: `Bearer ${idToken}`, ...(options.headers || {}) }
         });
