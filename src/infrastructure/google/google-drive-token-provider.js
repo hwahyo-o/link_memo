@@ -25,6 +25,7 @@ function loadGoogleIdentityServices() {
 export function createGoogleDriveTokenProvider({ clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID } = {}) {
     let accessToken = null;
     let expiresAt = 0;
+    let loginHint = "";
 
     const hasUsableToken = () => Boolean(accessToken) && Date.now() < expiresAt - 30_000;
 
@@ -36,6 +37,7 @@ export function createGoogleDriveTokenProvider({ clientId = import.meta.env.VITE
             const tokenClient = globalThis.google.accounts.oauth2.initTokenClient({
                 client_id: clientId,
                 scope: DRIVE_SCOPE,
+                ...(loginHint ? { login_hint: loginHint } : {}),
                 callback: response => {
                     if (response.error || !response.access_token) {
                         reject(Object.assign(new Error(response.error || "DRIVE_AUTH_FAILED"), { code: response.error }));
@@ -54,6 +56,9 @@ export function createGoogleDriveTokenProvider({ clientId = import.meta.env.VITE
         async getAccessToken({ interactive = false } = {}) {
             if (hasUsableToken()) return accessToken;
             return requestToken({ interactive });
+        },
+        setLoginHint(value) {
+            loginHint = String(value || "");
         },
         clear() {
             accessToken = null;
