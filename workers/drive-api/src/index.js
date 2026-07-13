@@ -211,7 +211,7 @@ async function disconnect(user, env) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
-    if (origin && origin !== env.ALLOWED_ORIGIN) return json({ error: "ORIGIN_NOT_ALLOWED" }, 403);
+    if (origin !== env.ALLOWED_ORIGIN) return json({ error: "ORIGIN_NOT_ALLOWED" }, 403);
     const headers = corsHeaders(origin, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     try {
