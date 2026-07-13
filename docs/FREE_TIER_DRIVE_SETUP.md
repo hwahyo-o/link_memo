@@ -81,3 +81,19 @@ Firebase 프로젝트 **link-note-c8c1d**와 같은 Google Cloud 프로젝트에
 - Worker는 Firebase ID Token과 Google OAuth ID Token의 이메일 일치를 확인합니다.
 - Worker는 `https://hwahyo-o.github.io` Origin만 허용합니다.
 - D1 데이터베이스와 Worker Secret에는 브라우저·GitHub Actions·Firestore에서 직접 접근할 수 없습니다.
+
+
+## 5. Firestore 권한 확인
+
+이 구조에서 Firestore에는 Drive Refresh Token을 저장하지 않습니다. 기존 메모 경로만 본인 UID로 제한하고, 만약 이전 실험에서 `driveCredentials` 컬렉션을 만든 적이 있다면 클라이언트 접근을 막습니다.
+
+```text
+match /artifacts/{appId}/users/{uid}/memoData/{documentId} {
+  allow read, write: if request.auth != null && request.auth.uid == uid;
+}
+match /driveCredentials/{uid} {
+  allow read, write: if false;
+}
+```
+
+기존에 `match /{document=**}`로 모든 로그인 사용자에게 읽기·쓰기를 허용한 규칙이 있다면 제거하거나 메모 경로로 좁혀야 합니다. Firestore 규칙은 허용 규칙이 하나라도 맞으면 접근을 허용합니다.
