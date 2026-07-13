@@ -20,3 +20,15 @@ This project keeps Google refresh tokens out of the browser and out of Firestore
 - Do not store a raw access token or refresh token in the frontend or normal Firestore documents.
 - The function checks the Firebase user's email against the Google account returned by the code exchange.
 - Browser requests use Firebase ID tokens; images are streamed from the function with private cache headers.
+
+## Firestore rules and redirect URI
+
+Deny every client read/write to the server-only credential collection, for example:
+
+```text
+match /driveCredentials/{uid} {
+  allow read, write: if false;
+}
+```
+
+The function defaults to `DRIVE_OAUTH_REDIRECT_URI=postmessage`. If it is overridden, configure the same redirect URI in the Google OAuth client.
