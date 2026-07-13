@@ -11,9 +11,19 @@ import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-
 import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
 import { createModalController } from "./components/modal.js";
 import { createHoldActions } from "./interactions/hold-actions.js";
+import { createDefaultDriveConnection, canUseDrive, normalizeDriveConnection } from "../domain/drive/drive-connection.js";
+import { createGoogleDriveTokenProvider } from "../infrastructure/google/google-drive-token-provider.js";
+import { createGoogleDriveImageRepository } from "../infrastructure/google/google-drive-image-repository.js";
+import { createDriveImageService } from "../application/drive/drive-image-service.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const memoService = createMemoService({ imageRepository });
+const driveTokenProvider = createGoogleDriveTokenProvider();
+const driveImageRepository = createGoogleDriveImageRepository({ tokenProvider: driveTokenProvider });
+const driveImageService = createDriveImageService({
+    localImageRepository: imageRepository,
+    driveImageRepository
+});
 
 const DEFAULT_CATEGORIES = ['업무', '학습', '개인', '도구', '기타'];
 const DEFAULT_COLUMNS = 3;
@@ -69,6 +79,8 @@ let previewRequestId = 0;
 let hoverPreviewTimer = null;
 let longPressTimer = null;
 let deleteReauthMode = 'none';
+let driveConnection = createDefaultDriveConnection();
+let drivePromptRequested = false;
 
 function createId(prefix) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
@@ -205,6 +217,9 @@ if (auth) {
         activeTab = categories[0];
         linkData = {};
         uiPreferences = createDefaultPreferences(activeTab);
+        driveConnection = createDefaultDriveConnection();
+        drivePromptRequested = false;
+        driveTokenProvider.clear();
         document.body.classList.remove('theme-dark');
         isFirstLoad = true;
         closeSettingsModal();
@@ -246,6 +261,78 @@ window.handleGoogleLogin = async () => {
         if (error.code !== 'auth/popup-closed-by-user') customAlert('Google 로그인에 실패했습니다. 승인된 도메인과 로그인 제공업체 설정을 확인해주세요.');
     }
 };
+
+
+// Presentation controller: Google 계정의 Drive 권한 상태는 Firestore에만 기록하고 토큰은 저장하지 않습니다.
+function isGoogleAccount(user = currentUser) {
+    return Boolean(user?.providerData?.some(provider => provider.providerId === 'google.com'));
+}
+
+function describeDriveError(error) {
+    if (error?.message === 'DRIVE_OAUTH_CLIENT_ID_MISSING') {
+        return 'Google Drive 연결 설정이 아직 완료되지 않았습니다. 배포 환경에 VITE_GOOGLE_OAUTH_CLIENT_ID를 설정해주세요.';
+    }
+    if (error?.code === 'popup_closed_by_user' || error?.message === 'popup_closed_by_user') {
+        return 'Google Drive 권한 승인이 취소되었습니다.';
+    }
+    return 'Google Drive 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
+}
+
+async function connectGoogleDrive({ migrate = true } = {}) {
+    if (!isGoogleAccount()) {
+        customAlert('Google Drive 이미지는 Google 계정으로 로그인한 사용자만 연결할 수 있습니다.');
+        return false;
+    }
+    try {
+        driveTokenProvider.setLoginHint?.(currentUser.email || '');
+        driveConnection = await driveImageService.connect(driveConnection);
+        await saveData();
+
+        if (migrate) {
+            const migration = await driveImageService.migrateExistingImages(linkData, driveConnection);
+            driveConnection = migration.connection;
+            await saveData();
+            if (migration.uploaded || migration.failed) {
+                customAlert(`기존 이미지 ${migration.uploaded}개를 Google Drive에 업로드했습니다.${migration.failed ? ` ${migration.failed}개는 현재 기기에서 원본을 찾지 못했거나 업로드에 실패했습니다.` : ''}`);
+            } else {
+                customAlert('Google Drive 연결이 완료되었습니다.');
+            }
+        } else {
+            customAlert('Google Drive 연결이 완료되었습니다.');
+        }
+        return true;
+    } catch (error) {
+        console.error('Google Drive 연결 실패:', error);
+        customAlert(describeDriveError(error));
+        return false;
+    }
+}
+
+async function requestInitialDrivePermission() {
+    if (!isGoogleAccount() || drivePromptRequested || driveConnection.permissionGranted !== null) return;
+    drivePromptRequested = true;
+    // 취소를 포함한 최초 선택을 false로 기록해 같은 계정에 자동 모달을 반복하지 않습니다.
+    driveConnection = { ...driveConnection, permissionGranted: false, promptedAt: Date.now() };
+    await saveData();
+    customConfirm(
+        '이미지를 다른 기기에서도 안전하게 보려면 Google Drive 연결을 허용해주세요. 개인 Drive 이미지는 공개 링크로 만들지 않으며, 허용한 계정만 접근할 수 있습니다.',
+        async () => { await connectGoogleDrive({ migrate: true }); }
+    );
+}
+
+window.connectGoogleDrive = () => connectGoogleDrive({ migrate: true });
+
+function warnLocalOnlyImageStorage() {
+    if (canUseDrive(driveConnection)) return;
+    customAlert('본 사이트의 이미지 업로드는 외부 서버에 업로드 되지 않음으로 현재 브라우저/기기에서만 볼 수 있습니다. 다른 기기에서도 볼 수 있기를 원하신다면 구글 계정 연동 및 드라이브 연결을 허용해주세요.');
+}
+
+async function saveDriveImage(file) {
+    if (!canUseDrive(driveConnection)) return null;
+    const result = await driveImageService.upload(file, driveConnection);
+    driveConnection = result.connection;
+    return result.driveImage;
+}
 
 window.handleGuestLogin = async () => {
     if (!auth) return;
@@ -398,21 +485,25 @@ function loadDataFromFirestore() {
             categories = Array.isArray(data.categories) ? data.categories : [...DEFAULT_CATEGORIES];
             linkData = data.linkData && typeof data.linkData === 'object' ? data.linkData : {};
             uiPreferences = data.uiPreferences || createDefaultPreferences(categories[0]);
+            driveConnection = normalizeDriveConnection(data.driveConnection);
         } else {
             categories = [...DEFAULT_CATEGORIES];
             linkData = createDefaultLinkData(categories);
             uiPreferences = createDefaultPreferences(categories[0]);
+            driveConnection = createDefaultDriveConnection();
         }
 
         const modified = migrateDataFormat();
         activeTab = categories.includes(uiPreferences.lastViewedTab) ? uiPreferences.lastViewedTab : categories[0];
         applyPreferences();
         if (modified || !snapshot.exists()) saveData();
+        if (canUseDrive(driveConnection)) void driveImageService.restoreSession(driveConnection);
 
         if (document.body.classList.contains('is-dragging') || document.body.classList.contains('is-tab-dragging') || document.body.classList.contains('is-subcategory-dragging')) return;
         if (isFirstLoad) {
             isFirstLoad = false;
             showHome();
+            void requestInitialDrivePermission();
         } else if (!mainApp.classList.contains('hidden')) {
             initApp();
         } else {
@@ -427,7 +518,7 @@ function loadDataFromFirestore() {
 async function saveData() {
     if (!currentUser || isDeletingAccount) return;
     try {
-        await memoRepository.save(currentUser.uid, { categories, linkData, uiPreferences });
+        await memoRepository.save(currentUser.uid, { categories, linkData, uiPreferences, driveConnection });
     } catch (error) {
         customAlert('클라우드 저장에 실패했습니다.');
     }
@@ -959,7 +1050,7 @@ async function showContentPreview(item) {
     if (kind === 'none') return;
     const requestId = ++previewRequestId;
     const hasText = kind === 'text' || kind === 'combined';
-    const imageRecord = item.imageId ? await memoService.getImage(item.imageId) : null;
+    const imageRecord = await driveImageService.loadImage(item, driveConnection);
     if (requestId !== previewRequestId) return;
     const hasImage = Boolean(imageRecord?.blob);
     if (!hasText && !hasImage) return;
@@ -1015,16 +1106,26 @@ window.saveLink = async () => {
     const { text, url, comment } = result.value;
 
     let imageId = null;
+    let driveImage = null;
     if (selectedImageFile) {
+        if (!canUseDrive(driveConnection)) warnLocalOnlyImageStorage();
         try {
             imageId = await saveImageFile(selectedImageFile);
+            if (canUseDrive(driveConnection)) {
+                try {
+                    driveImage = await saveDriveImage(selectedImageFile);
+                } catch (error) {
+                    console.error('Drive 이미지 업로드 실패:', error);
+                    customAlert('Google Drive 업로드에 실패해 현재 기기에만 이미지를 저장했습니다.');
+                }
+            }
         } catch (error) {
             if (!url && !comment.trim()) return customAlert('이미지 저장에 실패했습니다. 다시 시도해주세요.');
             customAlert('이미지 저장에 실패해 입력 가능한 내용만 저장합니다.');
         }
     }
 
-    linkData[activeTab][subIndex].links.push({ id: createId('link'), text, url, comment, imageId, createdAt: Date.now(), updatedAt: Date.now() });
+    linkData[activeTab][subIndex].links.push({ id: createId('link'), text, url, comment, imageId, driveImage, createdAt: Date.now(), updatedAt: Date.now() });
     await saveData();
     renderLinks();
     renderHomeLanding();
@@ -1038,6 +1139,7 @@ window.deleteLink = (subIndex, linkIndex) => {
     customConfirm('이 항목을 삭제하시겠습니까?', async () => {
         const [removed] = linkData[activeTab][subIndex].links.splice(linkIndex, 1);
         await memoService.deleteImage(removed?.imageId);
+        await driveImageService.removeDriveImage(removed?.driveImage);
         await saveData();
         renderLinks();
         renderHomeLanding();
@@ -1077,7 +1179,12 @@ window.editLinkImage = (subIndex, linkIndex) => {
         if (!file.type.startsWith('image/')) return customAlert('이미지 파일만 첨부할 수 있습니다.');
         const link = linkData[activeTab][subIndex].links[linkIndex];
         try {
+            if (!canUseDrive(driveConnection)) warnLocalOnlyImageStorage();
             link.imageId = await saveImageFile(file, link.imageId || null);
+            if (canUseDrive(driveConnection)) {
+                await driveImageService.removeDriveImage(link.driveImage);
+                link.driveImage = await saveDriveImage(file);
+            }
             link.updatedAt = Date.now();
             await saveData();
             renderLinks();
@@ -1094,7 +1201,9 @@ window.removeLinkImage = (subIndex, linkIndex) => {
     if (!link.url && !link.comment?.trim()) return customAlert('링크나 코멘트가 없는 이미지 전용 항목에서는 이미지를 제거할 수 없습니다.');
     customConfirm('첨부 이미지를 제거하시겠습니까?', async () => {
         await memoService.deleteImage(link.imageId);
+        await driveImageService.removeDriveImage(link.driveImage);
         delete link.imageId;
+        delete link.driveImage;
         link.updatedAt = Date.now();
         await saveData();
         renderLinks();
