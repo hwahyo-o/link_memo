@@ -60,7 +60,7 @@ function sendError(res, error) {
   console.error(error);
   res.status(error.status || 500).json({ error: error.message || "INTERNAL_ERROR" });
 }
-export const driveApi = onRequest({ secrets: [DRIVE_CLIENT_ID, DRIVE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY], cors: true, region: "asia-northeast3" }, async (req, res) => {
+export const driveApi = onRequest({ secrets: [DRIVE_CLIENT_ID, DRIVE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY], cors: ["https://hwahyo-o.github.io"], region: "asia-northeast3" }, async (req, res) => {
   try {
     const user = await firebaseUser(req);
     const path = req.path.replace(/^\/+/, "");
