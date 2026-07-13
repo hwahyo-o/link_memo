@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countLineBreaks, getMemoPreviewKind, hasLongComment, isCommentOnlyMemo, normalizeMemoInput } from '../src/features/memos/model.js';
+import { countLineBreaks, getMemoPreviewKind, hasLongComment, isCommentOnlyMemo, normalizeMemoInput } from '../src/domain/memos/memo-policy.js';
 
 describe('normalizeMemoInput', () => {
     it('requires a title', () => {
