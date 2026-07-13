@@ -12,7 +12,7 @@
     {
       "binding": "DRIVE_CREDENTIALS",
       "database_name": "link-memo-drive-credentials",
-      "database_id": "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+      "database_id": "d41f773d-25d1-4be5-8671-d15f83693cbf"
     }
   ],
   "secrets": {
