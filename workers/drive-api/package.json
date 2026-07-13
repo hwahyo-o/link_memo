@@ -1,0 +1,15 @@
+{
+  "name": "link-memo-drive-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/index.js",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "jose": "^6.1.3"
+  },
+  "devDependencies": {
+    "wrangler": "^4.29.1"
+  }
+}
