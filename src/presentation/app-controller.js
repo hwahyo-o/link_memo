@@ -12,17 +12,18 @@ import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoI
 import { createModalController } from "./components/modal.js";
 import { createHoldActions } from "./interactions/hold-actions.js";
 import { createDefaultDriveConnection, canUseDrive, normalizeDriveConnection } from "../domain/drive/drive-connection.js";
-import { createGoogleDriveTokenProvider } from "../infrastructure/google/google-drive-token-provider.js";
-import { createGoogleDriveImageRepository } from "../infrastructure/google/google-drive-image-repository.js";
+import { createGoogleDriveCodeProvider } from "../infrastructure/google/google-drive-code-provider.js";
+import { createDriveBackendImageRepository } from "../infrastructure/http/drive-backend-image-repository.js";
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const memoService = createMemoService({ imageRepository });
-const driveTokenProvider = createGoogleDriveTokenProvider();
-const driveImageRepository = createGoogleDriveImageRepository({ tokenProvider: driveTokenProvider });
+const driveCodeProvider = createGoogleDriveCodeProvider();
+const driveImageRepository = createDriveBackendImageRepository({ auth });
 const driveImageService = createDriveImageService({
     localImageRepository: imageRepository,
-    driveImageRepository
+    driveImageRepository,
+    driveCodeProvider
 });
 
 const DEFAULT_CATEGORIES = ['업무', '학습', '개인', '도구', '기타'];
@@ -219,7 +220,7 @@ if (auth) {
         uiPreferences = createDefaultPreferences(activeTab);
         driveConnection = createDefaultDriveConnection();
         drivePromptRequested = false;
-        driveTokenProvider.clear();
+        driveImageRepository.clearCache();
         document.body.classList.remove('theme-dark');
         isFirstLoad = true;
         closeSettingsModal();
@@ -284,8 +285,7 @@ async function connectGoogleDrive({ migrate = true } = {}) {
         return false;
     }
     try {
-        driveTokenProvider.setLoginHint?.(currentUser.email || '');
-        driveConnection = await driveImageService.connect(driveConnection);
+        driveConnection = await driveImageService.connect(driveConnection, { loginHint: currentUser.email || '' });
         await saveData();
 
         if (migrate) {
@@ -1019,10 +1019,17 @@ function setPreviewMode(mode) {
 
 function attachPreviewHandlers(target, item) {
     let suppressNextClick = false;
-    target.addEventListener('mouseenter', () => { hoverPreviewTimer = setTimeout(() => showContentPreview(item), 360); });
+    target.addEventListener('mouseenter', () => {
+        driveImageService.prefetchImage(item, driveConnection);
+        hoverPreviewTimer = setTimeout(() => showContentPreview(item), 160);
+    });
     target.addEventListener('mouseleave', clearPreviewTimers);
-    target.addEventListener('focus', () => showContentPreview(item));
+    target.addEventListener('focus', () => {
+        driveImageService.prefetchImage(item, driveConnection);
+        showContentPreview(item);
+    });
     target.addEventListener('pointerdown', () => {
+        driveImageService.prefetchImage(item, driveConnection);
         longPressTimer = setTimeout(() => {
             suppressNextClick = true;
             showContentPreview(item);
