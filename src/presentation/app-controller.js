@@ -13,13 +13,13 @@ import { createModalController } from "./components/modal.js";
 import { createHoldActions } from "./interactions/hold-actions.js";
 import { createDefaultDriveConnection, canUseDrive, normalizeDriveConnection } from "../domain/drive/drive-connection.js";
 import { createGoogleDriveCodeProvider } from "../infrastructure/google/google-drive-code-provider.js";
-import { createDriveBackendImageRepository } from "../infrastructure/http/drive-backend-image-repository.js";
+import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-worker-image-repository.js";
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const memoService = createMemoService({ imageRepository });
 const driveCodeProvider = createGoogleDriveCodeProvider();
-const driveImageRepository = createDriveBackendImageRepository({ auth });
+const driveImageRepository = createDriveWorkerImageRepository({ auth });
 const driveImageService = createDriveImageService({
     localImageRepository: imageRepository,
     driveImageRepository,
@@ -272,6 +272,12 @@ function isGoogleAccount(user = currentUser) {
 function describeDriveError(error) {
     if (error?.message === 'DRIVE_OAUTH_CLIENT_ID_MISSING') {
         return 'Google Drive 연결 설정이 아직 완료되지 않았습니다. 배포 환경에 VITE_GOOGLE_OAUTH_CLIENT_ID를 설정해주세요.';
+    }
+    if (error?.message === 'DRIVE_WORKER_URL_MISSING') {
+        return 'Google Drive 보안 연결이 아직 준비되지 않았습니다. 관리자에게 Worker 주소 설정을 요청해주세요.';
+    }
+    if (error?.message === 'DRIVE_ACCOUNT_MISMATCH') {
+        return 'Drive 권한은 현재 링크 메모에 로그인한 Google 계정으로만 연결할 수 있습니다.';
     }
     if (error?.code === 'popup_closed_by_user' || error?.message === 'popup_closed_by_user') {
         return 'Google Drive 권한 승인이 취소되었습니다.';
