@@ -96,7 +96,7 @@
                 </div>
                 <label class="image-action-button bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded shadow-sm transition-colors duration-200 flex items-center justify-center whitespace-nowrap cursor-pointer">
                     <i class="fa-regular fa-image mr-2 text-blue-500"></i>이미지 첨부
-                    <input type="file" id="linkImage" accept="image/*" class="hidden">
+                    <input type="file" id="linkImage" accept="image/*" multiple class="hidden">
                 </label>
                 <button onclick="window.saveLink()" class="primary-command bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-2 rounded shadow transition-colors duration-200 flex items-center justify-center whitespace-nowrap">
                     <i class="fa-solid fa-plus mr-2"></i>저장
@@ -121,7 +121,7 @@
         </div>
     </div>
 
-    <div id="customModal" class="modal-backdrop hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+    <div id="customModal" class="modal-backdrop hidden fixed inset-0 bg-black/40 z-[80] flex items-center justify-center backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <div class="modal-surface bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
             <h3 id="modalTitle" class="app-heading text-lg font-bold text-gray-800 mb-2">알림</h3>
             <p id="modalMessage" class="app-muted text-gray-600 text-sm mb-4 break-keep whitespace-pre-line">메시지 내용</p>
@@ -129,6 +129,22 @@
             <div class="flex justify-end gap-2 mt-2">
                 <button id="modalCancelBtn" class="secondary-command hidden px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors">취소</button>
                 <button id="modalConfirmBtn" class="primary-command px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="linkEditModal" class="modal-backdrop hidden fixed inset-0 bg-black/50 z-[75] flex items-center justify-center backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="linkEditModalTitle">
+        <div class="modal-surface bg-white rounded-xl shadow-2xl p-5 w-full max-w-md">
+            <h3 id="linkEditModalTitle" class="app-heading text-lg font-bold text-gray-800 mb-4">링크 수정 및 이동</h3>
+            <label class="block text-sm font-semibold text-gray-700 mb-1" for="linkEditText">버튼 텍스트</label>
+            <input id="linkEditText" type="text" class="form-control w-full border border-gray-300 rounded p-2 mb-4 focus:ring-2 focus:ring-blue-400 outline-none">
+            <label class="block text-sm font-semibold text-gray-700 mb-1" for="linkEditCategory">대분류</label>
+            <select id="linkEditCategory" class="form-control w-full border border-gray-300 rounded p-2 mb-4"></select>
+            <label class="block text-sm font-semibold text-gray-700 mb-1" for="linkEditSubcategory">소분류</label>
+            <select id="linkEditSubcategory" class="form-control w-full border border-gray-300 rounded p-2 mb-5"></select>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="window.closeLinkEditModal()" class="secondary-command px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded">취소</button>
+                <button type="button" onclick="window.saveLinkEdit()" class="primary-command px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded">저장</button>
             </div>
         </div>
     </div>
