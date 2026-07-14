@@ -4,7 +4,23 @@ import {
     normalizeDriveConnection
 } from "../../domain/drive/drive-connection.js";
 
-// Application: 최초 권한 연결은 명시적 사용자 동작으로만 수행하고, 이후 이미지 요청은 서버 세션으로 처리합니다.
+const VERIFY_BATCH_SIZE = 20;
+
+function getLinks(linkData) {
+    const links = [];
+    for (const subcategories of Object.values(linkData || {})) {
+        for (const subcategory of subcategories || []) {
+            for (const link of subcategory.links || []) links.push(link);
+        }
+    }
+    return links;
+}
+
+function isMissingDriveError(error) {
+    return ["DRIVE_API_403", "DRIVE_API_404", "DRIVE_FILE_UNAVAILABLE"].includes(error?.message);
+}
+
+// Application layer: 권한 연결, 비공개 이미지 동기화, 유실 파일 복구를 조율합니다.
 export function createDriveImageService({ localImageRepository, driveImageRepository, driveCodeProvider }) {
     async function connect(connection, { loginHint = "" } = {}) {
         const authorizationCode = await driveCodeProvider.requestCode({ loginHint });
@@ -20,7 +36,7 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
     async function restoreSession(connection) {
         if (!canUseDrive(connection)) return false;
         try {
-            const session = await driveImageRepository.restoreSession();
+            const session = await driveImageRepository.restoreSession({ warm: true });
             return session.active === true;
         } catch {
             return false;
@@ -37,46 +53,94 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
     }
 
     async function loadImage(item, connection) {
-        if (item?.driveImage?.fileId && canUseDrive(connection)) {
+        let driveMissing = false;
+        if (item?.driveImage?.fileId && canUseDrive(connection) && item.driveImage.availability !== "missing") {
             try {
                 const blob = await driveImageRepository.download(item.driveImage.fileId);
-                return { blob, source: "drive" };
+                return { blob, source: "drive", driveMissing: false };
             } catch (error) {
+                driveMissing = isMissingDriveError(error);
                 console.warn("Drive 이미지를 불러오지 못했습니다. 로컬 이미지를 확인합니다.", error);
             }
         }
         const local = item?.imageId ? await localImageRepository.get(item.imageId) : null;
-        return local?.blob ? { blob: local.blob, source: "local" } : null;
+        return local?.blob ? { blob: local.blob, source: "local", driveMissing } : { blob: null, source: null, driveMissing };
     }
 
     function prefetchImage(item, connection) {
-        if (!item?.driveImage?.fileId || !canUseDrive(connection)) return;
+        if (!item?.driveImage?.fileId || !canUseDrive(connection) || item.driveImage.availability === "missing") return;
         void driveImageRepository.prefetch(item.driveImage.fileId);
     }
 
-    async function migrateExistingImages(linkData, connection) {
+    async function repairImage(item, connection) {
+        if (!item?.imageId || !canUseDrive(connection)) {
+            return { repaired: false, reason: "DRIVE_NOT_AVAILABLE", connection: normalizeDriveConnection(connection) };
+        }
+        const local = await localImageRepository.get(item.imageId);
+        if (!local?.blob) {
+            item.driveImage = item.driveImage ? { ...item.driveImage, availability: "missing", checkedAt: Date.now() } : item.driveImage;
+            return { repaired: false, reason: "LOCAL_IMAGE_MISSING", connection: normalizeDriveConnection(connection) };
+        }
+        const result = await upload(local.blob, connection);
+        item.driveImage = result.driveImage;
+        return { repaired: true, reason: null, connection: result.connection };
+    }
+
+    async function repairDriveImages(linkData, connection, { onProgress } = {}) {
         let nextConnection = normalizeDriveConnection(connection);
-        let uploaded = 0;
-        let failed = 0;
-        for (const subcategories of Object.values(linkData || {})) {
-            for (const subcategory of subcategories || []) {
-                for (const link of subcategory.links || []) {
-                    if (!link.imageId || link.driveImage?.fileId) continue;
-                    const local = await localImageRepository.get(link.imageId);
-                    if (!local?.blob) continue;
-                    try {
-                        const result = await upload(local.blob, nextConnection);
-                        link.driveImage = result.driveImage;
-                        nextConnection = result.connection;
-                        uploaded += 1;
-                    } catch (error) {
-                        console.warn("기존 이미지 Drive 업로드 실패", error);
-                        failed += 1;
-                    }
-                }
+        const links = getLinks(linkData).filter(link => link?.imageId);
+        const remoteLinks = links.filter(link => link.driveImage?.fileId);
+        const stateByFileId = new Map();
+
+        for (let start = 0; start < remoteLinks.length; start += VERIFY_BATCH_SIZE) {
+            const batch = remoteLinks.slice(start, start + VERIFY_BATCH_SIZE);
+            try {
+                const verification = await driveImageRepository.verifyImages(batch.map(link => link.driveImage.fileId));
+                for (const image of verification.images || []) stateByFileId.set(image.fileId, image.state);
+            } catch (error) {
+                return {
+                    connection: nextConnection,
+                    total: links.length,
+                    available: 0,
+                    uploaded: 0,
+                    repaired: 0,
+                    unrecoverable: 0,
+                    failed: links.length,
+                    error
+                };
             }
         }
-        return { connection: nextConnection, uploaded, failed };
+
+        const result = { connection: nextConnection, total: links.length, available: 0, uploaded: 0, repaired: 0, unrecoverable: 0, failed: 0 };
+        let completed = 0;
+        for (const link of links) {
+            const isAvailable = link.driveImage?.fileId && stateByFileId.get(link.driveImage.fileId) === "available";
+            if (isAvailable) {
+                if (link.driveImage.availability) delete link.driveImage.availability;
+                result.available += 1;
+            } else {
+                const hadDriveReference = Boolean(link.driveImage?.fileId);
+                try {
+                    const repaired = await repairImage(link, nextConnection);
+                    nextConnection = repaired.connection;
+                    if (repaired.repaired) {
+                        if (hadDriveReference) result.repaired += 1;
+                        else result.uploaded += 1;
+                    } else if (repaired.reason === "LOCAL_IMAGE_MISSING") {
+                        result.unrecoverable += 1;
+                    } else {
+                        result.failed += 1;
+                    }
+                } catch (error) {
+                    console.warn("Drive 이미지 복구 실패", error);
+                    result.failed += 1;
+                }
+            }
+            completed += 1;
+            onProgress?.({ completed, total: links.length, ...result });
+        }
+        result.connection = nextConnection;
+        return result;
     }
 
     async function removeDriveImage(reference) {
@@ -85,5 +149,5 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
         catch (error) { console.warn("Drive 이미지 삭제 실패", error); }
     }
 
-    return { connect, restoreSession, upload, loadImage, prefetchImage, migrateExistingImages, removeDriveImage };
+    return { connect, restoreSession, upload, loadImage, prefetchImage, repairImage, repairDriveImages, removeDriveImage };
 }
