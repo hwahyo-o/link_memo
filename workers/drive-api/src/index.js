@@ -30,14 +30,21 @@ function base64(bytes) {
   return btoa(text);
 }
 
-function unbase64(value) {
-  const text = atob(value);
-  return Uint8Array.from(text, char => char.charCodeAt(0));
+function unbase64(value, errorCode = "DRIVE_CREDENTIALS_CORRUPTED") {
+  if (typeof value !== "string" || !value.trim()) {
+    throw Object.assign(new Error(errorCode), { status: 500 });
+  }
+  try {
+    const text = atob(value);
+    return Uint8Array.from(text, char => char.charCodeAt(0));
+  } catch {
+    throw Object.assign(new Error(errorCode), { status: 500 });
+  }
 }
 
 async function encryptionKey(env) {
-  const raw = unbase64(env.TOKEN_ENCRYPTION_KEY);
-  if (raw.byteLength !== 32) throw new Error("TOKEN_ENCRYPTION_KEY_INVALID");
+  const raw = unbase64(env.TOKEN_ENCRYPTION_KEY, "TOKEN_ENCRYPTION_KEY_INVALID");
+  if (raw.byteLength !== 32) throw Object.assign(new Error("TOKEN_ENCRYPTION_KEY_INVALID"), { status: 500 });
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
@@ -151,7 +158,15 @@ async function connect(request, user, env) {
   const existing = await env.DRIVE_CREDENTIALS.prepare(
     "SELECT refresh_token, iv FROM drive_credentials WHERE uid = ?"
   ).bind(user.uid).first();
-  const refreshToken = tokens.refresh_token || (existing ? await decrypt(existing, env) : null);
+  let retainedRefreshToken = null;
+  if (!tokens.refresh_token && existing) {
+    try {
+      retainedRefreshToken = await decrypt(existing, env);
+    } catch {
+      throw Object.assign(new Error("DRIVE_CREDENTIALS_RECOVERY_REQUIRED"), { status: 409 });
+    }
+  }
+  const refreshToken = tokens.refresh_token || retainedRefreshToken;
   if (!refreshToken) throw Object.assign(new Error("DRIVE_OFFLINE_ACCESS_REQUIRED"), { status: 400 });
 
   const folderId = await ensureFolder(tokens.access_token);
@@ -241,9 +256,27 @@ async function remove(fileId, user, env) {
 }
 
 async function disconnect(user, env) {
+  const record = await env.DRIVE_CREDENTIALS.prepare(
+    "SELECT refresh_token, iv FROM drive_credentials WHERE uid = ?"
+  ).bind(user.uid).first();
+  let permissionRevoked = false;
+  if (record) {
+    try {
+      const refreshToken = await decrypt(record, env);
+      const revoked = await fetch("https://oauth2.googleapis.com/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token: refreshToken })
+      });
+      permissionRevoked = revoked.ok;
+    } catch (error) {
+      // 잘못된 키나 손상된 행이어도 현재 사용자 행은 반드시 삭제해 재연결을 가능하게 합니다.
+      console.warn("Drive permission revoke skipped", error?.message || error);
+    }
+  }
   await env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_credentials WHERE uid = ?").bind(user.uid).run();
   accessTokenCache.delete(user.uid);
-  return json({ disconnected: true });
+  return json({ disconnected: true, permissionRevoked });
 }
 
 export default {
