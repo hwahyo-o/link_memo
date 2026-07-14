@@ -7,9 +7,16 @@ export function createModalController() {
     const cancelButton = document.getElementById("modalCancelBtn");
     const confirmButton = document.getElementById("modalConfirmBtn");
     let currentCallback = null;
-    const close = () => { modal.classList.add("hidden"); currentCallback = null; };
+    let returnFocus = null;
+    const close = () => {
+        modal.classList.add("hidden");
+        currentCallback = null;
+        if (returnFocus?.isConnected) returnFocus.focus();
+        returnFocus = null;
+    };
     const confirm = () => { const value = input.value; const callback = currentCallback; close(); if (callback) callback(value); };
     const open = ({ type, modalTitle, modalMessage, defaultValue = "", onConfirm = null }) => {
+        returnFocus = document.activeElement;
         title.textContent = modalTitle; message.textContent = modalMessage; currentCallback = onConfirm; input.value = defaultValue;
         input.classList.add("hidden"); cancelButton.classList.add("hidden"); input.onkeydown = null;
         if (type === "prompt") {
@@ -18,6 +25,7 @@ export function createModalController() {
             input.onkeydown = event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); confirm(); } };
         } else if (type === "confirm") cancelButton.classList.remove("hidden");
         modal.classList.remove("hidden");
+        if (type !== "prompt") setTimeout(() => confirmButton.focus(), 0);
     };
     input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; });
     confirmButton.onclick = confirm; cancelButton.onclick = close;
