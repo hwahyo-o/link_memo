@@ -3,7 +3,6 @@ import {
     createDriveImageReference,
     normalizeDriveConnection
 } from "../../domain/drive/drive-connection.js";
-import { getLinkImages } from "../../domain/memos/image-attachment-policy.js";
 
 const VERIFY_BATCH_SIZE = 20;
 
@@ -11,7 +10,10 @@ function getImages(linkData) {
     const images = [];
     for (const subcategories of Object.values(linkData || {})) {
         for (const subcategory of subcategories || []) {
-            for (const link of subcategory.links || []) images.push(...getLinkImages(link));
+            for (const link of subcategory.links || []) {
+                if (Array.isArray(link.images)) images.push(...link.images.filter(image => image?.imageId));
+                else if (link?.imageId) images.push(link);
+            }
         }
     }
     return images;
