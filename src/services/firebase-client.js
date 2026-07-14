@@ -16,7 +16,7 @@ import {
     reauthenticateWithPopup,
     deleteUser
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, onSnapshot, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, setDoc, onSnapshot, deleteDoc, runTransaction, deleteField, FieldPath } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const viteEnv = import.meta.env || {};
 
@@ -65,5 +65,7 @@ export {
     setDoc,
     onSnapshot,
     deleteDoc,
-    runTransaction
+    runTransaction,
+    deleteField,
+    FieldPath
 };
