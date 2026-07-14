@@ -5,6 +5,7 @@ const FOLDER_NAME = "link-memo-img";
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const FIREBASE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"));
 const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
+const accessTokenCache = new Map();
 
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
@@ -93,6 +94,8 @@ async function tokenRequest(params, env) {
 }
 
 async function driveAccessToken(uid, env) {
+  const cached = accessTokenCache.get(uid);
+  if (cached && cached.expiresAt > Date.now() + 30_000) return cached.token;
   const record = await env.DRIVE_CREDENTIALS.prepare(
     "SELECT refresh_token, iv FROM drive_credentials WHERE uid = ?"
   ).bind(uid).first();
@@ -100,6 +103,10 @@ async function driveAccessToken(uid, env) {
   const refreshToken = await decrypt(record, env);
   const token = await tokenRequest({ grant_type: "refresh_token", refresh_token: refreshToken }, env);
   if (!token.access_token) throw Object.assign(new Error("DRIVE_TOKEN_REFRESH_FAILED"), { status: 401 });
+  accessTokenCache.set(uid, {
+    token: token.access_token,
+    expiresAt: Date.now() + Math.max(60, Number(token.expires_in || 300) - 60) * 1000
+  });
   return token.access_token;
 }
 
@@ -135,20 +142,50 @@ async function connect(request, user, env) {
     code: body.authorizationCode,
     redirect_uri: env.GOOGLE_OAUTH_REDIRECT_URI
   }, env);
-  if (!tokens.refresh_token || !tokens.id_token || !tokens.access_token) {
-    throw Object.assign(new Error("DRIVE_OFFLINE_ACCESS_REQUIRED"), { status: 400 });
+  if (!tokens.id_token || !tokens.access_token) {
+    throw Object.assign(new Error("GOOGLE_TOKEN_EXCHANGE_FAILED"), { status: 401 });
   }
   const driveEmail = await verifyGoogleIdentity(tokens.id_token, env);
   if (driveEmail !== user.email) throw Object.assign(new Error("DRIVE_ACCOUNT_MISMATCH"), { status: 403 });
+
+  const existing = await env.DRIVE_CREDENTIALS.prepare(
+    "SELECT refresh_token, iv FROM drive_credentials WHERE uid = ?"
+  ).bind(user.uid).first();
+  const refreshToken = tokens.refresh_token || (existing ? await decrypt(existing, env) : null);
+  if (!refreshToken) throw Object.assign(new Error("DRIVE_OFFLINE_ACCESS_REQUIRED"), { status: 400 });
+
   const folderId = await ensureFolder(tokens.access_token);
-  const encrypted = await encrypt(tokens.refresh_token, env);
+  const encrypted = await encrypt(refreshToken, env);
   await env.DRIVE_CREDENTIALS.prepare(
     `INSERT INTO drive_credentials (uid, refresh_token, iv, drive_email, folder_id, updated_at)
      VALUES (?, ?, ?, ?, ?, unixepoch())
      ON CONFLICT(uid) DO UPDATE SET refresh_token = excluded.refresh_token, iv = excluded.iv,
        drive_email = excluded.drive_email, folder_id = excluded.folder_id, updated_at = unixepoch()`
   ).bind(user.uid, encrypted.ciphertext, encrypted.iv, driveEmail, folderId).run();
+  accessTokenCache.set(user.uid, {
+    token: tokens.access_token,
+    expiresAt: Date.now() + Math.max(60, Number(tokens.expires_in || 300) - 60) * 1000
+  });
   return json({ permissionGranted: true, folderId, connectedAt: Date.now() });
+}
+
+async function verifyImages(request, user, env) {
+  const body = await request.json();
+  const fileIds = [...new Set((body?.fileIds || []).filter(value => typeof value === "string" && value.length > 0))].slice(0, 50);
+  if (!fileIds.length) return json({ images: [] });
+  const accessToken = await driveAccessToken(user.uid, env);
+  const images = await Promise.all(fileIds.map(async fileId => {
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,trashed`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (response.ok) {
+      const file = await response.json();
+      return { fileId, state: file.trashed ? "missing" : "available" };
+    }
+    if (response.status === 403 || response.status === 404) return { fileId, state: "missing" };
+    throw Object.assign(new Error(`DRIVE_API_${response.status}`), { status: response.status });
+  }));
+  return json({ images });
 }
 
 async function upload(request, user, env) {
@@ -205,6 +242,7 @@ async function remove(fileId, user, env) {
 
 async function disconnect(user, env) {
   await env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_credentials WHERE uid = ?").bind(user.uid).run();
+  accessTokenCache.delete(user.uid);
   return json({ disconnected: true });
 }
 
@@ -221,8 +259,10 @@ export default {
       if (request.method === "POST" && path === "connect") response = await connect(request, user, env);
       else if (request.method === "GET" && path === "session") {
         const record = await env.DRIVE_CREDENTIALS.prepare("SELECT folder_id FROM drive_credentials WHERE uid = ?").bind(user.uid).first();
+        if (record && new URL(request.url).searchParams.get("warm") === "1") await driveAccessToken(user.uid, env);
         response = json({ active: Boolean(record), folderId: record?.folder_id || null });
-      } else if (request.method === "POST" && path === "upload") response = await upload(request, user, env);
+      } else if (request.method === "POST" && path === "images/verify") response = await verifyImages(request, user, env);
+      else if (request.method === "POST" && path === "upload") response = await upload(request, user, env);
       else if (request.method === "GET" && path.startsWith("image/")) response = await image(path.slice(6), user, env);
       else if (request.method === "DELETE" && path.startsWith("image/")) response = await remove(path.slice(6), user, env);
       else if (request.method === "POST" && path === "disconnect") response = await disconnect(user, env);
