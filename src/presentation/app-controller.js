@@ -61,6 +61,7 @@ const accountDeletePassword = document.getElementById('accountDeletePassword');
 const accountDeleteStatus = document.getElementById('accountDeleteStatus');
 const accountDeleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn');
 const driveRepairButton = document.getElementById('driveRepairButton');
+const driveDisconnectButton = document.getElementById('driveDisconnectButton');
 const driveSyncStatus = document.getElementById('driveSyncStatus');
 
 let currentUser = null;
@@ -281,7 +282,11 @@ function describeDriveError(error) {
         GOOGLE_TOKEN_EXCHANGE_FAILED: 'Google 권한 코드를 교환하지 못했습니다. OAuth Client ID와 Secret 설정을 확인해주세요.',
         TOKEN_ENCRYPTION_KEY_INVALID: 'Drive 보안 저장소 암호화 설정이 올바르지 않습니다.',
         DRIVE_NOT_CONNECTED: 'Drive 연결 정보가 없습니다. Drive 연결을 다시 시도해주세요.',
-        DRIVE_TOKEN_REFRESH_FAILED: 'Drive 연결이 만료되었습니다. Drive 연결을 다시 시도해주세요.'
+        DRIVE_TOKEN_REFRESH_FAILED: 'Drive 연결이 만료되었습니다. Drive 연결을 다시 시도해주세요.',
+        TOKEN_ENCRYPTION_KEY_INVALID: 'Cloudflare 암호화 키 설정 오류입니다. Worker의 TOKEN_ENCRYPTION_KEY Secret이 Base64 형식의 32바이트 키인지 확인해주세요.',
+        DRIVE_CREDENTIALS_CORRUPTED: '저장된 Drive 연결 정보가 손상되었습니다. 설정에서 Drive 연결 해제를 누른 뒤 다시 연결해주세요.',
+        DRIVE_CREDENTIALS_RECOVERY_REQUIRED: '기존 Drive 연결 정보를 읽을 수 없습니다. 설정에서 Drive 연결 해제를 누른 뒤 다시 연결해주세요.',
+        DRIVE_NOT_CONNECTED: 'Drive 연결이 저장되지 않았습니다. 설정에서 Drive 연결을 다시 완료해주세요.'
     };
     if (messages[error?.message]) return messages[error.message];
     if (error?.code === 'popup_closed_by_user' || error?.message === 'popup_closed_by_user' || error?.message === 'popup_closed') {
@@ -328,6 +333,7 @@ async function syncDriveImages({ announce = true } = {}) {
         const result = await driveImageService.repairDriveImages(linkData, driveConnection, {
             onProgress: ({ completed, total }) => setDriveSyncStatus(`Drive 이미지 점검 및 복구 중: ${completed}/${total}`)
         });
+        if (result.error) throw result.error;
         driveConnection = result.connection;
         await saveData();
         const description = describeDriveSync(result);
@@ -384,6 +390,29 @@ async function requestInitialDrivePermission() {
 
 window.connectGoogleDrive = () => connectGoogleDrive({ migrate: true });
 window.repairDriveImages = () => syncDriveImages({ announce: true });
+window.disconnectGoogleDrive = () => {
+    if (!currentUser) return;
+    customConfirm(
+        '이 기기의 Drive 연결 정보와 Google Drive 권한을 해제합니다. Drive에 이미 저장된 이미지 파일은 삭제하지 않습니다. 계속하시겠습니까?',
+        async () => {
+            try {
+                await driveImageRepository.disconnect();
+                driveConnection = {
+                    ...createDefaultDriveConnection(),
+                    permissionGranted: false,
+                    promptedAt: Date.now()
+                };
+                await saveData();
+                driveImageRepository.clearCache();
+                setDriveSyncStatus('Drive 연결과 Google Drive 권한을 해제했습니다. 다시 연결하면 새 권한으로 안전하게 저장됩니다.');
+                customAlert('Google Drive 연결과 권한을 해제했습니다. 필요할 때 Drive 연결 버튼으로 다시 승인해주세요.');
+            } catch (error) {
+                console.error('Google Drive 연결 해제 실패:', error);
+                customAlert(describeDriveError(error));
+            }
+        }
+    );
+};
 
 function warnLocalOnlyImageStorage() {
     if (canUseDrive(driveConnection)) return;
