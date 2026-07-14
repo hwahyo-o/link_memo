@@ -1,3 +1,5 @@
+import { hasLinkImages } from "./image-attachment-policy.js";
+
 // Domain: 화면과 저장 방식에 독립적인 메모 입력 및 표시 규칙입니다.
 export function normalizeMemoInput({ text, url, comment, hasImage = false }) {
     const normalizedText = String(text ?? "").trim();
@@ -26,7 +28,7 @@ export function normalizeHttpUrl(value) {
 }
 
 export function isCommentOnlyMemo(item) {
-    return Boolean(item?.comment?.trim()) && !item?.url && !item?.imageId;
+    return Boolean(item?.comment?.trim()) && !item?.url && !hasLinkImages(item);
 }
 
 export const LONG_COMMENT_BREAK_THRESHOLD = 10;
@@ -34,7 +36,7 @@ export const countLineBreaks = value => (String(value ?? "").match(/\n/g) || [])
 export const hasLongComment = (value, threshold = LONG_COMMENT_BREAK_THRESHOLD) => countLineBreaks(value) >= threshold;
 
 export function getMemoPreviewKind(item) {
-    const hasImage = Boolean(item?.imageId);
+    const hasImage = hasLinkImages(item);
     const hasText = hasLongComment(item?.comment);
     if (hasImage && hasText) return "combined";
     if (hasText) return "text";
