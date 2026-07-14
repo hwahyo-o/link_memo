@@ -43,8 +43,10 @@ function unbase64(value, errorCode = "DRIVE_CREDENTIALS_CORRUPTED") {
 }
 
 async function encryptionKey(env) {
-  const raw = unbase64(env.TOKEN_ENCRYPTION_KEY, "TOKEN_ENCRYPTION_KEY_INVALID");
-  if (raw.byteLength !== 32) throw Object.assign(new Error("TOKEN_ENCRYPTION_KEY_INVALID"), { status: 500 });
+  const secret = typeof env.TOKEN_ENCRYPTION_KEY === "string" ? env.TOKEN_ENCRYPTION_KEY.trim() : "";
+  if (secret.length < 32) throw Object.assign(new Error("TOKEN_ENCRYPTION_KEY_INVALID"), { status: 500 });
+  // 대시보드 Secret의 임의 문자열에서 고정 256-bit AES 키를 파생합니다.
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
   return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
