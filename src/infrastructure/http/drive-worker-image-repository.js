@@ -76,8 +76,16 @@ export function createDriveWorkerImageRepository({ auth, baseUrl = import.meta.e
             });
             return response.json();
         },
-        async restoreSession() {
-            const response = await authorizedFetch("/session");
+        async restoreSession({ warm = false } = {}) {
+            const response = await authorizedFetch(`/session${warm ? "?warm=1" : ""}`);
+            return response.json();
+        },
+        async verifyImages(fileIds) {
+            const response = await authorizedFetch("/images/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ fileIds })
+            });
             return response.json();
         },
         async upload(file) {
