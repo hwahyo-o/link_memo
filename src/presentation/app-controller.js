@@ -283,7 +283,7 @@ function describeDriveError(error) {
         TOKEN_ENCRYPTION_KEY_INVALID: 'Drive 보안 저장소 암호화 설정이 올바르지 않습니다.',
         DRIVE_NOT_CONNECTED: 'Drive 연결 정보가 없습니다. Drive 연결을 다시 시도해주세요.',
         DRIVE_TOKEN_REFRESH_FAILED: 'Drive 연결이 만료되었습니다. Drive 연결을 다시 시도해주세요.',
-        TOKEN_ENCRYPTION_KEY_INVALID: 'Cloudflare 암호화 키 설정 오류입니다. Worker의 TOKEN_ENCRYPTION_KEY Secret이 Base64 형식의 32바이트 키인지 확인해주세요.',
+        TOKEN_ENCRYPTION_KEY_INVALID: 'Cloudflare 암호화 키 설정 오류입니다. Worker의 TOKEN_ENCRYPTION_KEY Secret에 32자 이상 임의의 비밀 문구를 입력해주세요.',
         DRIVE_CREDENTIALS_CORRUPTED: '저장된 Drive 연결 정보가 손상되었습니다. 설정에서 Drive 연결 해제를 누른 뒤 다시 연결해주세요.',
         DRIVE_CREDENTIALS_RECOVERY_REQUIRED: '기존 Drive 연결 정보를 읽을 수 없습니다. 설정에서 Drive 연결 해제를 누른 뒤 다시 연결해주세요.',
         DRIVE_NOT_CONNECTED: 'Drive 연결이 저장되지 않았습니다. 설정에서 Drive 연결을 다시 완료해주세요.'
