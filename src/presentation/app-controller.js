@@ -9,6 +9,8 @@ import { imageRepository } from "../infrastructure/browser/indexeddb-image-repos
 import { createMemoService } from "../application/memos/memo-service.js";
 import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-repository.js";
 import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
+import { getLinkImages, hasLinkImages, normalizeLinkImages, validateImageSelection } from "../domain/memos/image-attachment-policy.js";
+import { relocateLink } from "../application/memos/link-relocation-service.js";
 import { createModalController } from "./components/modal.js";
 import { createHoldActions } from "./interactions/hold-actions.js";
 import { createDefaultDriveConnection, canUseDrive, normalizeDriveConnection } from "../domain/drive/drive-connection.js";
@@ -51,6 +53,7 @@ const previewImageTab = document.getElementById('previewImageTab');
 const previewTextStage = document.getElementById('previewTextStage');
 const previewImageStage = document.getElementById('previewImageStage');
 const previewTextContent = document.getElementById('previewTextContent');
+const imagePreviewGallery = document.getElementById('imagePreviewGallery');
 const settingsModal = document.getElementById('settingsModal');
 const darkModeToggle = document.getElementById('darkModeToggle');
 const categoryFolderGrid = document.getElementById('categoryFolderGrid');
@@ -63,6 +66,10 @@ const accountDeleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn
 const driveRepairButton = document.getElementById('driveRepairButton');
 const driveDisconnectButton = document.getElementById('driveDisconnectButton');
 const driveSyncStatus = document.getElementById('driveSyncStatus');
+const linkEditModal = document.getElementById('linkEditModal');
+const linkEditText = document.getElementById('linkEditText');
+const linkEditCategory = document.getElementById('linkEditCategory');
+const linkEditSubcategory = document.getElementById('linkEditSubcategory');
 
 let currentUser = null;
 let unsubscribeSnapshot = null;
@@ -76,9 +83,12 @@ let activeTabActionController = null;
 let draggedSubcategoryId = null;
 let isFirstLoad = true;
 let isDeletingAccount = false;
-let selectedImageFile = null;
+let selectedImageFiles = [];
+let editingLinkContext = null;
 let previewObjectUrl = null;
 let modalObjectUrl = null;
+let previewAttachments = [];
+let previewItem = null;
 let previewRequestId = 0;
 let hoverPreviewTimer = null;
 let longPressTimer = null;
@@ -497,7 +507,7 @@ async function saveImageFile(file, oldImageId = null) {
 }
 
 function resetSelectedImage() {
-    selectedImageFile = null;
+    selectedImageFiles = [];
     imageInput.value = '';
     if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
     previewObjectUrl = null;
@@ -506,15 +516,18 @@ function resetSelectedImage() {
 }
 
 imageInput.addEventListener('change', () => {
-    selectedImageFile = imageInput.files?.[0] || null;
-    if (!selectedImageFile) return resetSelectedImage();
-    if (!selectedImageFile.type.startsWith('image/')) {
-        customAlert('이미지 파일만 첨부할 수 있습니다.');
+    const validation = validateImageSelection(imageInput.files);
+    if (!validation.ok) {
+        customAlert(validation.error);
         return resetSelectedImage();
     }
+    selectedImageFiles = validation.value;
+    if (!selectedImageFiles.length) return resetSelectedImage();
     if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
-    previewObjectUrl = URL.createObjectURL(selectedImageFile);
-    imagePreviewName.textContent = selectedImageFile.name;
+    previewObjectUrl = URL.createObjectURL(selectedImageFiles[0]);
+    imagePreviewName.textContent = selectedImageFiles.length === 1
+        ? selectedImageFiles[0].name
+        : `${selectedImageFiles.length}개 이미지 선택됨 (최대 10개)`;
     imagePreview.classList.remove('hidden');
 });
 window.clearSelectedImage = resetSelectedImage;
@@ -544,6 +557,9 @@ function migrateDataFormat() {
                 if (!Array.isArray(subcategory.links)) { subcategory.links = []; modified = true; }
                 subcategory.links.forEach(link => {
                     if (!link.id) { link.id = createId('link'); modified = true; }
+                    const previousImages = JSON.stringify(link.images || []);
+                    normalizeLinkImages(link, createId);
+                    if (previousImages !== JSON.stringify(link.images || [])) modified = true;
                     const normalizedUrl = normalizeHttpUrl(link.url);
                     if (link.url !== normalizedUrl) { link.url = normalizedUrl; modified = true; }
                     if (!link.createdAt) { link.createdAt = Date.now(); modified = true; }
@@ -1077,9 +1093,9 @@ function createLinkCard(item, subIndex, linkIndex) {
     actions.append(
         createRoundActionButton('fa-solid fa-pen', '텍스트 수정', event => { event.preventDefault(); event.stopPropagation(); window.editLinkText(subIndex, linkIndex); }),
         createRoundActionButton('fa-regular fa-comment-dots', '코멘트 수정', event => { event.preventDefault(); event.stopPropagation(); window.editLinkComment(subIndex, linkIndex); }),
-        createRoundActionButton('fa-regular fa-image', item.imageId ? '이미지 교체' : '이미지 추가', event => { event.preventDefault(); event.stopPropagation(); window.editLinkImage(subIndex, linkIndex); })
+        createRoundActionButton('fa-regular fa-image', hasLinkImages(item) ? '이미지 추가' : '이미지 추가', event => { event.preventDefault(); event.stopPropagation(); window.editLinkImage(subIndex, linkIndex); })
     );
-    if (item.imageId) actions.appendChild(createRoundActionButton('fa-solid fa-trash-can', '이미지 제거', event => { event.preventDefault(); event.stopPropagation(); window.removeLinkImage(subIndex, linkIndex); }, 'bg-orange-100 text-orange-600'));
+    if (hasLinkImages(item)) actions.appendChild(createRoundActionButton('fa-solid fa-trash-can', '이미지 제거', event => { event.preventDefault(); event.stopPropagation(); window.removeLinkImage(subIndex, linkIndex); }, 'bg-orange-100 text-orange-600'));
     actions.appendChild(createRoundActionButton('fa-solid fa-xmark', '항목 삭제', event => { event.preventDefault(); event.stopPropagation(); window.deleteLink(subIndex, linkIndex); }, 'bg-red-100 text-red-500'));
     box.append(primary, actions);
     card.appendChild(box);
@@ -1144,27 +1160,54 @@ function clearPreviewTimers() {
     clearTimeout(longPressTimer);
 }
 
+async function loadPreviewImage(index, requestId = previewRequestId) {
+    const attachment = previewAttachments[index];
+    if (!attachment) return;
+    const imageRecord = await driveImageService.loadImage(attachment, driveConnection);
+    if (imageRecord?.driveMissing) void repairMissingDriveImage(attachment);
+    if (requestId !== previewRequestId || !imageRecord?.blob) return;
+    if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
+    modalObjectUrl = URL.createObjectURL(imageRecord.blob);
+    imagePreviewModalImg.src = modalObjectUrl;
+    imagePreviewGallery.querySelectorAll('button').forEach((button, itemIndex) => {
+        button.classList.toggle('bg-blue-600', itemIndex === index);
+        button.classList.toggle('text-white', itemIndex === index);
+        button.classList.toggle('bg-gray-200', itemIndex !== index);
+    });
+}
+
 async function showContentPreview(item) {
     clearPreviewTimers();
     const kind = getMemoPreviewKind(item);
     if (kind === 'none') return;
     const requestId = ++previewRequestId;
     const hasText = kind === 'text' || kind === 'combined';
-    const imageRecord = await driveImageService.loadImage(item, driveConnection);
-    if (imageRecord?.driveMissing) void repairMissingDriveImage(item);
-    if (requestId !== previewRequestId) return;
-    const hasImage = Boolean(imageRecord?.blob);
+    previewItem = item;
+    previewAttachments = getLinkImages(item);
+    const hasImage = previewAttachments.length > 0;
     if (!hasText && !hasImage) return;
 
-    if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
-    modalObjectUrl = hasImage ? URL.createObjectURL(imageRecord.blob) : null;
     imagePreviewModalTitle.textContent = item.text || '미리보기';
     previewTextContent.textContent = hasText ? item.comment : '';
     previewTextTab.classList.toggle('hidden', !hasText);
     previewImageTab.classList.toggle('hidden', !hasImage);
     previewTabs.classList.toggle('hidden', !(hasText && hasImage));
-    if (hasImage) imagePreviewModalImg.src = modalObjectUrl;
-    else imagePreviewModalImg.removeAttribute('src');
+    imagePreviewGallery.innerHTML = '';
+    imagePreviewGallery.classList.toggle('hidden', previewAttachments.length < 2);
+    previewAttachments.forEach((attachment, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'shrink-0 rounded px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700';
+        button.textContent = `${index + 1} / ${previewAttachments.length}`;
+        button.onclick = () => loadPreviewImage(index);
+        imagePreviewGallery.appendChild(button);
+    });
+    if (hasImage) {
+        imagePreviewModalImg.removeAttribute('src');
+        void loadPreviewImage(0, requestId);
+    } else {
+        imagePreviewModalImg.removeAttribute('src');
+    }
     setPreviewMode(hasText ? 'text' : 'image');
     imagePreviewModal.classList.remove('hidden');
 }
@@ -1197,6 +1240,10 @@ function hideImagePreview() {
     imagePreviewModal.classList.add('hidden');
     imagePreviewModalImg.removeAttribute('src');
     previewTextContent.textContent = '';
+    previewAttachments = [];
+    previewItem = null;
+    imagePreviewGallery.innerHTML = '';
+    imagePreviewGallery.classList.add('hidden');
     if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
     modalObjectUrl = null;
 }
@@ -1221,34 +1268,37 @@ window.saveLink = async () => {
         text: textInput.value,
         url: urlInput.value,
         comment: commentInput.value,
-        hasImage: Boolean(selectedImageFile)
+        hasImage: selectedImageFiles.length > 0
     });
 
     if (!Number.isInteger(subIndex) || !linkData[activeTab]?.[subIndex]) return customAlert('저장할 소분류를 먼저 추가해주세요.');
     if (!result.ok) return customAlert(result.error);
     const { text, url, comment } = result.value;
 
-    let imageId = null;
-    let driveImage = null;
-    if (selectedImageFile) {
+    const images = [];
+    if (selectedImageFiles.length) {
         if (!canUseDrive(driveConnection)) warnLocalOnlyImageStorage();
-        try {
-            imageId = await saveImageFile(selectedImageFile);
-            if (canUseDrive(driveConnection)) {
-                try {
-                    driveImage = await saveDriveImage(selectedImageFile);
-                } catch (error) {
-                    console.error('Drive 이미지 업로드 실패:', error);
-                    customAlert('Google Drive 업로드에 실패해 현재 기기에만 이미지를 저장했습니다.');
+        for (const file of selectedImageFiles) {
+            try {
+                const imageId = await saveImageFile(file);
+                let driveImage = null;
+                if (canUseDrive(driveConnection)) {
+                    try {
+                        driveImage = await saveDriveImage(file);
+                    } catch (error) {
+                        console.error('Drive 이미지 업로드 실패:', error);
+                    }
                 }
+                images.push({ id: createId('image'), imageId, driveImage });
+            } catch (error) {
+                console.error('이미지 저장 실패:', error);
             }
-        } catch (error) {
-            if (!url && !comment.trim()) return customAlert('이미지 저장에 실패했습니다. 다시 시도해주세요.');
-            customAlert('이미지 저장에 실패해 입력 가능한 내용만 저장합니다.');
         }
+        if (!images.length && !url && !comment.trim()) return customAlert('이미지 저장에 실패했습니다. 다시 시도해주세요.');
+        if (images.length !== selectedImageFiles.length) customAlert('일부 이미지를 저장하지 못했습니다. 저장된 이미지만 추가합니다.');
     }
 
-    linkData[activeTab][subIndex].links.push({ id: createId('link'), text, url, comment, imageId, driveImage, createdAt: Date.now(), updatedAt: Date.now() });
+    linkData[activeTab][subIndex].links.push({ id: createId('link'), text, url, comment, images, createdAt: Date.now(), updatedAt: Date.now() });
     await saveData();
     renderLinks();
     renderHomeLanding();
@@ -1261,26 +1311,70 @@ window.saveLink = async () => {
 window.deleteLink = (subIndex, linkIndex) => {
     customConfirm('이 항목을 삭제하시겠습니까?', async () => {
         const [removed] = linkData[activeTab][subIndex].links.splice(linkIndex, 1);
-        await memoService.deleteImage(removed?.imageId);
-        await driveImageService.removeDriveImage(removed?.driveImage);
+        for (const image of getLinkImages(removed)) {
+            await memoService.deleteImage(image.imageId);
+            await driveImageService.removeDriveImage(image.driveImage);
+        }
         await saveData();
         renderLinks();
         renderHomeLanding();
     });
 };
 
-window.editLinkText = (subIndex, linkIndex) => {
-    const link = linkData[activeTab][subIndex].links[linkIndex];
-    customPrompt('버튼 텍스트를 수정하세요.', link.text || '', async value => {
-        const text = value.trim();
-        if (!text) return customAlert('버튼 텍스트는 비워둘 수 없습니다.');
-        link.text = text;
-        link.updatedAt = Date.now();
-        await saveData();
-        renderLinks();
+function populateLinkEditSubcategories(category, selectedId) {
+    linkEditSubcategory.innerHTML = '';
+    (linkData[category] || []).forEach(subcategory => {
+        const option = document.createElement('option');
+        option.value = subcategory.id;
+        option.textContent = subcategory.title;
+        option.selected = subcategory.id === selectedId;
+        linkEditSubcategory.appendChild(option);
     });
+}
+
+window.editLinkText = (subIndex, linkIndex) => {
+    const sourceSubcategory = linkData[activeTab]?.[subIndex];
+    const link = sourceSubcategory?.links?.[linkIndex];
+    if (!sourceSubcategory || !link) return;
+    editingLinkContext = { sourceCategory: activeTab, sourceSubcategoryId: sourceSubcategory.id, linkId: link.id };
+    linkEditText.value = link.text || '';
+    linkEditCategory.innerHTML = '';
+    categories.forEach(category => {
+        const option = document.createElement('option');
+        option.value = category;
+        option.textContent = category;
+        option.selected = category === activeTab;
+        linkEditCategory.appendChild(option);
+    });
+    populateLinkEditSubcategories(activeTab, sourceSubcategory.id);
+    linkEditModal.classList.remove('hidden');
+    linkEditText.focus();
 };
 
+window.closeLinkEditModal = () => {
+    linkEditModal.classList.add('hidden');
+    editingLinkContext = null;
+};
+
+linkEditCategory.addEventListener('change', () => populateLinkEditSubcategories(linkEditCategory.value));
+
+window.saveLinkEdit = async () => {
+    if (!editingLinkContext) return;
+    const result = relocateLink({
+        linkData,
+        ...editingLinkContext,
+        targetCategory: linkEditCategory.value,
+        targetSubcategoryId: linkEditSubcategory.value,
+        text: linkEditText.value
+    });
+    if (!result.ok) return customAlert(result.error);
+    const moved = result.moved;
+    window.closeLinkEditModal();
+    await saveData();
+    renderLinks();
+    renderHomeLanding();
+    customAlert(moved ? '링크를 수정하고 선택한 카테고리로 이동했습니다.' : '링크 텍스트를 수정했습니다.');
+};
 window.editLinkComment = (subIndex, linkIndex) => {
     const link = linkData[activeTab][subIndex].links[linkIndex];
     customPrompt('코멘트를 입력하세요.', link.comment || '', async value => {
@@ -1296,22 +1390,28 @@ window.editLinkImage = (subIndex, linkIndex) => {
     const picker = document.createElement('input');
     picker.type = 'file';
     picker.accept = 'image/*';
+    picker.multiple = true;
     picker.onchange = async () => {
-        const file = picker.files?.[0];
-        if (!file) return;
-        if (!file.type.startsWith('image/')) return customAlert('이미지 파일만 첨부할 수 있습니다.');
+        const validation = validateImageSelection(picker.files);
+        if (!validation.ok) return customAlert(validation.error);
+        if (!validation.value.length) return;
         const link = linkData[activeTab][subIndex].links[linkIndex];
+        const existing = getLinkImages(link);
+        if (existing.length + validation.value.length > 10) return customAlert(`이미지는 링크당 최대 10개까지 첨부할 수 있습니다. 현재 ${existing.length}개가 있습니다.`);
+        if (!canUseDrive(driveConnection)) warnLocalOnlyImageStorage();
         try {
-            if (!canUseDrive(driveConnection)) warnLocalOnlyImageStorage();
-            link.imageId = await saveImageFile(file, link.imageId || null);
-            if (canUseDrive(driveConnection)) {
-                await driveImageService.removeDriveImage(link.driveImage);
-                link.driveImage = await saveDriveImage(file);
+            const added = [];
+            for (const file of validation.value) {
+                const imageId = await saveImageFile(file);
+                const driveImage = canUseDrive(driveConnection) ? await saveDriveImage(file) : null;
+                added.push({ id: createId('image'), imageId, driveImage });
             }
+            link.images = [...existing, ...added];
             link.updatedAt = Date.now();
             await saveData();
             renderLinks();
         } catch (error) {
+            console.error('이미지 저장 실패:', error);
             customAlert('이미지 저장에 실패했습니다.');
         }
     };
@@ -1320,13 +1420,14 @@ window.editLinkImage = (subIndex, linkIndex) => {
 
 window.removeLinkImage = (subIndex, linkIndex) => {
     const link = linkData[activeTab][subIndex].links[linkIndex];
-    if (!link.imageId) return;
+    if (!hasLinkImages(link)) return;
     if (!link.url && !link.comment?.trim()) return customAlert('링크나 코멘트가 없는 이미지 전용 항목에서는 이미지를 제거할 수 없습니다.');
     customConfirm('첨부 이미지를 제거하시겠습니까?', async () => {
-        await memoService.deleteImage(link.imageId);
-        await driveImageService.removeDriveImage(link.driveImage);
-        delete link.imageId;
-        delete link.driveImage;
+        for (const image of getLinkImages(link)) {
+            await memoService.deleteImage(image.imageId);
+            await driveImageService.removeDriveImage(image.driveImage);
+        }
+        link.images = [];
         link.updatedAt = Date.now();
         await saveData();
         renderLinks();
@@ -1473,6 +1574,7 @@ document.addEventListener('click', event => {
 imagePreviewModal.addEventListener('click', event => { if (event.target === imagePreviewModal) hideImagePreview(); });
 settingsModal.addEventListener('click', event => { if (event.target === settingsModal) closeSettingsModal(); });
 accountDeleteModal.addEventListener('click', event => { if (event.target === accountDeleteModal) closeAccountDeleteModal(); });
+linkEditModal.addEventListener('click', event => { if (event.target === linkEditModal) window.closeLinkEditModal(); });
 
 document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
@@ -1481,5 +1583,6 @@ document.addEventListener('keydown', event => {
     hideImagePreview();
     closeSettingsModal();
     closeAccountDeleteModal();
+    window.closeLinkEditModal();
     window.closeLinkAccountModal();
 });
