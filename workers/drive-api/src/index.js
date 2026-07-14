@@ -169,7 +169,15 @@ async function connect(request, user, env) {
     }
   }
   const refreshToken = tokens.refresh_token || retainedRefreshToken;
-  if (!refreshToken) throw Object.assign(new Error("DRIVE_OFFLINE_ACCESS_REQUIRED"), { status: 400 });
+  if (!refreshToken) {
+    const revoked = await fetch("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: tokens.access_token })
+    });
+    if (revoked.ok) throw Object.assign(new Error("DRIVE_REAUTH_REQUIRED"), { status: 409 });
+    throw Object.assign(new Error("DRIVE_OFFLINE_ACCESS_REQUIRED"), { status: 400 });
+  }
 
   const folderId = await ensureFolder(tokens.access_token);
   const encrypted = await encrypt(refreshToken, env);
