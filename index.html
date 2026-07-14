@@ -186,7 +186,10 @@
                             <h4 class="app-heading font-bold text-gray-800">Google Drive 이미지 동기화</h4>
                             <p class="app-muted text-sm text-gray-500 mt-1">개인 Drive에 이미지를 비공개로 저장해 다른 기기에서도 표시합니다.</p>
                         </div>
-                        <button onclick="window.connectGoogleDrive()" class="secondary-command border border-blue-300 text-blue-700 hover:bg-blue-50 px-4 py-2.5 rounded font-semibold whitespace-nowrap"><i class="fa-brands fa-google-drive mr-2"></i>Drive 연결</button>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="window.connectGoogleDrive()" class="secondary-command border border-blue-300 text-blue-700 hover:bg-blue-50 px-4 py-2.5 rounded font-semibold whitespace-nowrap"><i class="fa-brands fa-google-drive mr-2"></i>Drive 연결</button>
+                            <button id="driveRepairButton" onclick="window.repairDriveImages()" class="secondary-command border border-emerald-300 text-emerald-700 hover:bg-emerald-50 px-4 py-2.5 rounded font-semibold whitespace-nowrap"><i class="fa-solid fa-arrows-rotate mr-2"></i>이미지 점검·복구</button>
+                        </div>
                     </div>
                 </section>
 
