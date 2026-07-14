@@ -39,6 +39,9 @@ export function createGoogleDriveCodeProvider({ clientId = import.meta.env.VITE_
                             return;
                         }
                         resolve(response.code);
+                    },
+                    error_callback: error => {
+                        reject(Object.assign(new Error(error?.type || "DRIVE_AUTH_FAILED"), { code: error?.type }));
                     }
                 });
                 client.requestCode();
