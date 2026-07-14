@@ -284,8 +284,14 @@ function describeDriveError(error) {
         DRIVE_TOKEN_REFRESH_FAILED: 'Drive 연결이 만료되었습니다. Drive 연결을 다시 시도해주세요.'
     };
     if (messages[error?.message]) return messages[error.message];
-    if (error?.code === 'popup_closed_by_user' || error?.message === 'popup_closed_by_user') {
+    if (error?.code === 'popup_closed_by_user' || error?.message === 'popup_closed_by_user' || error?.message === 'popup_closed') {
         return 'Google Drive 권한 승인이 취소되었습니다.';
+    }
+    if (error?.message === 'popup_failed_to_open') {
+        return 'Google 권한 창을 열지 못했습니다. 브라우저의 팝업 차단을 해제해주세요.';
+    }
+    if (error?.message === 'unknown') {
+        return 'Google 권한 창에서 오류가 발생했습니다. OAuth Client ID, 허용된 JavaScript 원본, 테스트 사용자 설정을 확인해주세요.';
     }
     return 'Google Drive 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
 }
