@@ -1129,16 +1129,16 @@ function setPreviewMode(mode) {
 function attachPreviewHandlers(target, item) {
     let suppressNextClick = false;
     target.addEventListener('mouseenter', () => {
-        driveImageService.prefetchImage(item, driveConnection);
+        driveImageService.prefetchImage(getLinkImages(item)[0] || item, driveConnection);
         hoverPreviewTimer = setTimeout(() => showContentPreview(item), 160);
     });
     target.addEventListener('mouseleave', clearPreviewTimers);
     target.addEventListener('focus', () => {
-        driveImageService.prefetchImage(item, driveConnection);
+        driveImageService.prefetchImage(getLinkImages(item)[0] || item, driveConnection);
         showContentPreview(item);
     });
     target.addEventListener('pointerdown', () => {
-        driveImageService.prefetchImage(item, driveConnection);
+        driveImageService.prefetchImage(getLinkImages(item)[0] || item, driveConnection);
         longPressTimer = setTimeout(() => {
             suppressNextClick = true;
             showContentPreview(item);
@@ -1378,7 +1378,7 @@ window.saveLinkEdit = async () => {
 window.editLinkComment = (subIndex, linkIndex) => {
     const link = linkData[activeTab][subIndex].links[linkIndex];
     customPrompt('코멘트를 입력하세요.', link.comment || '', async value => {
-        if (!value.trim() && !link.url && !link.imageId) return customAlert('링크, 이미지 또는 코멘트 중 하나는 유지해야 합니다.');
+        if (!value.trim() && !link.url && !hasLinkImages(link)) return customAlert('링크, 이미지 또는 코멘트 중 하나는 유지해야 합니다.');
         link.comment = value;
         link.updatedAt = Date.now();
         await saveData();
