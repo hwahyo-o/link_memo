@@ -60,6 +60,8 @@ const accountDeletePasswordWrap = document.getElementById('accountDeletePassword
 const accountDeletePassword = document.getElementById('accountDeletePassword');
 const accountDeleteStatus = document.getElementById('accountDeleteStatus');
 const accountDeleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn');
+const driveRepairButton = document.getElementById('driveRepairButton');
+const driveSyncStatus = document.getElementById('driveSyncStatus');
 
 let currentUser = null;
 let unsubscribeSnapshot = null;
@@ -82,6 +84,7 @@ let longPressTimer = null;
 let deleteReauthMode = 'none';
 let driveConnection = createDefaultDriveConnection();
 let drivePromptRequested = false;
+const repairingDriveImageIds = new Set();
 
 function createId(prefix) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
@@ -270,19 +273,77 @@ function isGoogleAccount(user = currentUser) {
 }
 
 function describeDriveError(error) {
-    if (error?.message === 'DRIVE_OAUTH_CLIENT_ID_MISSING') {
-        return 'Google Drive 연결 설정이 아직 완료되지 않았습니다. 배포 환경에 VITE_GOOGLE_OAUTH_CLIENT_ID를 설정해주세요.';
-    }
-    if (error?.message === 'DRIVE_WORKER_URL_MISSING') {
-        return 'Google Drive 보안 연결이 아직 준비되지 않았습니다. 관리자에게 Worker 주소 설정을 요청해주세요.';
-    }
-    if (error?.message === 'DRIVE_ACCOUNT_MISMATCH') {
-        return 'Drive 권한은 현재 링크 메모에 로그인한 Google 계정으로만 연결할 수 있습니다.';
-    }
+    const messages = {
+        DRIVE_OAUTH_CLIENT_ID_MISSING: 'Google Drive 연결 설정이 아직 완료되지 않았습니다. 배포 환경의 OAuth Client ID를 확인해주세요.',
+        DRIVE_WORKER_URL_MISSING: 'Google Drive 보안 연결 주소가 설정되지 않았습니다.',
+        DRIVE_ACCOUNT_MISMATCH: 'Drive 권한은 현재 링크 메모에 로그인한 Google 계정으로만 연결할 수 있습니다.',
+        DRIVE_OFFLINE_ACCESS_REQUIRED: '기존 Google 권한에서 장기 연결 정보를 받지 못했습니다. Google 계정의 Link Memo 권한을 제거한 뒤 다시 연결해주세요.',
+        GOOGLE_TOKEN_EXCHANGE_FAILED: 'Google 권한 코드를 교환하지 못했습니다. OAuth Client ID와 Secret 설정을 확인해주세요.',
+        TOKEN_ENCRYPTION_KEY_INVALID: 'Drive 보안 저장소 암호화 설정이 올바르지 않습니다.',
+        DRIVE_NOT_CONNECTED: 'Drive 연결 정보가 없습니다. Drive 연결을 다시 시도해주세요.',
+        DRIVE_TOKEN_REFRESH_FAILED: 'Drive 연결이 만료되었습니다. Drive 연결을 다시 시도해주세요.'
+    };
+    if (messages[error?.message]) return messages[error.message];
     if (error?.code === 'popup_closed_by_user' || error?.message === 'popup_closed_by_user') {
         return 'Google Drive 권한 승인이 취소되었습니다.';
     }
     return 'Google Drive 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
+}
+
+function setDriveSyncStatus(message = '') {
+    if (driveSyncStatus) driveSyncStatus.textContent = message;
+}
+
+function describeDriveSync(result) {
+    const uploaded = result.uploaded + result.repaired;
+    const details = [];
+    if (result.available) details.push(`정상 ${result.available}개`);
+    if (result.uploaded) details.push(`신규 업로드 ${result.uploaded}개`);
+    if (result.repaired) details.push(`복구 업로드 ${result.repaired}개`);
+    if (result.unrecoverable) details.push(`원본 없음 ${result.unrecoverable}개`);
+    if (result.failed) details.push(`실패 ${result.failed}개`);
+    return {
+        summary: details.join(', ') || '첨부 이미지가 없습니다.',
+        hasUpload: uploaded > 0
+    };
+}
+
+async function syncDriveImages({ announce = true } = {}) {
+    if (!canUseDrive(driveConnection)) {
+        customAlert('먼저 Google Drive를 연결해주세요.');
+        return null;
+    }
+    if (driveRepairButton) {
+        driveRepairButton.disabled = true;
+        driveRepairButton.classList.add('opacity-60', 'cursor-not-allowed');
+    }
+    setDriveSyncStatus('Drive 이미지 상태를 점검하는 중입니다.');
+    try {
+        const result = await driveImageService.repairDriveImages(linkData, driveConnection, {
+            onProgress: ({ completed, total }) => setDriveSyncStatus(`Drive 이미지 점검 및 복구 중: ${completed}/${total}`)
+        });
+        driveConnection = result.connection;
+        await saveData();
+        const description = describeDriveSync(result);
+        setDriveSyncStatus(description.summary);
+        if (announce) {
+            const warning = result.unrecoverable
+                ? ` 원본이 현재 PC 브라우저에 없는 ${result.unrecoverable}개 이미지는 다시 첨부해야 합니다.`
+                : '';
+            customAlert(`Drive 이미지 동기화 완료: ${description.summary}.${warning}`);
+        }
+        return result;
+    } catch (error) {
+        console.error('Drive 이미지 동기화 실패:', error);
+        setDriveSyncStatus('Drive 이미지 동기화에 실패했습니다.');
+        if (announce) customAlert(describeDriveError(error));
+        return null;
+    } finally {
+        if (driveRepairButton) {
+            driveRepairButton.disabled = false;
+            driveRepairButton.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
+    }
 }
 
 async function connectGoogleDrive({ migrate = true } = {}) {
@@ -293,19 +354,8 @@ async function connectGoogleDrive({ migrate = true } = {}) {
     try {
         driveConnection = await driveImageService.connect(driveConnection, { loginHint: currentUser.email || '' });
         await saveData();
-
-        if (migrate) {
-            const migration = await driveImageService.migrateExistingImages(linkData, driveConnection);
-            driveConnection = migration.connection;
-            await saveData();
-            if (migration.uploaded || migration.failed) {
-                customAlert(`기존 이미지 ${migration.uploaded}개를 Google Drive에 업로드했습니다.${migration.failed ? ` ${migration.failed}개는 현재 기기에서 원본을 찾지 못했거나 업로드에 실패했습니다.` : ''}`);
-            } else {
-                customAlert('Google Drive 연결이 완료되었습니다.');
-            }
-        } else {
-            customAlert('Google Drive 연결이 완료되었습니다.');
-        }
+        if (migrate) await syncDriveImages({ announce: true });
+        else customAlert('Google Drive 연결이 완료되었습니다.');
         return true;
     } catch (error) {
         console.error('Google Drive 연결 실패:', error);
@@ -327,6 +377,7 @@ async function requestInitialDrivePermission() {
 }
 
 window.connectGoogleDrive = () => connectGoogleDrive({ migrate: true });
+window.repairDriveImages = () => syncDriveImages({ announce: true });
 
 function warnLocalOnlyImageStorage() {
     if (canUseDrive(driveConnection)) return;
@@ -1064,6 +1115,7 @@ async function showContentPreview(item) {
     const requestId = ++previewRequestId;
     const hasText = kind === 'text' || kind === 'combined';
     const imageRecord = await driveImageService.loadImage(item, driveConnection);
+    if (imageRecord?.driveMissing) void repairMissingDriveImage(item);
     if (requestId !== previewRequestId) return;
     const hasImage = Boolean(imageRecord?.blob);
     if (!hasText && !hasImage) return;
@@ -1079,6 +1131,28 @@ async function showContentPreview(item) {
     else imagePreviewModalImg.removeAttribute('src');
     setPreviewMode(hasText ? 'text' : 'image');
     imagePreviewModal.classList.remove('hidden');
+}
+
+async function repairMissingDriveImage(item) {
+    const key = item?.id || item?.imageId;
+    if (!key || repairingDriveImageIds.has(key) || !canUseDrive(driveConnection)) return;
+    repairingDriveImageIds.add(key);
+    try {
+        const repair = await driveImageService.repairImage(item, driveConnection);
+        driveConnection = repair.connection;
+        if (repair.repaired) {
+            driveImageRepository.clearCache();
+            await saveData();
+            setDriveSyncStatus('유실된 Drive 이미지를 자동 복구했습니다.');
+        } else if (repair.reason === 'LOCAL_IMAGE_MISSING') {
+            await saveData();
+            setDriveSyncStatus('일부 Drive 이미지의 원본이 현재 PC에 없어 다시 첨부해야 합니다.');
+        }
+    } catch (error) {
+        console.warn('유실된 Drive 이미지 자동 복구 실패', error);
+    } finally {
+        repairingDriveImageIds.delete(key);
+    }
 }
 
 function hideImagePreview() {
