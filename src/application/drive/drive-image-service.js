@@ -3,17 +3,18 @@ import {
     createDriveImageReference,
     normalizeDriveConnection
 } from "../../domain/drive/drive-connection.js";
+import { getLinkImages } from "../../domain/memos/image-attachment-policy.js";
 
 const VERIFY_BATCH_SIZE = 20;
 
-function getLinks(linkData) {
-    const links = [];
+function getImages(linkData) {
+    const images = [];
     for (const subcategories of Object.values(linkData || {})) {
         for (const subcategory of subcategories || []) {
-            for (const link of subcategory.links || []) links.push(link);
+            for (const link of subcategory.links || []) images.push(...getLinkImages(link));
         }
     }
-    return links;
+    return images;
 }
 
 function isMissingDriveError(error) {
@@ -88,7 +89,7 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
 
     async function repairDriveImages(linkData, connection, { onProgress } = {}) {
         let nextConnection = normalizeDriveConnection(connection);
-        const links = getLinks(linkData).filter(link => link?.imageId);
+        const links = getImages(linkData).filter(image => image?.imageId);
         const remoteLinks = links.filter(link => link.driveImage?.fileId);
         const stateByFileId = new Map();
 
