@@ -51,31 +51,22 @@ describe("Drive image repair", () => {
     });
 
     it("identifies a missing remote image while keeping the local preview available", async () => {
-        const { service } = createService({ localImages: { local: { name: "local.png" } } });
-        const unavailable = Object.assign(new Error("DRIVE_API_404"), { status: 404 });
-        const record = await service.loadImage(
-            { imageId: "local", driveImage: { fileId: "deleted-id" } },
-            { permissionGranted: true }
-        );
-        expect(record.driveMissing).toBe(false);
-
-        const { service: failingService } = createService({ localImages: { local: { name: "local.png" } } });
-        failingService;
-        // The next service instance is exercised through a repository that rejects the private Drive lookup.
         const localImageRepository = { get: vi.fn(async () => ({ blob: { name: "local.png" } })) };
         const driveImageRepository = {
-            download: vi.fn(async () => { throw unavailable; }),
+            download: vi.fn(async () => { throw Object.assign(new Error("DRIVE_API_404"), { status: 404 }); }),
             verifyImages: vi.fn(),
             upload: vi.fn(),
             prefetch: vi.fn(),
             remove: vi.fn(),
             restoreSession: vi.fn()
         };
-        const serviceWithMissingDrive = createDriveImageService({ localImageRepository, driveImageRepository, driveCodeProvider: {} });
-        const recoveredPreview = await serviceWithMissingDrive.loadImage(
+        const service = createDriveImageService({ localImageRepository, driveImageRepository, driveCodeProvider: {} });
+
+        const preview = await service.loadImage(
             { imageId: "local", driveImage: { fileId: "deleted-id" } },
             { permissionGranted: true }
         );
-        expect(recoveredPreview).toMatchObject({ source: "local", driveMissing: true });
+
+        expect(preview).toMatchObject({ source: "local", driveMissing: true });
     });
 });
