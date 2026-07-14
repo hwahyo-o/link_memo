@@ -69,4 +69,18 @@ describe("Drive image repair", () => {
 
         expect(preview).toMatchObject({ source: "local", driveMissing: true });
     });
+
+    it("returns a connection error instead of reporting all images as synchronized", async () => {
+        const { service, driveImageRepository } = createService({
+            localImages: { local: { name: "local.png" } },
+            verification: []
+        });
+        driveImageRepository.verifyImages.mockRejectedValueOnce(new Error("DRIVE_NOT_CONNECTED"));
+        const links = { 개인: [{ links: [{ id: "local", imageId: "local", driveImage: { fileId: "missing-id" } }] }] };
+
+        const result = await service.repairDriveImages(links, { permissionGranted: true });
+
+        expect(result.error?.message).toBe("DRIVE_NOT_CONNECTED");
+        expect(result.failed).toBe(1);
+    });
 });
