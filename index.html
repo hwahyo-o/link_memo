@@ -162,8 +162,16 @@
             <div id="previewTextStage" class="preview-text-stage hidden bg-gray-50 p-4 overflow-auto" role="tabpanel">
                 <pre id="previewTextContent" class="preview-text-content"></pre>
             </div>
-            <div id="previewImageStage" class="image-preview-stage hidden bg-gray-50 p-4 items-center justify-center" role="tabpanel">
-                <img id="imagePreviewModalImg" alt="첨부 이미지 미리보기" class="max-w-full object-contain rounded-lg shadow-sm"><div id="imagePreviewGallery" class="hidden mt-3 flex gap-2 overflow-x-auto" aria-label="첨부 이미지 목록"></div>
+            <div id="previewImageStage" class="image-preview-stage image-carousel hidden bg-gray-50" role="tabpanel" aria-label="첨부 이미지 캐러셀">
+                <div class="image-carousel-viewport">
+                    <img id="imagePreviewModalImg" alt="첨부 이미지 미리보기">
+                    <span id="carouselLoading" class="hidden image-carousel-loading" role="status">이미지를 불러오는 중입니다.</span>
+                </div>
+                <div id="carouselControls" class="hidden image-carousel-controls">
+                    <button id="carouselPreviousButton" type="button" class="image-carousel-button" aria-label="이전 이미지"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                    <span id="carouselCounter" class="image-carousel-counter" aria-live="polite"></span>
+                    <button id="carouselNextButton" type="button" class="image-carousel-button" aria-label="다음 이미지"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                </div>
             </div>
         </div>
     </div>
