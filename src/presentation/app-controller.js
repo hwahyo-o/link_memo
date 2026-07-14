@@ -39,6 +39,7 @@ const imageAttachmentQueue = createImageAttachmentQueue({
 const DEFAULT_CATEGORIES = ['업무', '학습', '개인', '도구', '기타'];
 const DEFAULT_COLUMNS = 3;
 const VALID_COLUMNS = [3, 4, 5, 6];
+const BACKUP_INTERVAL_MS = 15 * 60 * 1000;
 
 const { customAlert, customConfirm, customPrompt } = createModalController();
 window.customAlert = customAlert;
@@ -84,6 +85,11 @@ const linkEditCategory = document.getElementById('linkEditCategory');
 const linkEditSubcategory = document.getElementById('linkEditSubcategory');
 
 let currentUser = null;
+let dataLoadState = 'loading';
+let memoRevision = null;
+let backupInfo = null;
+let lastStableMemoData = null;
+let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
 let categories = [...DEFAULT_CATEGORIES];
 let activeTab = categories[0];
@@ -149,13 +155,16 @@ function applyPreferences() {
     });
 }
 
+function buildMemoPayload() {
+    return { categories, linkData, uiPreferences, driveConnection, backupInfo };
+}
+
+function cloneMemoPayload(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
 async function savePreferences() {
-    if (!currentUser) return;
-    try {
-        await memoRepository.savePreferences(currentUser.uid, uiPreferences);
-    } catch (error) {
-        customAlert('설정을 클라우드에 저장하지 못했습니다.');
-    }
+    return saveData();
 }
 
 function showLogin() {
@@ -248,6 +257,11 @@ if (auth) {
         linkData = {};
         uiPreferences = createDefaultPreferences(activeTab);
         driveConnection = createDefaultDriveConnection();
+        dataLoadState = 'loading';
+        memoRevision = null;
+        backupInfo = null;
+        lastStableMemoData = null;
+        dataSafetyAlertShown = false;
         drivePromptRequested = false;
         driveImageRepository.clearCache();
         document.body.classList.remove('theme-dark');
@@ -601,6 +615,9 @@ function migrateDataFormat() {
 function loadDataFromFirestore() {
     if (!currentUser) return;
     if (unsubscribeSnapshot) unsubscribeSnapshot();
+    dataLoadState = 'loading';
+    memoRevision = null;
+    lastStableMemoData = null;
 
     unsubscribeSnapshot = memoRepository.subscribe(currentUser.uid, snapshot => {
         if (isDeletingAccount) return;
@@ -610,41 +627,82 @@ function loadDataFromFirestore() {
             linkData = data.linkData && typeof data.linkData === 'object' ? data.linkData : {};
             uiPreferences = data.uiPreferences || createDefaultPreferences(categories[0]);
             driveConnection = normalizeDriveConnection(data.driveConnection);
+            memoRevision = Number(data.revision || 0);
+            backupInfo = data.backupInfo || null;
+            dataLoadState = 'ready';
+            const modified = migrateDataFormat();
+            lastStableMemoData = cloneMemoPayload(buildMemoPayload());
+            if (modified) void saveData();
         } else {
             categories = [...DEFAULT_CATEGORIES];
             linkData = createDefaultLinkData(categories);
             uiPreferences = createDefaultPreferences(categories[0]);
             driveConnection = createDefaultDriveConnection();
+            backupInfo = null;
+            dataLoadState = 'missing';
+            if (!dataSafetyAlertShown) {
+                dataSafetyAlertShown = true;
+                customAlert('저장 문서를 찾을 수 없습니다. 기존 데이터 보호를 위해 자동 초기화나 자동 저장을 하지 않았습니다. Firebase 데이터 복구 상태를 먼저 확인해주세요.');
+            }
         }
 
-        const modified = migrateDataFormat();
         activeTab = categories.includes(uiPreferences.lastViewedTab) ? uiPreferences.lastViewedTab : categories[0];
         applyPreferences();
-        if (modified || !snapshot.exists()) saveData();
-        if (canUseDrive(driveConnection)) void driveImageService.restoreSession(driveConnection);
+        if (canUseDrive(driveConnection) && dataLoadState === 'ready') void driveImageService.restoreSession(driveConnection);
 
         if (document.body.classList.contains('is-dragging') || document.body.classList.contains('is-tab-dragging') || document.body.classList.contains('is-subcategory-dragging')) return;
         if (isFirstLoad) {
             isFirstLoad = false;
             showHome();
-            void requestInitialDrivePermission();
+            if (dataLoadState === 'ready') void requestInitialDrivePermission();
         } else if (!mainApp.classList.contains('hidden')) {
             initApp();
         } else {
             renderHomeLanding();
         }
     }, error => {
+        dataLoadState = 'error';
         console.error('Firestore read error:', error);
-        customAlert('저장 데이터를 불러오지 못했습니다.');
+        customAlert('저장 데이터를 불러오지 못했습니다. 기존 데이터 보호를 위해 저장 기능을 중지했습니다.');
     });
 }
 
-async function saveData() {
-    if (!currentUser || isDeletingAccount) return;
+async function saveData({ allowCreate = false, reason = 'change' } = {}) {
+    if (!currentUser || isDeletingAccount) return false;
+    if (dataLoadState !== 'ready' && !allowCreate) {
+        console.warn('저장 문서 확인 전 저장을 차단했습니다.', dataLoadState);
+        return false;
+    }
     try {
-        await memoRepository.save(currentUser.uid, { categories, linkData, uiPreferences, driveConnection });
+        const now = Date.now();
+        if (lastStableMemoData && (!backupInfo?.createdAt || now - backupInfo.createdAt >= BACKUP_INTERVAL_MS)) {
+            const backup = await memoRepository.createBackup(currentUser.uid, lastStableMemoData, {
+                revision: memoRevision || 0,
+                reason
+            });
+            if (backup) backupInfo = backup;
+        }
+        const payload = buildMemoPayload();
+        const result = await memoRepository.save(currentUser.uid, payload, {
+            expectedRevision: memoRevision,
+            allowCreate
+        });
+        memoRevision = result.revision;
+        lastStableMemoData = cloneMemoPayload(payload);
+        dataLoadState = 'ready';
+        return true;
     } catch (error) {
-        customAlert('클라우드 저장에 실패했습니다.');
+        console.error('클라우드 저장 실패:', error);
+        if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') {
+            customAlert('다른 기기 또는 탭에서 데이터가 변경되었습니다. 기존 데이터 보호를 위해 현재 저장을 중지하고 최신 데이터를 다시 불러옵니다.');
+            loadDataFromFirestore();
+        } else if (error?.code === 'MEMO_DOCUMENT_MISSING' || error?.message === 'MEMO_DOCUMENT_MISSING') {
+            dataLoadState = 'missing';
+            customAlert('저장 문서를 찾을 수 없어 덮어쓰기를 차단했습니다. Firebase 복구 상태를 확인해주세요.');
+        } else {
+            customAlert('클라우드 저장에 실패했습니다.');
+        }
+        return false;
     }
 }
 
