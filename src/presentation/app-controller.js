@@ -7,6 +7,7 @@ import {
 } from "../infrastructure/firebase/auth-gateway.js";
 import { imageRepository } from "../infrastructure/browser/indexeddb-image-repository.js";
 import { createMemoService } from "../application/memos/memo-service.js";
+import { createImageAttachmentQueue } from "../application/memos/image-attachment-queue.js";
 import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-repository.js";
 import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
 import { getLinkImages, hasLinkImages, normalizeLinkImages, validateImageSelection } from "../domain/memos/image-attachment-policy.js";
@@ -26,6 +27,13 @@ const driveImageService = createDriveImageService({
     localImageRepository: imageRepository,
     driveImageRepository,
     driveCodeProvider
+});
+const imageAttachmentQueue = createImageAttachmentQueue({
+    saveLocalImage: file => saveImageFile(file),
+    uploadDriveImage: file => saveDriveImage(file),
+    createAttachmentId: () => createId('image'),
+    canUploadToDrive: () => canUseDrive(driveConnection),
+    concurrency: 2
 });
 
 const DEFAULT_CATEGORIES = ['업무', '학습', '개인', '도구', '기타'];
@@ -53,7 +61,11 @@ const previewImageTab = document.getElementById('previewImageTab');
 const previewTextStage = document.getElementById('previewTextStage');
 const previewImageStage = document.getElementById('previewImageStage');
 const previewTextContent = document.getElementById('previewTextContent');
-const imagePreviewGallery = document.getElementById('imagePreviewGallery');
+const carouselPreviousButton = document.getElementById('carouselPreviousButton');
+const carouselNextButton = document.getElementById('carouselNextButton');
+const carouselCounter = document.getElementById('carouselCounter');
+const carouselControls = document.getElementById('carouselControls');
+const carouselLoading = document.getElementById('carouselLoading');
 const settingsModal = document.getElementById('settingsModal');
 const darkModeToggle = document.getElementById('darkModeToggle');
 const categoryFolderGrid = document.getElementById('categoryFolderGrid');
@@ -89,6 +101,9 @@ let previewObjectUrl = null;
 let modalObjectUrl = null;
 let previewAttachments = [];
 let previewItem = null;
+let previewImageIndex = 0;
+let carouselPointerStartX = null;
+let queuedImageSaveTimer = null;
 let previewRequestId = 0;
 let hoverPreviewTimer = null;
 let longPressTimer = null;
@@ -1097,6 +1112,13 @@ function createLinkCard(item, subIndex, linkIndex) {
     );
     if (hasLinkImages(item)) actions.appendChild(createRoundActionButton('fa-solid fa-trash-can', '이미지 제거', event => { event.preventDefault(); event.stopPropagation(); window.removeLinkImage(subIndex, linkIndex); }, 'bg-orange-100 text-orange-600'));
     actions.appendChild(createRoundActionButton('fa-solid fa-xmark', '항목 삭제', event => { event.preventDefault(); event.stopPropagation(); window.deleteLink(subIndex, linkIndex); }, 'bg-red-100 text-red-500'));
+    const upload = item.imageUpload;
+    if (upload?.state === 'processing') {
+        const status = document.createElement('span');
+        status.className = 'absolute left-2 bottom-1 text-[10px] font-semibold text-blue-600 bg-blue-50 rounded px-1.5 py-0.5';
+        status.textContent = `이미지 저장 중 ${upload.completed}/${upload.total}`;
+        box.appendChild(status);
+    }
     box.append(primary, actions);
     card.appendChild(box);
     if (commentPanel) card.appendChild(commentPanel);
@@ -1160,20 +1182,41 @@ function clearPreviewTimers() {
     clearTimeout(longPressTimer);
 }
 
+function updateCarouselControls() {
+    const multiple = previewAttachments.length > 1;
+    carouselControls.classList.toggle('hidden', !multiple);
+    carouselCounter.textContent = previewAttachments.length ? `${previewImageIndex + 1} / ${previewAttachments.length}` : '';
+}
+
+function prefetchCarouselNeighbors() {
+    if (previewAttachments.length < 2) return;
+    const previous = previewAttachments[(previewImageIndex - 1 + previewAttachments.length) % previewAttachments.length];
+    const next = previewAttachments[(previewImageIndex + 1) % previewAttachments.length];
+    driveImageService.prefetchImage(previous, driveConnection);
+    driveImageService.prefetchImage(next, driveConnection);
+}
+
 async function loadPreviewImage(index, requestId = previewRequestId) {
     const attachment = previewAttachments[index];
     if (!attachment) return;
+    previewImageIndex = index;
+    updateCarouselControls();
+    carouselLoading.classList.remove('hidden');
     const imageRecord = await driveImageService.loadImage(attachment, driveConnection);
     if (imageRecord?.driveMissing) void repairMissingDriveImage(attachment);
-    if (requestId !== previewRequestId || !imageRecord?.blob) return;
+    if (requestId !== previewRequestId) return;
+    carouselLoading.classList.add('hidden');
+    if (!imageRecord?.blob) return;
     if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
     modalObjectUrl = URL.createObjectURL(imageRecord.blob);
     imagePreviewModalImg.src = modalObjectUrl;
-    imagePreviewGallery.querySelectorAll('button').forEach((button, itemIndex) => {
-        button.classList.toggle('bg-blue-600', itemIndex === index);
-        button.classList.toggle('text-white', itemIndex === index);
-        button.classList.toggle('bg-gray-200', itemIndex !== index);
-    });
+    prefetchCarouselNeighbors();
+}
+
+function moveCarousel(delta) {
+    if (previewAttachments.length < 2) return;
+    const next = (previewImageIndex + delta + previewAttachments.length) % previewAttachments.length;
+    void loadPreviewImage(next);
 }
 
 async function showContentPreview(item) {
@@ -1184,6 +1227,7 @@ async function showContentPreview(item) {
     const hasText = kind === 'text' || kind === 'combined';
     previewItem = item;
     previewAttachments = getLinkImages(item);
+    previewImageIndex = 0;
     const hasImage = previewAttachments.length > 0;
     if (!hasText && !hasImage) return;
 
@@ -1192,16 +1236,7 @@ async function showContentPreview(item) {
     previewTextTab.classList.toggle('hidden', !hasText);
     previewImageTab.classList.toggle('hidden', !hasImage);
     previewTabs.classList.toggle('hidden', !(hasText && hasImage));
-    imagePreviewGallery.innerHTML = '';
-    imagePreviewGallery.classList.toggle('hidden', previewAttachments.length < 2);
-    previewAttachments.forEach((attachment, index) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'shrink-0 rounded px-3 py-1.5 text-xs font-semibold bg-gray-200 text-gray-700';
-        button.textContent = `${index + 1} / ${previewAttachments.length}`;
-        button.onclick = () => loadPreviewImage(index);
-        imagePreviewGallery.appendChild(button);
-    });
+    updateCarouselControls();
     if (hasImage) {
         imagePreviewModalImg.removeAttribute('src');
         void loadPreviewImage(0, requestId);
@@ -1242,14 +1277,26 @@ function hideImagePreview() {
     previewTextContent.textContent = '';
     previewAttachments = [];
     previewItem = null;
-    imagePreviewGallery.innerHTML = '';
-    imagePreviewGallery.classList.add('hidden');
+    previewImageIndex = 0;
+    carouselControls.classList.add('hidden');
+    carouselCounter.textContent = '';
+    carouselLoading.classList.add('hidden');
     if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
     modalObjectUrl = null;
 }
 window.hideImagePreview = hideImagePreview;
 previewTextTab.onclick = () => setPreviewMode('text');
 previewImageTab.onclick = () => setPreviewMode('image');
+carouselPreviousButton.onclick = () => moveCarousel(-1);
+carouselNextButton.onclick = () => moveCarousel(1);
+previewImageStage.addEventListener('pointerdown', event => { carouselPointerStartX = event.clientX; });
+previewImageStage.addEventListener('pointerup', event => {
+    if (carouselPointerStartX === null) return;
+    const distance = event.clientX - carouselPointerStartX;
+    carouselPointerStartX = null;
+    if (Math.abs(distance) >= 40) moveCarousel(distance > 0 ? -1 : 1);
+});
+previewImageStage.addEventListener('pointercancel', () => { carouselPointerStartX = null; });
 
 window.handleKeyPress = event => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -1257,6 +1304,69 @@ window.handleKeyPress = event => {
         window.saveLink();
     }
 };
+
+function findLinkById(linkId) {
+    for (const subcategories of Object.values(linkData)) {
+        for (const subcategory of subcategories || []) {
+            const link = subcategory.links?.find(item => item.id === linkId);
+            if (link) return link;
+        }
+    }
+    return null;
+}
+
+function scheduleBackgroundImageSave() {
+    clearTimeout(queuedImageSaveTimer);
+    queuedImageSaveTimer = setTimeout(async () => {
+        await saveData();
+    }, 350);
+}
+
+async function processSelectedImagesInBackground(linkId, files) {
+    const result = await imageAttachmentQueue.process({
+        files,
+        onAttachment: attachment => {
+            const link = findLinkById(linkId);
+            if (!link) return;
+            link.images.push(attachment);
+            renderLinks();
+            scheduleBackgroundImageSave();
+        },
+        onProgress: progress => {
+            const link = findLinkById(linkId);
+            if (!link) return;
+            link.imageUpload = {
+                total: progress.total,
+                completed: progress.completed,
+                failed: progress.failed,
+                pending: progress.pending,
+                driveFailed: progress.driveFailed,
+                state: progress.pending ? 'processing' : 'complete'
+            };
+            renderLinks();
+            scheduleBackgroundImageSave();
+        }
+    });
+    const link = findLinkById(linkId);
+    if (!link) return result;
+    clearTimeout(queuedImageSaveTimer);
+    if (!result.failed && !result.driveFailed) delete link.imageUpload;
+    else link.imageUpload = {
+        total: result.total,
+        completed: result.completed,
+        failed: result.failed,
+        pending: 0,
+        driveFailed: result.driveFailed,
+        state: 'complete'
+    };
+    await saveData();
+    renderLinks();
+    renderHomeLanding();
+    if (result.failed || result.driveFailed) {
+        customAlert(`이미지 저장 완료: 로컬 저장 실패 ${result.failed}개, Drive 업로드 실패 ${result.driveFailed}개입니다.`);
+    }
+    return result;
+}
 
 window.saveLink = async () => {
     const select = document.getElementById('subCategorySelect');
@@ -1274,31 +1384,21 @@ window.saveLink = async () => {
     if (!Number.isInteger(subIndex) || !linkData[activeTab]?.[subIndex]) return customAlert('저장할 소분류를 먼저 추가해주세요.');
     if (!result.ok) return customAlert(result.error);
     const { text, url, comment } = result.value;
+    const files = [...selectedImageFiles];
+    if (files.length && !canUseDrive(driveConnection)) warnLocalOnlyImageStorage();
 
-    const images = [];
-    if (selectedImageFiles.length) {
-        if (!canUseDrive(driveConnection)) warnLocalOnlyImageStorage();
-        for (const file of selectedImageFiles) {
-            try {
-                const imageId = await saveImageFile(file);
-                let driveImage = null;
-                if (canUseDrive(driveConnection)) {
-                    try {
-                        driveImage = await saveDriveImage(file);
-                    } catch (error) {
-                        console.error('Drive 이미지 업로드 실패:', error);
-                    }
-                }
-                images.push({ id: createId('image'), imageId, driveImage });
-            } catch (error) {
-                console.error('이미지 저장 실패:', error);
-            }
-        }
-        if (!images.length && !url && !comment.trim()) return customAlert('이미지 저장에 실패했습니다. 다시 시도해주세요.');
-        if (images.length !== selectedImageFiles.length) customAlert('일부 이미지를 저장하지 못했습니다. 저장된 이미지만 추가합니다.');
-    }
-
-    linkData[activeTab][subIndex].links.push({ id: createId('link'), text, url, comment, images, createdAt: Date.now(), updatedAt: Date.now() });
+    const link = {
+        id: createId('link'),
+        text,
+        url,
+        comment,
+        images: [],
+        imageUpload: files.length ? { total: files.length, completed: 0, failed: 0, pending: files.length, driveFailed: 0, state: 'processing' } : null,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    if (!files.length) delete link.imageUpload;
+    linkData[activeTab][subIndex].links.push(link);
     await saveData();
     renderLinks();
     renderHomeLanding();
@@ -1307,6 +1407,8 @@ window.saveLink = async () => {
     commentInput.value = '';
     resetSelectedImage();
     textInput.focus();
+
+    if (files.length) void processSelectedImagesInBackground(link.id, files);
 };
 window.deleteLink = (subIndex, linkIndex) => {
     customConfirm('이 항목을 삭제하시겠습니까?', async () => {
@@ -1577,6 +1679,16 @@ accountDeleteModal.addEventListener('click', event => { if (event.target === acc
 linkEditModal.addEventListener('click', event => { if (event.target === linkEditModal) window.closeLinkEditModal(); });
 
 document.addEventListener('keydown', event => {
+    if (!imagePreviewModal.classList.contains('hidden') && event.key === 'ArrowLeft') {
+        event.preventDefault();
+        moveCarousel(-1);
+        return;
+    }
+    if (!imagePreviewModal.classList.contains('hidden') && event.key === 'ArrowRight') {
+        event.preventDefault();
+        moveCarousel(1);
+        return;
+    }
     if (event.key !== 'Escape') return;
     activeTabActionController?.cancel();
     document.querySelectorAll('.tab-menu-panel').forEach(panel => panel.classList.add('hidden'));
