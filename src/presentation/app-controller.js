@@ -810,7 +810,7 @@ async function saveData({ allowCreate = false, reason = 'change', forceBackup = 
         const shouldBackup = !skipBackup && backupAuthReady && !currentUser.isAnonymous && forceBackup;
         if (shouldBackup) {
             try { staleBackups = await createCloudBackup(reason === 'manual' ? 'manual' : 'auto', scheduledFor); }
-            catch (error) { backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error), scheduledFor }); if (forceBackup) throw error; }
+            catch (error) { backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error), scheduledFor }); if (reason === 'manual') throw error; }
         }
         const payload = buildMemoPayload();
         const result = await memoRepository.save(currentUser.uid, payload, { expectedRevision:memoRevision, allowCreate });
@@ -1717,7 +1717,7 @@ function renderBackupSettings() {
     if (currentUser?.isAnonymous) { backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'; backupList.innerHTML=''; return; }
     const auto=backupState.auto||{};
     const currentSessionFailure=auto.lastStatus==='failure' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
-    backupStatus.textContent=!backupAuthReady ? '로그인 인증을 준비하는 중입니다. 백업 기능이 곧 활성화됩니다.' : currentSessionFailure ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt) ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)}` : `백업 인증이 준비되었습니다. 다음 자동 백업: ${formatBackupTime(nextAutomaticBackupAt)}`;
+    backupStatus.textContent=!backupAuthReady ? '로그인 인증을 준비하는 중입니다. 백업 기능이 곧 활성화됩니다.' : currentSessionFailure ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt) ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)} · 다음 백업: ${formatBackupTime(nextAutomaticBackupAt)}` : `백업 인증이 준비되었습니다. 다음 자동 백업: ${formatBackupTime(nextAutomaticBackupAt)}`;
     backupList.innerHTML='';
     backupState.backups.forEach(backup=>{ const item=document.createElement('div'); item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'; item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`; backupList.appendChild(item); });
     backupList.querySelectorAll('.backup-download').forEach(button=>button.onclick=()=>window.downloadCloudBackup(button.dataset.id));
