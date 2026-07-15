@@ -18,6 +18,9 @@ import { createDefaultDriveConnection, canUseDrive, normalizeDriveConnection } f
 import { createGoogleDriveCodeProvider } from "../infrastructure/google/google-drive-code-provider.js";
 import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-worker-image-repository.js";
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
+import { createCloudflareBackupRepository } from "../infrastructure/http/cloudflare-backup-repository.js";
+import { createBackupService } from "../application/backups/backup-service.js";
+import { createBackupState, addBackupSuccess, addBackupFailure, validateImportedBackup } from "../domain/backups/backup-policy.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const memoService = createMemoService({ imageRepository });
@@ -28,6 +31,8 @@ const driveImageService = createDriveImageService({
     driveImageRepository,
     driveCodeProvider
 });
+const cloudBackupRepository = createCloudflareBackupRepository();
+const backupService = createBackupService({ cloudRepository: cloudBackupRepository });
 const imageAttachmentQueue = createImageAttachmentQueue({
     saveLocalImage: file => saveImageFile(file),
     uploadDriveImage: file => saveDriveImage(file),
@@ -79,6 +84,9 @@ const accountDeleteConfirmBtn = document.getElementById('accountDeleteConfirmBtn
 const driveRepairButton = document.getElementById('driveRepairButton');
 const driveDisconnectButton = document.getElementById('driveDisconnectButton');
 const driveSyncStatus = document.getElementById('driveSyncStatus');
+const backupStatus = document.getElementById('backupStatus');
+const backupList = document.getElementById('backupList');
+const backupFileInput = document.getElementById('backupFileInput');
 const linkEditModal = document.getElementById('linkEditModal');
 const linkEditText = document.getElementById('linkEditText');
 const linkEditCategory = document.getElementById('linkEditCategory');
@@ -88,6 +96,8 @@ let currentUser = null;
 let dataLoadState = 'loading';
 let memoRevision = null;
 let backupInfo = null;
+let backupState = createBackupState();
+let guestBackupNoticeShown = false;
 let lastStableMemoData = null;
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -156,7 +166,7 @@ function applyPreferences() {
 }
 
 function buildMemoPayload() {
-    return { categories, linkData, uiPreferences, driveConnection, backupInfo };
+    return { categories, linkData, uiPreferences, driveConnection, backupInfo, backupState };
 }
 
 function cloneMemoPayload(value) {
@@ -246,6 +256,10 @@ if (auth) {
         if (user) {
             currentUser = user;
             updateHeaderUI(user);
+            if (user.isAnonymous && !guestBackupNoticeShown) {
+                guestBackupNoticeShown = true;
+                setTimeout(() => customAlert('게스트 계정은 백업 및 복구의 이용이 불가합니다. 더 원활한 데이터 관리를 원하실 경우 구글 계정 연동을 진행해주세요.'), 350);
+            }
             loadDataFromFirestore();
             return;
         }
@@ -260,6 +274,8 @@ if (auth) {
         dataLoadState = 'loading';
         memoRevision = null;
         backupInfo = null;
+        backupState = createBackupState();
+        guestBackupNoticeShown = false;
         lastStableMemoData = null;
         dataSafetyAlertShown = false;
         drivePromptRequested = false;
@@ -629,6 +645,7 @@ function loadDataFromFirestore() {
             driveConnection = normalizeDriveConnection(data.driveConnection);
             memoRevision = Number(data.revision || 0);
             backupInfo = data.backupInfo || null;
+            backupState = createBackupState(data.backupState);
             dataLoadState = 'ready';
             const modified = migrateDataFormat();
             lastStableMemoData = cloneMemoPayload(buildMemoPayload());
@@ -639,6 +656,7 @@ function loadDataFromFirestore() {
             uiPreferences = createDefaultPreferences(categories[0]);
             driveConnection = createDefaultDriveConnection();
             backupInfo = null;
+            backupState = createBackupState();
             dataLoadState = 'missing';
             if (!dataSafetyAlertShown) {
                 dataSafetyAlertShown = true;
@@ -667,45 +685,42 @@ function loadDataFromFirestore() {
     });
 }
 
-async function saveData({ allowCreate = false, reason = 'change' } = {}) {
-    if (!currentUser || isDeletingAccount) return false;
-    if (dataLoadState !== 'ready' && !allowCreate) {
-        console.warn('저장 문서 확인 전 저장을 차단했습니다.', dataLoadState);
-        return false;
-    }
+async function createCloudBackup(reason) {
+    if (!currentUser || currentUser.isAnonymous) throw new Error('BACKUP_GUEST_UNSUPPORTED');
+    if (!backupService.configured()) throw new Error('BACKUP_WORKER_URL_MISSING');
+    const snapshotData = cloneMemoPayload(buildMemoPayload());
+    const primary = await memoRepository.createBackup(currentUser.uid, snapshotData, { revision: memoRevision || 0, reason });
+    if (!primary) throw new Error('FIREBASE_BACKUP_FAILED');
+    const descriptor = await backupService.create({ user: currentUser, backupId: primary.id, createdAt: primary.createdAt, reason, payload: snapshotData });
+    const result = addBackupSuccess(backupState, descriptor);
+    backupState = result.state; backupInfo = primary;
+    return result.removed;
+}
+function backupErrorMessage(error) {
+    const messages = { BACKUP_GUEST_UNSUPPORTED:'게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.', BACKUP_WORKER_URL_MISSING:'Cloudflare 백업 서비스가 아직 설정되지 않았습니다.', BACKUP_CHECKSUM_INVALID:'백업 파일 무결성 검증에 실패했습니다.', INVALID_TOKEN:'백업 인증이 만료되었습니다. 다시 로그인한 뒤 시도해주세요.' };
+    return messages[error?.message] || '백업 처리에 실패했습니다. 기존 백업은 안전하게 유지됩니다.';
+}
+async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false } = {}) {
+    if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
+    let staleBackups = [];
     try {
         const now = Date.now();
-        if (lastStableMemoData && (!backupInfo?.createdAt || now - backupInfo.createdAt >= BACKUP_INTERVAL_MS)) {
-            const backup = await memoRepository.createBackup(currentUser.uid, lastStableMemoData, {
-                revision: memoRevision || 0,
-                reason
-            });
-            if (backup) backupInfo = backup;
+        const shouldBackup = !skipBackup && !currentUser.isAnonymous && (forceBackup || (lastStableMemoData && (!backupInfo?.createdAt || now - backupInfo.createdAt >= BACKUP_INTERVAL_MS)));
+        if (shouldBackup) {
+            try { staleBackups = await createCloudBackup(reason === 'manual' ? 'manual' : 'auto'); }
+            catch (error) { backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error) }); if (forceBackup) throw error; }
         }
         const payload = buildMemoPayload();
-        const result = await memoRepository.save(currentUser.uid, payload, {
-            expectedRevision: memoRevision,
-            allowCreate
-        });
-        memoRevision = result.revision;
-        lastStableMemoData = cloneMemoPayload(payload);
-        dataLoadState = 'ready';
+        const result = await memoRepository.save(currentUser.uid, payload, { expectedRevision:memoRevision, allowCreate });
+        memoRevision = result.revision; lastStableMemoData = cloneMemoPayload(payload); dataLoadState = 'ready';
+        for (const stale of staleBackups) try { await backupService.remove({ user:currentUser, backupId:stale.id }); } catch (error) { console.warn('오래된 Cloudflare 백업 정리 실패', error); }
         return true;
     } catch (error) {
-        console.error('클라우드 저장 실패:', error);
-        if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') {
-            customAlert('다른 기기 또는 탭에서 데이터가 변경되었습니다. 기존 데이터 보호를 위해 현재 저장을 중지하고 최신 데이터를 다시 불러옵니다.');
-            loadDataFromFirestore();
-        } else if (error?.code === 'MEMO_DOCUMENT_MISSING' || error?.message === 'MEMO_DOCUMENT_MISSING') {
-            dataLoadState = 'missing';
-            customAlert('저장 문서를 찾을 수 없어 덮어쓰기를 차단했습니다. Firebase 복구 상태를 확인해주세요.');
-        } else {
-            customAlert('클라우드 저장에 실패했습니다.');
-        }
+        console.error('클라우드 저장 실패:', error); if (forceBackup) customAlert(backupErrorMessage(error));
+        if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') loadDataFromFirestore();
         return false;
     }
 }
-
 function initApp() {
     renderTabs();
     renderSubCategorySelect();
@@ -1594,8 +1609,30 @@ window.removeLinkImage = (subIndex, linkIndex) => {
     });
 };
 
+function formatBackupTime(value) { return value ? new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : '-'; }
+function renderBackupSettings() {
+    if (!backupStatus || !backupList) return;
+    if (currentUser?.isAnonymous) { backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'; backupList.innerHTML=''; return; }
+    const auto=backupState.auto||{};
+    backupStatus.textContent=auto.lastStatus==='failure' ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)}` : '아직 자동 백업 이력이 없습니다.';
+    backupList.innerHTML='';
+    backupState.backups.forEach(backup=>{ const item=document.createElement('div'); item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'; item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`; backupList.appendChild(item); });
+    backupList.querySelectorAll('.backup-download').forEach(button=>button.onclick=()=>window.downloadCloudBackup(button.dataset.id));
+    backupList.querySelectorAll('.backup-restore').forEach(button=>button.onclick=()=>window.restoreCloudBackup(button.dataset.id));
+}
+async function applyBackupPayload(payload) {
+    categories=Array.isArray(payload.categories)?payload.categories:[...DEFAULT_CATEGORIES]; linkData=payload.linkData&&typeof payload.linkData==='object'?payload.linkData:createDefaultLinkData(categories); uiPreferences=payload.uiPreferences||createDefaultPreferences(categories[0]); driveConnection=normalizeDriveConnection(payload.driveConnection);
+    const state=backupState; backupInfo=payload.backupInfo||backupInfo; backupState=state; migrateDataFormat(); await saveData({skipBackup:true}); applyPreferences(); showHome(); renderBackupSettings();
+}
+window.requestCloudBackup=async()=>{ if(currentUser?.isAnonymous) return customAlert('게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'); const ok=await saveData({forceBackup:true,reason:'manual'}); if(ok){renderBackupSettings();customAlert('Cloudflare 백업이 완료되었습니다. 최신 3개만 안전하게 보존됩니다.');} };
+window.downloadCloudBackup=async backupId=>{ try { const envelope=await backupService.load({user:currentUser,backupId}); const blob=new Blob([JSON.stringify(envelope,null,2)],{type:'application/json'}); const link=document.createElement('a'); link.href=URL.createObjectURL(blob); link.download=`link-memo-backup-${backupId}.json`; link.click(); URL.revokeObjectURL(link.href); } catch(error){customAlert(backupErrorMessage(error));} };
+window.restoreCloudBackup=async backupId=>{ try { const envelope=await backupService.load({user:currentUser,backupId}); const validation=validateImportedBackup(envelope,currentUser.uid); if(!validation.ok)return customAlert(validation.error); customConfirm(`${formatBackupTime(envelope.createdAt)} 백업으로 현재 데이터를 복원하시겠습니까?`,async()=>{await applyBackupPayload(validation.value);customAlert('백업 데이터를 복원했습니다.');}); }catch(error){customAlert(backupErrorMessage(error));} };
+window.openBackupFilePicker=()=>backupFileInput?.click();
+backupFileInput?.addEventListener('change',async()=>{const file=backupFileInput.files?.[0];backupFileInput.value='';if(!file)return;try{const validation=validateImportedBackup(JSON.parse(await file.text()),currentUser.uid);if(!validation.ok)return customAlert(validation.error);customConfirm('선택한 백업 파일로 현재 데이터를 복원하시겠습니까?',async()=>{await applyBackupPayload(validation.value);customAlert('백업 파일을 복원했습니다.');});}catch{customAlert('백업 파일을 읽을 수 없습니다.');}});
+
 function openSettingsModal() {
     applyPreferences();
+    renderBackupSettings();
     settingsModal.classList.remove('hidden');
 }
 
