@@ -6,7 +6,7 @@ export function createBackupState(value = {}) {
     version: 1,
     backups: Array.isArray(value.backups) ? value.backups.slice(0, MAX_CLOUDFLARE_BACKUPS) : [],
     events: Array.isArray(value.events) ? value.events.slice(0, 30) : [],
-    auto: value.auto || { lastAttemptAt: null, lastSuccessAt: null, lastStatus: "idle", lastError: null }
+    auto: value.auto || { lastAttemptAt: null, lastSuccessAt: null, lastStatus: "idle", lastError: null, lastScheduledFor: null }
   };
 }
 
@@ -16,14 +16,14 @@ export function addBackupSuccess(state, backup) {
   const removed = backups.slice(MAX_CLOUDFLARE_BACKUPS);
   next.backups = backups.slice(0, MAX_CLOUDFLARE_BACKUPS);
   next.events = [{ type: "success", reason: backup.reason, createdAt: backup.createdAt, backupId: backup.id }, ...next.events].slice(0,30);
-  if (backup.reason === "auto") next.auto = { lastAttemptAt: backup.createdAt, lastSuccessAt: backup.createdAt, lastStatus: "success", lastError: null };
+  if (backup.reason === "auto") next.auto = { lastAttemptAt: backup.createdAt, lastSuccessAt: backup.createdAt, lastStatus: "success", lastError: null, lastScheduledFor: backup.scheduledFor || next.auto.lastScheduledFor || null };
   return { state: next, removed };
 }
 
-export function addBackupFailure(state, { reason, createdAt, message }) {
+export function addBackupFailure(state, { reason, createdAt, message, scheduledFor = null }) {
   const next = createBackupState(state);
   next.events = [{ type: "failure", reason, createdAt, message }, ...next.events].slice(0,30);
-  if (reason === "auto") next.auto = { lastAttemptAt: createdAt, lastSuccessAt: next.auto.lastSuccessAt || null, lastStatus: "failure", lastError: message };
+  if (reason === "auto") next.auto = { lastAttemptAt: createdAt, lastSuccessAt: next.auto.lastSuccessAt || null, lastStatus: "failure", lastError: message, lastScheduledFor: next.auto.lastScheduledFor || null, lastAttemptScheduledFor: scheduledFor };
   return next;
 }
 
