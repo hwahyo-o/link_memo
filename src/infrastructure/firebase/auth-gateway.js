@@ -5,6 +5,7 @@ export {
     signInWithCustomToken,
     signInAnonymously,
     onAuthStateChanged,
+    onIdTokenChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
     signOut,
