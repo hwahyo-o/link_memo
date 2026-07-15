@@ -10,8 +10,8 @@ function base64UrlBytes(value) {
   return Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), character => character.charCodeAt(0));
 }
 function decodeJson(value) { return JSON.parse(new TextDecoder().decode(base64UrlBytes(value))); }
-async function getJwks() {
-  if (jwksCache.keys.length && Date.now() < jwksCache.expires) return jwksCache.keys;
+async function getJwks({ forceRefresh = false } = {}) {
+  if (!forceRefresh && jwksCache.keys.length && Date.now() < jwksCache.expires) return jwksCache.keys;
   const response = await fetch(JWKS_URL);
   if (!response.ok) throw new Error("FIREBASE_JWKS_FETCH_FAILED");
   const maxAge = Number((response.headers.get("cache-control") || "").match(/max-age=(\d+)/)?.[1] || 3600);
@@ -27,14 +27,23 @@ async function verifyToken(request, env) {
   const parts = token.split(".");
   if (parts.length !== 3) throw new Error("INVALID_TOKEN");
   const [encodedHeader, encodedClaims, encodedSignature] = parts;
-  const header = decodeJson(encodedHeader), claims = decodeJson(encodedClaims), now = Date.now();
+  let header, claims, signature;
+  try {
+    header = decodeJson(encodedHeader);
+    claims = decodeJson(encodedClaims);
+    signature = base64UrlBytes(encodedSignature);
+  } catch {
+    throw new Error("INVALID_TOKEN");
+  }
+  const now = Date.now();
   if (header.alg !== "RS256" || !header.kid || !claims.sub || claims.sub.length > 128) throw new Error("INVALID_TOKEN");
   if (claims.aud !== env.FIREBASE_PROJECT_ID || claims.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`) throw new Error("TOKEN_PROJECT_MISMATCH");
   if (!claims.exp || claims.exp * 1000 < now || !claims.iat || claims.iat * 1000 > now + 60_000) throw new Error("INVALID_TOKEN");
-  const jwk = (await getJwks()).find(key => key.kid === header.kid);
+  let jwk = (await getJwks()).find(key => key.kid === header.kid);
+  if (!jwk) jwk = (await getJwks({ forceRefresh: true })).find(key => key.kid === header.kid);
   if (!jwk) throw new Error("INVALID_TOKEN");
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, base64UrlBytes(encodedSignature), new TextEncoder().encode(`${encodedHeader}.${encodedClaims}`));
+  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, new TextEncoder().encode(`${encodedHeader}.${encodedClaims}`));
   if (!valid) throw new Error("INVALID_TOKEN");
   return claims.sub;
 }
