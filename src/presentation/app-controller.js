@@ -120,6 +120,7 @@ let draggedTab = null;
 let activeTabActionController = null;
 let draggedSubcategoryId = null;
 let isFirstLoad = true;
+let homeRenderSignature = null;
 let isDeletingAccount = false;
 let selectedImageFiles = [];
 let editingLinkContext = null;
@@ -304,10 +305,22 @@ function updateHeaderUI(user) {
 function createFolderButton(label, icon, color, onClick, subtitle = '열기') {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'folder-button bg-white border border-gray-200 hover:border-blue-400 hover:shadow-md rounded-lg p-5 text-left transition-all flex flex-col justify-between';
+    button.className = 'folder-button bg-white border border-gray-200 hover:border-blue-400 hover:shadow-md rounded-lg p-5 text-left transition-colors flex flex-col justify-between';
     button.innerHTML = `<span class="folder-icon-shell rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center mb-4"><i class="fa-solid ${icon} ${color} text-4xl"></i></span><span class="folder-title text-lg font-bold text-gray-800 truncate w-full">${escapeHtml(label)}</span><span class="folder-subtitle text-sm text-gray-500 mt-1 truncate w-full">${escapeHtml(subtitle)}</span>`;
     button.onclick = onClick;
     return button;
+}
+
+function getHomeRenderSignature(recentTab) {
+    return JSON.stringify({
+        userId: currentUser?.uid || '',
+        recentTab,
+        folderColumns: uiPreferences.folderColumns,
+        categories: categories.map(category => ({
+            name: category,
+            count: (linkData[category] || []).reduce((sum, subcategory) => sum + (subcategory.links?.length || 0), 0)
+        }))
+    });
 }
 
 function renderHomeLanding() {
@@ -315,6 +328,18 @@ function renderHomeLanding() {
     if (!fixedFolderGrid || !categoryFolderGrid) return;
     const recentTab = categories.includes(uiPreferences.lastViewedTab) ? uiPreferences.lastViewedTab : (categories[0] || '');
     uiPreferences.lastViewedTab = recentTab;
+    const renderSignature = getHomeRenderSignature(recentTab);
+
+    // Firestore의 로컬/서버 스냅샷이 같은 내용으로 연속 도착해도
+    // 사용자가 누르고 있거나 hover 중인 실제 버튼 노드를 교체하지 않습니다.
+    if (
+        homeRenderSignature === renderSignature
+        && fixedFolderGrid.childElementCount === 3
+        && categoryFolderGrid.childElementCount === categories.length
+    ) {
+        categoryFolderGrid.dataset.columns = String(uiPreferences.folderColumns);
+        return;
+    }
 
     fixedFolderGrid.innerHTML = '';
     fixedFolderGrid.append(
@@ -329,6 +354,7 @@ function renderHomeLanding() {
         const count = (linkData[category] || []).reduce((sum, subcategory) => sum + (subcategory.links?.length || 0), 0);
         categoryFolderGrid.appendChild(createFolderButton(category, 'fa-folder', 'text-amber-500', () => showMain(category), `${count}개 항목`));
     });
+    homeRenderSignature = renderSignature;
 }
 
 if (auth) {
@@ -355,6 +381,7 @@ if (auth) {
             return;
         }
         currentUser = null;
+        homeRenderSignature = null;
         backupTokenProvider.updateUser(null);
         backupAuthReady = false;
         backupSessionStartedAt = null;
@@ -796,7 +823,16 @@ async function createCloudBackup(reason, scheduledFor = null) {
     return result.removed;
 }
 function backupErrorMessage(error) {
-    const messages = { BACKUP_GUEST_UNSUPPORTED:'게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.', BACKUP_AUTH_NOT_READY:'로그인 인증을 준비하는 중입니다. 잠시 후 다시 시도해주세요.', BACKUP_WORKER_URL_MISSING:'Cloudflare 백업 서비스가 아직 설정되지 않았습니다.', BACKUP_CHECKSUM_INVALID:'백업 파일 무결성 검증에 실패했습니다.', INVALID_TOKEN:'백업 인증을 자동 갱신하지 못했습니다. 네트워크 연결을 확인한 뒤 잠시 후 다시 시도해주세요.' };
+    const messages = {
+        BACKUP_GUEST_UNSUPPORTED: '게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.',
+        BACKUP_AUTH_NOT_READY: '로그인 인증을 준비하는 중입니다. 잠시 후 다시 시도해주세요.',
+        BACKUP_WORKER_URL_MISSING: 'Cloudflare 백업 서비스 주소가 설정되지 않았습니다.',
+        WORKER_CONFIG_MISSING: 'Cloudflare Worker의 Firebase 프로젝트 또는 R2 연결 설정이 누락되었습니다.',
+        TOKEN_PROJECT_MISMATCH: 'Cloudflare Worker의 Firebase 프로젝트 ID가 현재 앱과 일치하지 않습니다.',
+        BACKUP_SERVICE_UNAVAILABLE: 'Cloudflare 백업 서비스의 인증 검증 처리에 실패했습니다. Worker 최신 코드가 배포되었는지 확인해주세요.',
+        BACKUP_CHECKSUM_INVALID: '백업 파일 무결성 검증에 실패했습니다.',
+        INVALID_TOKEN: '백업 인증을 자동 갱신하지 못했습니다. 네트워크 연결을 확인한 뒤 잠시 후 다시 시도해주세요.'
+    };
     return messages[error?.message] || '백업 처리에 실패했습니다. 기존 백업은 안전하게 유지됩니다.';
 }
 async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false, scheduledFor = null } = {}) {
