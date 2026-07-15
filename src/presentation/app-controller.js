@@ -154,9 +154,11 @@ async function refreshBackupAuthentication() {
         await backupTokenProvider.getToken();
         backupAuthReady = true;
         startAutomaticBackupTimer();
+        renderBackupSettings();
         return true;
     } catch (error) {
         backupAuthReady = false;
+        renderBackupSettings();
         console.warn('백업 인증 자동 갱신 대기 중', error);
         return false;
     }
