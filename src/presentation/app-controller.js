@@ -101,6 +101,8 @@ let backupInfo = null;
 let backupState = createBackupState();
 let guestBackupNoticeShown = false;
 let backupTimer = null;
+let backupAuthReady = false;
+let backupSessionStartedAt = null;
 let lastStableMemoData = null;
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -137,18 +139,26 @@ function createId(prefix) {
 
 function startAutomaticBackupTimer() {
     if (backupTimer) clearInterval(backupTimer);
-    if (!currentUser || currentUser.isAnonymous) return;
+    if (!currentUser || currentUser.isAnonymous || !backupAuthReady) return;
     backupTimer = setInterval(() => {
         if (dataLoadState === 'ready' && !isDeletingAccount) void saveData({ forceBackup: true, reason: 'auto' });
     }, BACKUP_INTERVAL_MS);
 }
 
 async function refreshBackupAuthentication() {
-    if (!currentUser || currentUser.isAnonymous) return;
+    if (!currentUser || currentUser.isAnonymous) {
+        backupAuthReady = false;
+        return false;
+    }
     try {
         await backupTokenProvider.getToken();
+        backupAuthReady = true;
+        startAutomaticBackupTimer();
+        return true;
     } catch (error) {
+        backupAuthReady = false;
         console.warn('백업 인증 자동 갱신 대기 중', error);
+        return false;
     }
 }
 document.addEventListener('visibilitychange', () => {
@@ -280,13 +290,17 @@ if (auth) {
         if (user && currentUser?.uid === user.uid) {
             currentUser = user;
             backupTokenProvider.updateUser(user);
+            if (!backupAuthReady) void refreshBackupAuthentication();
         }
     });
     onAuthStateChanged(auth, user => {
         if (user) {
             currentUser = user;
             backupTokenProvider.updateUser(user);
+            backupAuthReady = false;
+            backupSessionStartedAt = Date.now();
             updateHeaderUI(user);
+            void refreshBackupAuthentication();
             if (user.isAnonymous && !guestBackupNoticeShown) {
                 guestBackupNoticeShown = true;
                 setTimeout(() => customAlert('게스트 계정은 백업 및 복구의 이용이 불가합니다. 더 원활한 데이터 관리를 원하실 경우 구글 계정 연동을 진행해주세요.'), 350);
@@ -296,6 +310,8 @@ if (auth) {
         }
         currentUser = null;
         backupTokenProvider.updateUser(null);
+        backupAuthReady = false;
+        backupSessionStartedAt = null;
         if (backupTimer) clearInterval(backupTimer);
         backupTimer = null;
         if (unsubscribeSnapshot) unsubscribeSnapshot();
@@ -683,7 +699,7 @@ function loadDataFromFirestore() {
             dataLoadState = 'ready';
             const modified = migrateDataFormat();
             lastStableMemoData = cloneMemoPayload(buildMemoPayload());
-            if (modified) void saveData();
+            if (modified) void saveData({ skipBackup: true });
         } else {
             categories = [...DEFAULT_CATEGORIES];
             linkData = createDefaultLinkData(categories);
@@ -706,7 +722,7 @@ function loadDataFromFirestore() {
         if (isFirstLoad) {
             isFirstLoad = false;
             showHome();
-            if (dataLoadState === 'ready') { void requestInitialDrivePermission(); startAutomaticBackupTimer(); }
+            if (dataLoadState === 'ready') { void requestInitialDrivePermission(); void refreshBackupAuthentication(); }
         } else if (!mainApp.classList.contains('hidden')) {
             initApp();
         } else {
@@ -721,6 +737,7 @@ function loadDataFromFirestore() {
 
 async function createCloudBackup(reason) {
     if (!currentUser || currentUser.isAnonymous) throw new Error('BACKUP_GUEST_UNSUPPORTED');
+    if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
     if (!backupService.configured()) throw new Error('BACKUP_WORKER_URL_MISSING');
     const snapshotData = cloneMemoPayload(buildMemoPayload());
     const primary = await memoRepository.createBackup(currentUser.uid, snapshotData, { revision: memoRevision || 0, reason });
@@ -732,15 +749,19 @@ async function createCloudBackup(reason) {
     return result.removed;
 }
 function backupErrorMessage(error) {
-    const messages = { BACKUP_GUEST_UNSUPPORTED:'게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.', BACKUP_WORKER_URL_MISSING:'Cloudflare 백업 서비스가 아직 설정되지 않았습니다.', BACKUP_CHECKSUM_INVALID:'백업 파일 무결성 검증에 실패했습니다.', INVALID_TOKEN:'백업 인증을 자동 갱신하지 못했습니다. 네트워크 연결을 확인한 뒤 잠시 후 다시 시도해주세요.' };
+    const messages = { BACKUP_GUEST_UNSUPPORTED:'게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.', BACKUP_AUTH_NOT_READY:'로그인 인증을 준비하는 중입니다. 잠시 후 다시 시도해주세요.', BACKUP_WORKER_URL_MISSING:'Cloudflare 백업 서비스가 아직 설정되지 않았습니다.', BACKUP_CHECKSUM_INVALID:'백업 파일 무결성 검증에 실패했습니다.', INVALID_TOKEN:'백업 인증을 자동 갱신하지 못했습니다. 네트워크 연결을 확인한 뒤 잠시 후 다시 시도해주세요.' };
     return messages[error?.message] || '백업 처리에 실패했습니다. 기존 백업은 안전하게 유지됩니다.';
 }
 async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false } = {}) {
     if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
     let staleBackups = [];
     try {
+        if (forceBackup && !backupAuthReady) {
+            await refreshBackupAuthentication();
+            if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
+        }
         const now = Date.now();
-        const shouldBackup = !skipBackup && !currentUser.isAnonymous && (forceBackup || (lastStableMemoData && (!backupInfo?.createdAt || now - backupInfo.createdAt >= BACKUP_INTERVAL_MS)));
+        const shouldBackup = !skipBackup && backupAuthReady && !currentUser.isAnonymous && (forceBackup || (lastStableMemoData && (!backupInfo?.createdAt || now - backupInfo.createdAt >= BACKUP_INTERVAL_MS)));
         if (shouldBackup) {
             try { staleBackups = await createCloudBackup(reason === 'manual' ? 'manual' : 'auto'); }
             catch (error) { backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error) }); if (forceBackup) throw error; }
@@ -1649,7 +1670,8 @@ function renderBackupSettings() {
     if (!backupStatus || !backupList) return;
     if (currentUser?.isAnonymous) { backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'; backupList.innerHTML=''; return; }
     const auto=backupState.auto||{};
-    backupStatus.textContent=auto.lastStatus==='failure' ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)}` : '아직 자동 백업 이력이 없습니다.';
+    const currentSessionFailure=auto.lastStatus==='failure' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
+    backupStatus.textContent=!backupAuthReady ? '로그인 인증을 준비하는 중입니다. 백업 기능이 곧 활성화됩니다.' : currentSessionFailure ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt) ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)}` : '백업 인증이 준비되었습니다. 자동 백업이 활성화되었습니다.';
     backupList.innerHTML='';
     backupState.backups.forEach(backup=>{ const item=document.createElement('div'); item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'; item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`; backupList.appendChild(item); });
     backupList.querySelectorAll('.backup-download').forEach(button=>button.onclick=()=>window.downloadCloudBackup(button.dataset.id));
