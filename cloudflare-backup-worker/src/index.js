@@ -25,7 +25,7 @@ async function verifyToken(request, env) {
   if (!token) throw new Error("UNAUTHENTICATED");
   const [encodedHeader, encodedClaims, encodedSignature] = token.split(".");
   const header = decode(encodedHeader), claims = decode(encodedClaims);
-  if (!encodedSignature || header.alg !== "RS256" || !header.kid || claims.aud !== env.FIREBASE_PROJECT_ID || claims.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}` || !claims.sub || claims.sub.length > 128 || claims.exp * 1000 < Date.now()) throw new Error("INVALID_TOKEN");
+  if (!encodedSignature || header.alg !== "RS256" || !header.kid || claims.aud !== env.FIREBASE_PROJECT_ID || claims.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}` || !claims.sub || claims.sub.length > 128 || claims.exp * 1000 < Date.now() || !claims.iat || claims.iat * 1000 > Date.now() + 60_000) throw new Error("INVALID_TOKEN");
   const cert = (await getCertificates())[header.kid];
   if (!cert) throw new Error("INVALID_TOKEN");
   const key = await crypto.subtle.importKey("spki", pemToArrayBuffer(cert), { name:"RSASSA-PKCS1-v1_5", hash:"SHA-256" }, false, ["verify"]);
@@ -67,8 +67,11 @@ export default {
    if (request.method === "DELETE") { await env.BACKUPS.delete(key); return json({deleted:true},200,origin); }
    return json({code:"METHOD_NOT_ALLOWED"},405,origin);
   } catch(error) {
-   const code = error.message === "UNAUTHENTICATED" ? "UNAUTHENTICATED" : "INVALID_TOKEN";
-   return json({code},401,origin);
+   if (error.message === "UNAUTHENTICATED" || error.message === "INVALID_TOKEN") {
+     return json({code:error.message},401,origin);
+   }
+   console.error("backup worker error", error);
+   return json({code:"BACKUP_SERVICE_UNAVAILABLE"},500,origin);
   }
  }
 };
