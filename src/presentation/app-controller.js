@@ -1,5 +1,5 @@
 import {
-    signInWithCustomToken, signInAnonymously, onAuthStateChanged,
+    signInWithCustomToken, signInAnonymously, onAuthStateChanged, onIdTokenChanged,
     signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
     GoogleAuthProvider, signInWithPopup, EmailAuthProvider, linkWithCredential,
     linkWithPopup, reauthenticateWithCredential, reauthenticateWithPopup,
@@ -21,6 +21,7 @@ import { createDriveImageService } from "../application/drive/drive-image-servic
 import { createCloudflareBackupRepository } from "../infrastructure/http/cloudflare-backup-repository.js";
 import { createBackupService } from "../application/backups/backup-service.js";
 import { createBackupState, addBackupSuccess, addBackupFailure, validateImportedBackup } from "../domain/backups/backup-policy.js";
+import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-token-provider.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const memoService = createMemoService({ imageRepository });
@@ -31,7 +32,8 @@ const driveImageService = createDriveImageService({
     driveImageRepository,
     driveCodeProvider
 });
-const cloudBackupRepository = createCloudflareBackupRepository();
+const backupTokenProvider = createFirebaseTokenProvider({ getUser: () => currentUser });
+const cloudBackupRepository = createCloudflareBackupRepository({ tokenProvider: backupTokenProvider });
 const backupService = createBackupService({ cloudRepository: cloudBackupRepository });
 const imageAttachmentQueue = createImageAttachmentQueue({
     saveLocalImage: file => saveImageFile(file),
@@ -140,6 +142,19 @@ function startAutomaticBackupTimer() {
         if (dataLoadState === 'ready' && !isDeletingAccount) void saveData({ forceBackup: true, reason: 'auto' });
     }, BACKUP_INTERVAL_MS);
 }
+
+async function refreshBackupAuthentication() {
+    if (!currentUser || currentUser.isAnonymous) return;
+    try {
+        await backupTokenProvider.getToken();
+    } catch (error) {
+        console.warn('백업 인증 자동 갱신 대기 중', error);
+    }
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void refreshBackupAuthentication();
+});
+window.addEventListener('online', () => { void refreshBackupAuthentication(); });
 
 function createDefaultPreferences(lastViewedTab = DEFAULT_CATEGORIES[0]) {
     return { darkMode: false, folderColumns: DEFAULT_COLUMNS, lastViewedTab };
@@ -261,9 +276,16 @@ function renderHomeLanding() {
 }
 
 if (auth) {
+    onIdTokenChanged(auth, user => {
+        if (user && currentUser?.uid === user.uid) {
+            currentUser = user;
+            backupTokenProvider.updateUser(user);
+        }
+    });
     onAuthStateChanged(auth, user => {
         if (user) {
             currentUser = user;
+            backupTokenProvider.updateUser(user);
             updateHeaderUI(user);
             if (user.isAnonymous && !guestBackupNoticeShown) {
                 guestBackupNoticeShown = true;
@@ -273,6 +295,7 @@ if (auth) {
             return;
         }
         currentUser = null;
+        backupTokenProvider.updateUser(null);
         if (backupTimer) clearInterval(backupTimer);
         backupTimer = null;
         if (unsubscribeSnapshot) unsubscribeSnapshot();
@@ -709,7 +732,7 @@ async function createCloudBackup(reason) {
     return result.removed;
 }
 function backupErrorMessage(error) {
-    const messages = { BACKUP_GUEST_UNSUPPORTED:'게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.', BACKUP_WORKER_URL_MISSING:'Cloudflare 백업 서비스가 아직 설정되지 않았습니다.', BACKUP_CHECKSUM_INVALID:'백업 파일 무결성 검증에 실패했습니다.', INVALID_TOKEN:'백업 인증이 만료되었습니다. 다시 로그인한 뒤 시도해주세요.' };
+    const messages = { BACKUP_GUEST_UNSUPPORTED:'게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.', BACKUP_WORKER_URL_MISSING:'Cloudflare 백업 서비스가 아직 설정되지 않았습니다.', BACKUP_CHECKSUM_INVALID:'백업 파일 무결성 검증에 실패했습니다.', INVALID_TOKEN:'백업 인증을 자동 갱신하지 못했습니다. 네트워크 연결을 확인한 뒤 잠시 후 다시 시도해주세요.' };
     return messages[error?.message] || '백업 처리에 실패했습니다. 기존 백업은 안전하게 유지됩니다.';
 }
 async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false } = {}) {
