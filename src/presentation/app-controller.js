@@ -111,6 +111,7 @@ let nextAutomaticBackupAt = null;
 const backupTabId = crypto.randomUUID?.() || `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 let lastStableMemoData = null;
 let saveQueue = Promise.resolve();
+let backupQueue = Promise.resolve();
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
 let categories = [...DEFAULT_CATEGORIES];
@@ -936,7 +937,7 @@ function backupErrorMessage(error) {
     return messages[error?.message] || '백업 처리에 실패했습니다. 기존 백업은 안전하게 유지됩니다.';
 }
 
-async function runBackup({ reason, scheduledFor = null }) {
+async function performBackupAttempt({ reason, scheduledFor = null }) {
     const attemptedAt = Date.now();
     try {
         const ready = await refreshBackupAuthentication({ forceRefresh: true });
@@ -964,6 +965,16 @@ async function runBackup({ reason, scheduledFor = null }) {
         }
         throw error;
     }
+}
+
+function runBackup(options) {
+    // 수동 클릭과 예약 시점이 겹쳐도 한 번에 하나씩 비교하여 중복 R2 업로드를 막습니다.
+    const queued = backupQueue.then(
+        () => performBackupAttempt(options),
+        () => performBackupAttempt(options)
+    );
+    backupQueue = queued.catch(() => {});
+    return queued;
 }
 
 async function persistData({ allowCreate = false } = {}) {
