@@ -222,7 +222,7 @@
                 <section class="settings-section border-t border-gray-200 pt-5" id="backupSettingsSection">
                     <div class="flex flex-col gap-3">
                         <div><h4 class="app-heading font-bold text-gray-800">Cloudflare 백업 및 복원</h4><p class="app-muted text-sm text-gray-500 mt-1">최근 성공 백업 3개를 안전하게 보관합니다. Drive 이미지 식별 정보도 함께 보존됩니다.</p></div>
-                        <div class="flex flex-wrap gap-2"><button onclick="window.requestCloudBackup()" class="primary-command bg-blue-600 text-white px-4 py-2.5 rounded font-semibold"><i class="fa-solid fa-cloud-arrow-up mr-2"></i>지금 백업</button><button onclick="window.openBackupFilePicker()" class="secondary-command border border-gray-300 text-gray-700 px-4 py-2.5 rounded font-semibold"><i class="fa-solid fa-file-import mr-2"></i>백업 파일 불러오기</button><input id="backupFileInput" type="file" accept="application/json,.json" class="hidden"></div>
+                        <div class="flex flex-wrap gap-2"><button id="manualBackupButton" onclick="window.requestCloudBackup()" class="primary-command bg-blue-600 text-white px-4 py-2.5 rounded font-semibold"><i class="fa-solid fa-cloud-arrow-up mr-2"></i>지금 백업</button><button onclick="window.openBackupFilePicker()" class="secondary-command border border-gray-300 text-gray-700 px-4 py-2.5 rounded font-semibold"><i class="fa-solid fa-file-import mr-2"></i>백업 파일 불러오기</button><input id="backupFileInput" type="file" accept="application/json,.json" class="hidden"></div>
                         <p id="backupStatus" class="app-muted text-sm text-gray-500" role="status" aria-live="polite"></p><div id="backupList" class="space-y-2" aria-live="polite"></div>
                     </div>
                 </section>
