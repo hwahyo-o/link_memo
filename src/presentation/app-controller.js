@@ -906,6 +906,8 @@ async function createCloudBackup(reason, scheduledFor = null) {
     descriptor.sourceRevision = memoRevision || 0;
     descriptor.scheduledFor = scheduledFor;
 
+    const previousBackupState = backupState;
+    const previousBackupInfo = backupInfo;
     const result = addBackupSuccess(backupState, descriptor);
     backupState = result.state;
     backupInfo = {
@@ -917,7 +919,20 @@ async function createCloudBackup(reason, scheduledFor = null) {
     };
 
     // R2가 반환한 작은 식별 정보와 최신 3개 목록만 Firebase 원본 문서에 저장합니다.
-    await saveData({ throwOnError: true });
+    try {
+        await saveData({ throwOnError: true });
+    } catch (error) {
+        // 식별 정보 저장이 실패하면 새 R2 객체를 되돌려 고아 백업이 누적되지 않게 합니다.
+        backupState = previousBackupState;
+        backupInfo = previousBackupInfo;
+        try {
+            await backupService.remove({ user: currentUser, backupId: descriptor.id });
+        } catch (rollbackError) {
+            console.warn('실패한 Cloudflare 백업 되돌리기 실패', rollbackError);
+        }
+        renderBackupSettings();
+        throw error;
+    }
 
     // Firebase 식별 정보 저장이 완료된 후에만 네 번째로 오래된 R2 백업을 삭제합니다.
     for (const stale of result.removed) {
