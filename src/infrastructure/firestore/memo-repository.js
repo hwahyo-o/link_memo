@@ -67,6 +67,7 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
                     uiPreferences: data.uiPreferences,
                     driveConnection: data.driveConnection,
                     backupInfo: data.backupInfo || null,
+                    backupState: data.backupState || null,
                     revision,
                     updatedAt: Date.now()
                 });
