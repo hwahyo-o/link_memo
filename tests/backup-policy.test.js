@@ -14,6 +14,11 @@ describe("Cloudflare backup retention", () => {
     expect(removed).toEqual(["backup_test_1"]);
   });
 
+  it("records the successful automatic slot", () => {
+    const result = addBackupSuccess(createBackupState(), { id: "backup_slot_1", createdAt: 10, scheduledFor: 1234, reason: "auto", size: 1 });
+    expect(result.state.auto.lastScheduledFor).toBe(1234);
+  });
+
   it("does not allow another account's backup file to be restored", () => {
     expect(validateImportedBackup({ schemaVersion: 1, userId: "other", payload: {} }, "current").ok).toBe(false);
   });
