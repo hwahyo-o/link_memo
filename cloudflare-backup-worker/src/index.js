@@ -49,6 +49,7 @@ async function verifyToken(request, env) {
 }
 function objectKey(uid, backupId) { return `users/${uid}/${backupId}.json`; }
 function validId(id) { return /^backup_[a-z0-9_-]{8,100}$/i.test(id || ""); }
+function validDigest(value) { return /^[a-f0-9]{64}$/i.test(value || ""); }
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("origin") || "";
@@ -58,11 +59,29 @@ export default {
       const uid = await verifyToken(request, env), url = new URL(request.url);
       if (request.method === "POST" && url.pathname === "/v1/backups") {
         const body = await request.json();
-        if (!validId(body.backupId) || body.userId !== uid || body.schemaVersion !== 1) return json({ code: "INVALID_BACKUP" }, 400, origin, env);
+        const createdAt = Number(body.createdAt);
+        const validReason = body.reason === "manual" || body.reason === "auto";
+        if (
+          !validId(body.backupId)
+          || body.userId !== uid
+          || body.schemaVersion !== 1
+          || !Number.isFinite(createdAt)
+          || createdAt <= 0
+          || !validReason
+          || !validDigest(body.checksum)
+          || !validDigest(body.payloadChecksum)
+        ) return json({ code: "INVALID_BACKUP" }, 400, origin, env);
         const encoded = JSON.stringify(body);
         if (encoded.length > 5_000_000) return json({ code: "BACKUP_TOO_LARGE" }, 413, origin, env);
         await env.BACKUPS.put(objectKey(uid, body.backupId), encoded, { httpMetadata: { contentType: "application/json" } });
-        return json({ backupId: body.backupId, size: encoded.length }, 201, origin, env);
+        return json({
+          backupId: body.backupId,
+          createdAt,
+          reason: body.reason,
+          checksum: body.checksum,
+          payloadChecksum: body.payloadChecksum,
+          size: encoded.length
+        }, 201, origin, env);
       }
       const match = url.pathname.match(/^\/v1\/backups\/([^/]+)$/);
       if (!match || !validId(match[1])) return json({ code: "NOT_FOUND" }, 404, origin, env);
