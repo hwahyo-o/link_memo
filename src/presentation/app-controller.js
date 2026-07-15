@@ -756,6 +756,10 @@ async function saveData({ allowCreate = false, reason = 'change', forceBackup = 
     if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
     let staleBackups = [];
     try {
+        if (forceBackup && !backupAuthReady) {
+            await refreshBackupAuthentication();
+            if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
+        }
         const now = Date.now();
         const shouldBackup = !skipBackup && backupAuthReady && !currentUser.isAnonymous && (forceBackup || (lastStableMemoData && (!backupInfo?.createdAt || now - backupInfo.createdAt >= BACKUP_INTERVAL_MS)));
         if (shouldBackup) {
