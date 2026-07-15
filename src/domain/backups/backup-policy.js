@@ -20,6 +20,21 @@ export function addBackupSuccess(state, backup) {
   return { state: next, removed };
 }
 
+export function addBackupUnchanged(state, { reason, createdAt, scheduledFor = null }) {
+  const next = createBackupState(state);
+  next.events = [{ type: "unchanged", reason, createdAt }, ...next.events].slice(0, 30);
+  if (reason === "auto") {
+    next.auto = {
+      lastAttemptAt: createdAt,
+      lastSuccessAt: next.auto.lastSuccessAt || null,
+      lastStatus: "unchanged",
+      lastError: null,
+      lastScheduledFor: scheduledFor || next.auto.lastScheduledFor || null
+    };
+  }
+  return next;
+}
+
 export function addBackupFailure(state, { reason, createdAt, message, scheduledFor = null }) {
   const next = createBackupState(state);
   next.events = [{ type: "failure", reason, createdAt, message }, ...next.events].slice(0,30);
