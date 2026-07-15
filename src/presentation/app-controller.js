@@ -98,6 +98,7 @@ let memoRevision = null;
 let backupInfo = null;
 let backupState = createBackupState();
 let guestBackupNoticeShown = false;
+let backupTimer = null;
 let lastStableMemoData = null;
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -130,6 +131,14 @@ const repairingDriveImageIds = new Set();
 
 function createId(prefix) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function startAutomaticBackupTimer() {
+    if (backupTimer) clearInterval(backupTimer);
+    if (!currentUser || currentUser.isAnonymous) return;
+    backupTimer = setInterval(() => {
+        if (dataLoadState === 'ready' && !isDeletingAccount) void saveData({ forceBackup: true, reason: 'auto' });
+    }, BACKUP_INTERVAL_MS);
 }
 
 function createDefaultPreferences(lastViewedTab = DEFAULT_CATEGORIES[0]) {
@@ -264,6 +273,8 @@ if (auth) {
             return;
         }
         currentUser = null;
+        if (backupTimer) clearInterval(backupTimer);
+        backupTimer = null;
         if (unsubscribeSnapshot) unsubscribeSnapshot();
         unsubscribeSnapshot = null;
         categories = [...DEFAULT_CATEGORIES];
@@ -672,7 +683,7 @@ function loadDataFromFirestore() {
         if (isFirstLoad) {
             isFirstLoad = false;
             showHome();
-            if (dataLoadState === 'ready') void requestInitialDrivePermission();
+            if (dataLoadState === 'ready') { void requestInitialDrivePermission(); startAutomaticBackupTimer(); }
         } else if (!mainApp.classList.contains('hidden')) {
             initApp();
         } else {
@@ -692,6 +703,7 @@ async function createCloudBackup(reason) {
     const primary = await memoRepository.createBackup(currentUser.uid, snapshotData, { revision: memoRevision || 0, reason });
     if (!primary) throw new Error('FIREBASE_BACKUP_FAILED');
     const descriptor = await backupService.create({ user: currentUser, backupId: primary.id, createdAt: primary.createdAt, reason, payload: snapshotData });
+    descriptor.sourceRevision = memoRevision || 0;
     const result = addBackupSuccess(backupState, descriptor);
     backupState = result.state; backupInfo = primary;
     return result.removed;
