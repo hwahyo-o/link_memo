@@ -1,21 +1,14 @@
 import { db, appId, doc, setDoc, onSnapshot, deleteDoc, runTransaction, deleteField, FieldPath } from "../../services/firebase-client.js";
 
-const BACKUP_COLLECTION = "backups";
-
 function sameValue(left, right) {
     return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
-// Infrastructure: Firestore 문서·백업·낙관적 동시성·카테고리 단위 저장을 이 모듈 안에 가둡니다.
+// Infrastructure: Firestore 문서·낙관적 동시성·카테고리 단위 저장을 이 모듈 안에 가둡니다.
 export function createFirestoreMemoRepository({ database = db, applicationId = appId } = {}) {
     const getReference = userId => {
         if (!database || !userId) return null;
         return doc(database, "artifacts", applicationId, "users", userId, "memoData", "main");
-    };
-
-    const backupReference = (userId, backupId) => {
-        const reference = getReference(userId);
-        return reference ? doc(reference, BACKUP_COLLECTION, backupId) : null;
     };
 
     return {
@@ -27,7 +20,7 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
 
         async save(userId, data, { expectedRevision = null, allowCreate = false } = {}) {
             const reference = getReference(userId);
-            if (!reference) return { revision: expectedRevision ?? 0 };
+            if (!reference) return { revision: expectedRevision ?? 0, skipped: true };
             return runTransaction(database, async transaction => {
                 const current = await transaction.get(reference);
                 if (!current.exists() && !allowCreate) {
@@ -35,6 +28,7 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
                     error.code = "MEMO_DOCUMENT_MISSING";
                     throw error;
                 }
+
                 const remote = current.data() || {};
                 const remoteRevision = Number(remote.revision || 0);
                 if (expectedRevision !== null && remoteRevision !== expectedRevision) {
@@ -43,18 +37,31 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
                     throw error;
                 }
 
-                const revision = remoteRevision + 1;
                 if (!current.exists()) {
+                    const revision = remoteRevision + 1;
                     transaction.set(reference, { ...data, revision, updatedAt: Date.now() });
-                    return { revision };
+                    return { revision, skipped: false };
                 }
 
-                // Do not replace the whole linkData map. Only changed categories are updated.
                 const remoteLinkData = remote.linkData && typeof remote.linkData === "object" ? remote.linkData : {};
                 const nextLinkData = data.linkData && typeof data.linkData === "object" ? data.linkData : {};
                 const categoryNames = new Set([...Object.keys(remoteLinkData), ...Object.keys(nextLinkData)]);
-                for (const category of categoryNames) {
-                    if (sameValue(remoteLinkData[category], nextLinkData[category])) continue;
+                const changedCategories = [...categoryNames].filter(
+                    category => !sameValue(remoteLinkData[category], nextLinkData[category])
+                );
+                const metadataChanged = [
+                    ["categories", data.categories],
+                    ["uiPreferences", data.uiPreferences],
+                    ["driveConnection", data.driveConnection],
+                    ["backupInfo", data.backupInfo || null],
+                    ["backupState", data.backupState || null]
+                ].some(([key, value]) => !sameValue(remote[key], value));
+
+                if (!changedCategories.length && !metadataChanged) {
+                    return { revision: remoteRevision, skipped: true };
+                }
+
+                for (const category of changedCategories) {
                     transaction.update(
                         reference,
                         new FieldPath("linkData", category),
@@ -62,6 +69,7 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
                     );
                 }
 
+                const revision = remoteRevision + 1;
                 transaction.update(reference, {
                     categories: data.categories,
                     uiPreferences: data.uiPreferences,
@@ -71,23 +79,8 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
                     revision,
                     updatedAt: Date.now()
                 });
-                return { revision };
+                return { revision, skipped: false };
             });
-        },
-
-        async createBackup(userId, data, { revision = 0, reason = "interval" } = {}) {
-            const id = `backup_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-            const reference = backupReference(userId, id);
-            if (!reference) return null;
-            const createdAt = Date.now();
-            await setDoc(reference, {
-                version: 1,
-                sourceRevision: revision,
-                reason,
-                createdAt,
-                data
-            });
-            return { id, createdAt };
         },
 
         savePreferences(userId, uiPreferences) {
