@@ -22,6 +22,7 @@ import { createCloudflareBackupRepository } from "../infrastructure/http/cloudfl
 import { createBackupService } from "../application/backups/backup-service.js";
 import { createBackupState, addBackupSuccess, addBackupFailure, validateImportedBackup } from "../domain/backups/backup-policy.js";
 import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-token-provider.js";
+import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../domain/backups/backup-schedule-policy.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const memoService = createMemoService({ imageRepository });
@@ -46,7 +47,8 @@ const imageAttachmentQueue = createImageAttachmentQueue({
 const DEFAULT_CATEGORIES = ['업무', '학습', '개인', '도구', '기타'];
 const DEFAULT_COLUMNS = 3;
 const VALID_COLUMNS = [3, 4, 5, 6];
-const BACKUP_INTERVAL_MS = 15 * 60 * 1000;
+const BACKUP_LEASE_KEY = 'link-memo:auto-backup-lease';
+const BACKUP_LEASE_MS = 10 * 60 * 1000;
 
 const { customAlert, customConfirm, customPrompt } = createModalController();
 window.customAlert = customAlert;
@@ -89,6 +91,7 @@ const driveSyncStatus = document.getElementById('driveSyncStatus');
 const backupStatus = document.getElementById('backupStatus');
 const backupList = document.getElementById('backupList');
 const backupFileInput = document.getElementById('backupFileInput');
+const manualBackupButton = document.getElementById('manualBackupButton');
 const linkEditModal = document.getElementById('linkEditModal');
 const linkEditText = document.getElementById('linkEditText');
 const linkEditCategory = document.getElementById('linkEditCategory');
@@ -103,6 +106,8 @@ let guestBackupNoticeShown = false;
 let backupTimer = null;
 let backupAuthReady = false;
 let backupSessionStartedAt = null;
+let nextAutomaticBackupAt = null;
+const backupTabId = crypto.randomUUID?.() || `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 let lastStableMemoData = null;
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -137,21 +142,49 @@ function createId(prefix) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function startAutomaticBackupTimer() {
-    if (backupTimer) clearInterval(backupTimer);
-    if (!currentUser || currentUser.isAnonymous || !backupAuthReady) return;
-    backupTimer = setInterval(() => {
-        if (dataLoadState === 'ready' && !isDeletingAccount) void saveData({ forceBackup: true, reason: 'auto' });
-    }, BACKUP_INTERVAL_MS);
+function acquireAutomaticBackupLease(scheduledFor) {
+    try {
+        const now = Date.now();
+        const current = JSON.parse(localStorage.getItem(BACKUP_LEASE_KEY) || 'null');
+        if (current?.scheduledFor === scheduledFor && current.expiresAt > now && current.owner !== backupTabId) return false;
+        localStorage.setItem(BACKUP_LEASE_KEY, JSON.stringify({ owner: backupTabId, scheduledFor, expiresAt: now + BACKUP_LEASE_MS }));
+        return JSON.parse(localStorage.getItem(BACKUP_LEASE_KEY) || 'null')?.owner === backupTabId;
+    } catch { return true; }
 }
-
-async function refreshBackupAuthentication() {
+function releaseAutomaticBackupLease(scheduledFor) {
+    try {
+        const current = JSON.parse(localStorage.getItem(BACKUP_LEASE_KEY) || 'null');
+        if (current?.owner === backupTabId && current?.scheduledFor === scheduledFor) localStorage.removeItem(BACKUP_LEASE_KEY);
+    } catch {}
+}
+function startAutomaticBackupTimer() {
+    if (backupTimer) clearTimeout(backupTimer);
+    backupTimer = null;
+    if (!currentUser || currentUser.isAnonymous || !backupAuthReady) return;
+    nextAutomaticBackupAt = getNextKstBackupSlot(Date.now());
+    const delay = Math.max(0, nextAutomaticBackupAt - Date.now());
+    backupTimer = setTimeout(() => { void runScheduledBackup(nextAutomaticBackupAt); }, delay);
+    renderBackupSettings();
+}
+async function runScheduledBackup(scheduledFor) {
+    if (!currentUser || currentUser.isAnonymous || isDeletingAccount || dataLoadState !== 'ready') return startAutomaticBackupTimer();
+    if (backupSessionStartedAt && scheduledFor < backupSessionStartedAt) return startAutomaticBackupTimer();
+    if (Number(backupState.auto?.lastScheduledFor || 0) >= scheduledFor) return startAutomaticBackupTimer();
+    if (!acquireAutomaticBackupLease(scheduledFor)) return startAutomaticBackupTimer();
+    try {
+        await saveData({ forceBackup: true, reason: 'auto', scheduledFor });
+    } finally {
+        releaseAutomaticBackupLease(scheduledFor);
+        startAutomaticBackupTimer();
+    }
+}
+async function refreshBackupAuthentication({ forceRefresh = false } = {}) {
     if (!currentUser || currentUser.isAnonymous) {
         backupAuthReady = false;
         return false;
     }
     try {
-        await backupTokenProvider.getToken();
+        await backupTokenProvider.getToken({ forceRefresh });
         backupAuthReady = true;
         startAutomaticBackupTimer();
         renderBackupSettings();
@@ -163,10 +196,20 @@ async function refreshBackupAuthentication() {
         return false;
     }
 }
+async function resumeAutomaticBackup() {
+    const ready = await refreshBackupAuthentication();
+    if (!ready || !backupSessionStartedAt) return;
+    const latestSlot = getLatestKstBackupSlot(Date.now());
+    if (latestSlot >= backupSessionStartedAt && Number(backupState.auto?.lastScheduledFor || 0) < latestSlot) {
+        await runScheduledBackup(latestSlot);
+    } else {
+        startAutomaticBackupTimer();
+    }
+}
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void refreshBackupAuthentication();
+    if (document.visibilityState === 'visible') void resumeAutomaticBackup();
 });
-window.addEventListener('online', () => { void refreshBackupAuthentication(); });
+window.addEventListener('online', () => { void resumeAutomaticBackup(); });
 
 function createDefaultPreferences(lastViewedTab = DEFAULT_CATEGORIES[0]) {
     return { darkMode: false, folderColumns: DEFAULT_COLUMNS, lastViewedTab };
@@ -737,7 +780,7 @@ function loadDataFromFirestore() {
     });
 }
 
-async function createCloudBackup(reason) {
+async function createCloudBackup(reason, scheduledFor = null) {
     if (!currentUser || currentUser.isAnonymous) throw new Error('BACKUP_GUEST_UNSUPPORTED');
     if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
     if (!backupService.configured()) throw new Error('BACKUP_WORKER_URL_MISSING');
@@ -746,6 +789,7 @@ async function createCloudBackup(reason) {
     if (!primary) throw new Error('FIREBASE_BACKUP_FAILED');
     const descriptor = await backupService.create({ user: currentUser, backupId: primary.id, createdAt: primary.createdAt, reason, payload: snapshotData });
     descriptor.sourceRevision = memoRevision || 0;
+    descriptor.scheduledFor = scheduledFor;
     const result = addBackupSuccess(backupState, descriptor);
     backupState = result.state; backupInfo = primary;
     return result.removed;
@@ -754,19 +798,19 @@ function backupErrorMessage(error) {
     const messages = { BACKUP_GUEST_UNSUPPORTED:'게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.', BACKUP_AUTH_NOT_READY:'로그인 인증을 준비하는 중입니다. 잠시 후 다시 시도해주세요.', BACKUP_WORKER_URL_MISSING:'Cloudflare 백업 서비스가 아직 설정되지 않았습니다.', BACKUP_CHECKSUM_INVALID:'백업 파일 무결성 검증에 실패했습니다.', INVALID_TOKEN:'백업 인증을 자동 갱신하지 못했습니다. 네트워크 연결을 확인한 뒤 잠시 후 다시 시도해주세요.' };
     return messages[error?.message] || '백업 처리에 실패했습니다. 기존 백업은 안전하게 유지됩니다.';
 }
-async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false } = {}) {
+async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false, scheduledFor = null } = {}) {
     if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
     let staleBackups = [];
     try {
-        if (forceBackup && !backupAuthReady) {
-            await refreshBackupAuthentication();
+        if (forceBackup) {
+            await refreshBackupAuthentication({ forceRefresh: true });
             if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
         }
         const now = Date.now();
-        const shouldBackup = !skipBackup && backupAuthReady && !currentUser.isAnonymous && (forceBackup || (lastStableMemoData && (!backupInfo?.createdAt || now - backupInfo.createdAt >= BACKUP_INTERVAL_MS)));
+        const shouldBackup = !skipBackup && backupAuthReady && !currentUser.isAnonymous && forceBackup;
         if (shouldBackup) {
-            try { staleBackups = await createCloudBackup(reason === 'manual' ? 'manual' : 'auto'); }
-            catch (error) { backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error) }); if (forceBackup) throw error; }
+            try { staleBackups = await createCloudBackup(reason === 'manual' ? 'manual' : 'auto', scheduledFor); }
+            catch (error) { backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error), scheduledFor }); if (forceBackup) throw error; }
         }
         const payload = buildMemoPayload();
         const result = await memoRepository.save(currentUser.uid, payload, { expectedRevision:memoRevision, allowCreate });
@@ -774,7 +818,7 @@ async function saveData({ allowCreate = false, reason = 'change', forceBackup = 
         for (const stale of staleBackups) try { await backupService.remove({ user:currentUser, backupId:stale.id }); } catch (error) { console.warn('오래된 Cloudflare 백업 정리 실패', error); }
         return true;
     } catch (error) {
-        console.error('클라우드 저장 실패:', error); if (forceBackup) customAlert(backupErrorMessage(error));
+        console.error('클라우드 저장 실패:', error); if (forceBackup && reason === 'manual') customAlert(backupErrorMessage(error));
         if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') loadDataFromFirestore();
         return false;
     }
@@ -1667,13 +1711,13 @@ window.removeLinkImage = (subIndex, linkIndex) => {
     });
 };
 
-function formatBackupTime(value) { return value ? new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)) : '-'; }
+function formatBackupTime(value) { return value ? new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Seoul'}).format(new Date(value)) : '-'; }
 function renderBackupSettings() {
     if (!backupStatus || !backupList) return;
     if (currentUser?.isAnonymous) { backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'; backupList.innerHTML=''; return; }
     const auto=backupState.auto||{};
     const currentSessionFailure=auto.lastStatus==='failure' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
-    backupStatus.textContent=!backupAuthReady ? '로그인 인증을 준비하는 중입니다. 백업 기능이 곧 활성화됩니다.' : currentSessionFailure ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt) ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)}` : '백업 인증이 준비되었습니다. 자동 백업이 활성화되었습니다.';
+    backupStatus.textContent=!backupAuthReady ? '로그인 인증을 준비하는 중입니다. 백업 기능이 곧 활성화됩니다.' : currentSessionFailure ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt) ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)}` : `백업 인증이 준비되었습니다. 다음 자동 백업: ${formatBackupTime(nextAutomaticBackupAt)}`;
     backupList.innerHTML='';
     backupState.backups.forEach(backup=>{ const item=document.createElement('div'); item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'; item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`; backupList.appendChild(item); });
     backupList.querySelectorAll('.backup-download').forEach(button=>button.onclick=()=>window.downloadCloudBackup(button.dataset.id));
@@ -1683,7 +1727,26 @@ async function applyBackupPayload(payload) {
     categories=Array.isArray(payload.categories)?payload.categories:[...DEFAULT_CATEGORIES]; linkData=payload.linkData&&typeof payload.linkData==='object'?payload.linkData:createDefaultLinkData(categories); uiPreferences=payload.uiPreferences||createDefaultPreferences(categories[0]); driveConnection=normalizeDriveConnection(payload.driveConnection);
     const state=backupState; backupInfo=payload.backupInfo||backupInfo; backupState=state; migrateDataFormat(); await saveData({skipBackup:true}); applyPreferences(); showHome(); renderBackupSettings();
 }
-window.requestCloudBackup=async()=>{ if(currentUser?.isAnonymous) return customAlert('게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'); const ok=await saveData({forceBackup:true,reason:'manual'}); if(ok){renderBackupSettings();customAlert('Cloudflare 백업이 완료되었습니다. 최신 3개만 안전하게 보존됩니다.');} };
+window.requestCloudBackup=async()=>{
+    if(currentUser?.isAnonymous) return customAlert('게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.');
+    if (manualBackupButton?.disabled) return;
+    const original = manualBackupButton?.innerHTML;
+    if (manualBackupButton) {
+        manualBackupButton.disabled = true;
+        manualBackupButton.classList.add('opacity-60','cursor-not-allowed');
+        manualBackupButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>인증 갱신·백업 중';
+    }
+    try {
+        const ok=await saveData({forceBackup:true,reason:'manual'});
+        if(ok){renderBackupSettings();customAlert('현재 시점의 Cloudflare 백업이 완료되었습니다. 최신 3개만 안전하게 보존됩니다.');}
+    } finally {
+        if (manualBackupButton) {
+            manualBackupButton.disabled = false;
+            manualBackupButton.classList.remove('opacity-60','cursor-not-allowed');
+            manualBackupButton.innerHTML = original;
+        }
+    }
+};
 window.downloadCloudBackup=async backupId=>{ try { const envelope=await backupService.load({user:currentUser,backupId}); const blob=new Blob([JSON.stringify(envelope,null,2)],{type:'application/json'}); const link=document.createElement('a'); link.href=URL.createObjectURL(blob); link.download=`link-memo-backup-${backupId}.json`; link.click(); URL.revokeObjectURL(link.href); } catch(error){customAlert(backupErrorMessage(error));} };
 window.restoreCloudBackup=async backupId=>{ try { const envelope=await backupService.load({user:currentUser,backupId}); const validation=validateImportedBackup(envelope,currentUser.uid); if(!validation.ok)return customAlert(validation.error); customConfirm(`${formatBackupTime(envelope.createdAt)} 백업으로 현재 데이터를 복원하시겠습니까?`,async()=>{await applyBackupPayload(validation.value);customAlert('백업 데이터를 복원했습니다.');}); }catch(error){customAlert(backupErrorMessage(error));} };
 window.openBackupFilePicker=()=>backupFileInput?.click();
