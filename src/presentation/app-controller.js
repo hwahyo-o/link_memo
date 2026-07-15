@@ -20,7 +20,7 @@ import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-w
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
 import { createCloudflareBackupRepository } from "../infrastructure/http/cloudflare-backup-repository.js";
 import { createBackupService } from "../application/backups/backup-service.js";
-import { createBackupState, addBackupSuccess, addBackupFailure, validateImportedBackup } from "../domain/backups/backup-policy.js";
+import { createBackupState, addBackupSuccess, addBackupUnchanged, addBackupFailure, validateImportedBackup } from "../domain/backups/backup-policy.js";
 import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-token-provider.js";
 import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../domain/backups/backup-schedule-policy.js";
 
@@ -48,6 +48,7 @@ const DEFAULT_CATEGORIES = ['업무', '학습', '개인', '도구', '기타'];
 const DEFAULT_COLUMNS = 3;
 const VALID_COLUMNS = [3, 4, 5, 6];
 const BACKUP_LEASE_KEY = 'link-memo:auto-backup-lease';
+const BACKUP_AUTO_ATTEMPT_KEY = 'link-memo:auto-backup-attempt';
 const BACKUP_LEASE_MS = 10 * 60 * 1000;
 
 const { customAlert, customConfirm, customPrompt } = createModalController();
@@ -109,6 +110,7 @@ let backupSessionStartedAt = null;
 let nextAutomaticBackupAt = null;
 const backupTabId = crypto.randomUUID?.() || `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 let lastStableMemoData = null;
+let saveQueue = Promise.resolve();
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
 let categories = [...DEFAULT_CATEGORIES];
@@ -158,6 +160,50 @@ function releaseAutomaticBackupLease(scheduledFor, keepUntilExpiry = false) {
         if (!keepUntilExpiry && current?.owner === backupTabId && current?.scheduledFor === scheduledFor) localStorage.removeItem(BACKUP_LEASE_KEY);
     } catch {}
 }
+function readAutomaticBackupAttempt() {
+    try {
+        const value = JSON.parse(localStorage.getItem(BACKUP_AUTO_ATTEMPT_KEY) || 'null');
+        return value?.userId === currentUser?.uid ? value : null;
+    } catch {
+        return null;
+    }
+}
+function getLastAutomaticComparisonSlot() {
+    const localAttempt = readAutomaticBackupAttempt();
+    return Math.max(
+        Number(localAttempt?.scheduledFor || 0),
+        Number(backupState.auto?.lastScheduledFor || 0),
+        Number(backupState.auto?.lastAttemptScheduledFor || 0)
+    );
+}
+function recordAutomaticBackupAttempt(scheduledFor, { status = 'running', attemptedAt = Date.now(), error = null } = {}) {
+    if (!currentUser?.uid || !scheduledFor) return;
+    try {
+        localStorage.setItem(BACKUP_AUTO_ATTEMPT_KEY, JSON.stringify({
+            userId: currentUser.uid,
+            scheduledFor,
+            attemptedAt,
+            status,
+            error
+        }));
+    } catch {}
+}
+function mergeLocalAutomaticBackupAttempt() {
+    const localAttempt = readAutomaticBackupAttempt();
+    if (!localAttempt || Number(localAttempt.attemptedAt || 0) <= Number(backupState.auto?.lastAttemptAt || 0)) return;
+    const lastStatus = localAttempt.status === 'created' ? 'success' : localAttempt.status;
+    backupState = {
+        ...backupState,
+        auto: {
+            ...(backupState.auto || {}),
+            lastAttemptAt: localAttempt.attemptedAt,
+            lastStatus,
+            lastError: localAttempt.error || null,
+            lastScheduledFor: localAttempt.scheduledFor
+        }
+    };
+}
+
 function startAutomaticBackupTimer() {
     if (backupTimer) clearTimeout(backupTimer);
     backupTimer = null;
@@ -170,13 +216,15 @@ function startAutomaticBackupTimer() {
 async function runScheduledBackup(scheduledFor) {
     if (!currentUser || currentUser.isAnonymous || isDeletingAccount || dataLoadState !== 'ready') return startAutomaticBackupTimer();
     if (backupSessionStartedAt && scheduledFor < backupSessionStartedAt) return startAutomaticBackupTimer();
-    if (Number(backupState.auto?.lastScheduledFor || 0) >= scheduledFor) return startAutomaticBackupTimer();
+    if (getLastAutomaticComparisonSlot() >= scheduledFor) return startAutomaticBackupTimer();
     if (!acquireAutomaticBackupLease(scheduledFor)) return startAutomaticBackupTimer();
-    let succeeded = false;
+
+    recordAutomaticBackupAttempt(scheduledFor);
     try {
-        succeeded = await saveData({ forceBackup: true, reason: 'auto', scheduledFor });
+        await runBackup({ reason: 'auto', scheduledFor });
     } finally {
-        releaseAutomaticBackupLease(scheduledFor, succeeded);
+        // 비교가 실패하거나 새 내용이 없어도 이 KST 시점에는 다시 비교하지 않습니다.
+        releaseAutomaticBackupLease(scheduledFor, true);
         startAutomaticBackupTimer();
     }
 }
@@ -202,7 +250,7 @@ async function resumeAutomaticBackup() {
     const ready = await refreshBackupAuthentication();
     if (!ready || !backupSessionStartedAt) return;
     const latestSlot = getLatestKstBackupSlot(Date.now());
-    if (latestSlot >= backupSessionStartedAt && Number(backupState.auto?.lastScheduledFor || 0) < latestSlot) {
+    if (latestSlot >= backupSessionStartedAt && getLastAutomaticComparisonSlot() < latestSlot) {
         await runScheduledBackup(latestSlot);
     } else {
         startAutomaticBackupTimer();
@@ -248,6 +296,11 @@ function applyPreferences() {
 
 function buildMemoPayload() {
     return { categories, linkData, uiPreferences, driveConnection, backupInfo, backupState };
+}
+
+function buildBackupPayload() {
+    // 백업 성공/실패 기록은 비교 대상에서 제외해 실제 사용자 데이터만 비교합니다.
+    return { categories, linkData, uiPreferences, driveConnection };
 }
 
 function cloneMemoPayload(value) {
@@ -769,6 +822,7 @@ function loadDataFromFirestore() {
             memoRevision = Number(data.revision || 0);
             backupInfo = data.backupInfo || null;
             backupState = createBackupState(data.backupState);
+            mergeLocalAutomaticBackupAttempt();
             dataLoadState = 'ready';
             const modified = migrateDataFormat();
             lastStableMemoData = cloneMemoPayload(buildMemoPayload());
@@ -812,17 +866,62 @@ async function createCloudBackup(reason, scheduledFor = null) {
     if (!currentUser || currentUser.isAnonymous) throw new Error('BACKUP_GUEST_UNSUPPORTED');
     if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
     if (!backupService.configured()) throw new Error('BACKUP_WORKER_URL_MISSING');
-    const snapshotData = cloneMemoPayload(buildMemoPayload());
-    const primary = await memoRepository.createBackup(currentUser.uid, snapshotData, { revision: memoRevision || 0, reason });
-    if (!primary) throw new Error('FIREBASE_BACKUP_FAILED');
-    const descriptor = await backupService.create({ user: currentUser, backupId: primary.id, createdAt: primary.createdAt, reason, payload: snapshotData });
+
+    const snapshotData = cloneMemoPayload(buildBackupPayload());
+    const latestBackup = backupState.backups[0] || null;
+    const comparison = await backupService.compare({ user: currentUser, latestBackup, payload: snapshotData });
+    const attemptedAt = Date.now();
+
+    if (!comparison.changed) {
+        backupState = addBackupUnchanged(backupState, { reason, createdAt: attemptedAt, scheduledFor });
+        renderBackupSettings();
+        return { status: 'unchanged', attemptedAt, payloadChecksum: comparison.payloadChecksum };
+    }
+
+    // 현재 원본이 이미 Firestore와 같으면 저장소 계층에서 쓰기를 자동 생략합니다.
+    await saveData({ throwOnError: true });
+
+    const backupId = createId('backup');
+    const descriptor = await backupService.create({
+        user: currentUser,
+        backupId,
+        createdAt: attemptedAt,
+        reason,
+        payload: snapshotData,
+        payloadChecksum: comparison.payloadChecksum
+    });
     descriptor.sourceRevision = memoRevision || 0;
     descriptor.scheduledFor = scheduledFor;
+
     const result = addBackupSuccess(backupState, descriptor);
-    backupState = result.state; backupInfo = primary;
-    return result.removed;
+    backupState = result.state;
+    backupInfo = {
+        id: descriptor.id,
+        createdAt: descriptor.createdAt,
+        checksum: descriptor.checksum,
+        payloadChecksum: descriptor.payloadChecksum,
+        sourceRevision: descriptor.sourceRevision
+    };
+
+    // R2가 반환한 작은 식별 정보와 최신 3개 목록만 Firebase 원본 문서에 저장합니다.
+    await saveData({ throwOnError: true });
+
+    // Firebase 식별 정보 저장이 완료된 후에만 네 번째로 오래된 R2 백업을 삭제합니다.
+    for (const stale of result.removed) {
+        try {
+            await backupService.remove({ user: currentUser, backupId: stale.id });
+        } catch (error) {
+            console.warn('오래된 Cloudflare 백업 정리 실패', error);
+        }
+    }
+    renderBackupSettings();
+    return { status: 'created', attemptedAt, descriptor };
 }
+
 function backupErrorMessage(error) {
+    if (error?.code === 'resource-exhausted') {
+        return 'Firebase 무료 쓰기 할당량이 소진되어 저장과 백업이 일시 중지되었습니다. 할당량 초기화 후 다시 시도해주세요.';
+    }
     const messages = {
         BACKUP_GUEST_UNSUPPORTED: '게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.',
         BACKUP_AUTH_NOT_READY: '로그인 인증을 준비하는 중입니다. 잠시 후 다시 시도해주세요.',
@@ -831,36 +930,71 @@ function backupErrorMessage(error) {
         TOKEN_PROJECT_MISMATCH: 'Cloudflare Worker의 Firebase 프로젝트 ID가 현재 앱과 일치하지 않습니다.',
         BACKUP_SERVICE_UNAVAILABLE: 'Cloudflare 백업 서비스의 인증 검증 처리에 실패했습니다. Worker 최신 코드가 배포되었는지 확인해주세요.',
         BACKUP_CHECKSUM_INVALID: '백업 파일 무결성 검증에 실패했습니다.',
+        BACKUP_NOT_FOUND: '가장 최근 백업 파일을 찾을 수 없어 데이터 비교를 완료하지 못했습니다.',
         INVALID_TOKEN: '백업 인증을 자동 갱신하지 못했습니다. 네트워크 연결을 확인한 뒤 잠시 후 다시 시도해주세요.'
     };
     return messages[error?.message] || '백업 처리에 실패했습니다. 기존 백업은 안전하게 유지됩니다.';
 }
-async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false, scheduledFor = null } = {}) {
-    if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
-    let staleBackups = [];
-    let backupSucceeded = true;
+
+async function runBackup({ reason, scheduledFor = null }) {
+    const attemptedAt = Date.now();
     try {
-        if (forceBackup) {
-            await refreshBackupAuthentication({ forceRefresh: true });
-            if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
+        const ready = await refreshBackupAuthentication({ forceRefresh: true });
+        if (!ready) throw new Error('BACKUP_AUTH_NOT_READY');
+        const result = await createCloudBackup(reason, scheduledFor);
+        if (reason === 'auto') {
+            recordAutomaticBackupAttempt(scheduledFor, {
+                status: result.status,
+                attemptedAt: result.attemptedAt
+            });
         }
-        const now = Date.now();
-        const shouldBackup = !skipBackup && backupAuthReady && !currentUser.isAnonymous && forceBackup;
-        if (shouldBackup) {
-            try { staleBackups = await createCloudBackup(reason === 'manual' ? 'manual' : 'auto', scheduledFor); }
-            catch (error) { backupSucceeded = false; backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error), scheduledFor }); if (reason === 'manual') throw error; }
-        }
-        const payload = buildMemoPayload();
-        const result = await memoRepository.save(currentUser.uid, payload, { expectedRevision:memoRevision, allowCreate });
-        memoRevision = result.revision; lastStableMemoData = cloneMemoPayload(payload); dataLoadState = 'ready';
-        for (const stale of staleBackups) try { await backupService.remove({ user:currentUser, backupId:stale.id }); } catch (error) { console.warn('오래된 Cloudflare 백업 정리 실패', error); }
-        return !forceBackup || backupSucceeded;
+        return result;
     } catch (error) {
-        console.error('클라우드 저장 실패:', error); if (forceBackup && reason === 'manual') customAlert(backupErrorMessage(error));
-        if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') loadDataFromFirestore();
-        return false;
+        const message = backupErrorMessage(error);
+        backupState = addBackupFailure(backupState, { reason, createdAt: attemptedAt, message, scheduledFor });
+        if (reason === 'auto') {
+            recordAutomaticBackupAttempt(scheduledFor, {
+                status: 'failure',
+                attemptedAt,
+                error: message
+            });
+            renderBackupSettings();
+            console.error('자동 백업 비교 또는 저장 실패:', error);
+            return { status: 'failed', attemptedAt, error };
+        }
+        throw error;
     }
 }
+
+async function persistData({ allowCreate = false } = {}) {
+    if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
+    const payload = buildMemoPayload();
+    const result = await memoRepository.save(currentUser.uid, payload, {
+        expectedRevision: memoRevision,
+        allowCreate
+    });
+    memoRevision = result.revision;
+    lastStableMemoData = cloneMemoPayload(payload);
+    dataLoadState = 'ready';
+    return true;
+}
+
+function saveData({ allowCreate = false, throwOnError = false } = {}) {
+    const operation = async () => {
+        try {
+            return await persistData({ allowCreate });
+        } catch (error) {
+            console.error('클라우드 저장 실패:', error);
+            if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') loadDataFromFirestore();
+            if (throwOnError) throw error;
+            return false;
+        }
+    };
+    const queued = saveQueue.then(operation, operation);
+    saveQueue = queued.catch(() => {});
+    return queued;
+}
+
 function initApp() {
     renderTabs();
     renderSubCategorySelect();
@@ -1755,7 +1889,16 @@ function renderBackupSettings() {
     if (currentUser?.isAnonymous) { backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'; backupList.innerHTML=''; return; }
     const auto=backupState.auto||{};
     const currentSessionFailure=auto.lastStatus==='failure' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
-    backupStatus.textContent=!backupAuthReady ? '로그인 인증을 준비하는 중입니다. 백업 기능이 곧 활성화됩니다.' : currentSessionFailure ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}` : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt) ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)} · 다음 백업: ${formatBackupTime(nextAutomaticBackupAt)}` : `백업 인증이 준비되었습니다. 다음 자동 백업: ${formatBackupTime(nextAutomaticBackupAt)}`;
+    const currentSessionUnchanged=auto.lastStatus==='unchanged' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
+    backupStatus.textContent=!backupAuthReady
+        ? '로그인 인증을 준비하는 중입니다. 백업 기능이 곧 활성화됩니다.'
+        : currentSessionFailure
+            ? `자동 백업 실패: ${auto.lastError||'원인을 확인해주세요.'}`
+            : currentSessionUnchanged
+                ? `최근 자동 백업 확인: 새롭게 백업 할 내용이 없습니다. · 다음 백업: ${formatBackupTime(nextAutomaticBackupAt)}`
+                : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt)
+                    ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)} · 다음 백업: ${formatBackupTime(nextAutomaticBackupAt)}`
+                    : `백업 인증이 준비되었습니다. 다음 자동 백업: ${formatBackupTime(nextAutomaticBackupAt)}`;
     backupList.innerHTML='';
     backupState.backups.forEach(backup=>{ const item=document.createElement('div'); item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'; item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`; backupList.appendChild(item); });
     backupList.querySelectorAll('.backup-download').forEach(button=>button.onclick=()=>window.downloadCloudBackup(button.dataset.id));
@@ -1775,8 +1918,16 @@ window.requestCloudBackup=async()=>{
         manualBackupButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>인증 갱신·백업 중';
     }
     try {
-        const ok=await saveData({forceBackup:true,reason:'manual'});
-        if(ok){renderBackupSettings();customAlert('현재 시점의 Cloudflare 백업이 완료되었습니다. 최신 3개만 안전하게 보존됩니다.');}
+        const result = await runBackup({ reason: 'manual' });
+        if (result.status === 'created') {
+            renderBackupSettings();
+            customAlert('현재 시점의 Cloudflare 백업이 완료되었습니다. 최신 3개만 안전하게 보존됩니다.');
+        } else if (result.status === 'unchanged') {
+            renderBackupSettings();
+            customAlert('새롭게 백업 할 내용이 없습니다.');
+        }
+    } catch (error) {
+        customAlert(backupErrorMessage(error));
     } finally {
         if (manualBackupButton) {
             manualBackupButton.disabled = false;
