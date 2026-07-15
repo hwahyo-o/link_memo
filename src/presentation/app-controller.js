@@ -189,7 +189,7 @@ async function refreshBackupAuthentication({ forceRefresh = false } = {}) {
         backupAuthReady = true;
         startAutomaticBackupTimer();
         renderBackupSettings();
-        return !forceBackup || backupSucceeded;
+        return true;
     } catch (error) {
         backupAuthReady = false;
         renderBackupSettings();
@@ -818,7 +818,7 @@ async function saveData({ allowCreate = false, reason = 'change', forceBackup = 
         const result = await memoRepository.save(currentUser.uid, payload, { expectedRevision:memoRevision, allowCreate });
         memoRevision = result.revision; lastStableMemoData = cloneMemoPayload(payload); dataLoadState = 'ready';
         for (const stale of staleBackups) try { await backupService.remove({ user:currentUser, backupId:stale.id }); } catch (error) { console.warn('오래된 Cloudflare 백업 정리 실패', error); }
-        return true;
+        return !forceBackup || backupSucceeded;
     } catch (error) {
         console.error('클라우드 저장 실패:', error); if (forceBackup && reason === 'manual') customAlert(backupErrorMessage(error));
         if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') loadDataFromFirestore();
