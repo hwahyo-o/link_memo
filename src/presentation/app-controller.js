@@ -20,7 +20,7 @@ import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-w
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
 import { createCloudflareBackupRepository } from "../infrastructure/http/cloudflare-backup-repository.js";
 import { createBackupService } from "../application/backups/backup-service.js";
-import { createBackupState, addBackupSuccess, addBackupUnchanged, addBackupFailure, validateImportedBackup } from "../domain/backups/backup-policy.js";
+import { createBackupState, addBackupSuccess, validateImportedBackup } from "../domain/backups/backup-policy.js";
 import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-token-provider.js";
 import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../domain/backups/backup-schedule-policy.js";
 
@@ -103,6 +103,8 @@ let dataLoadState = 'loading';
 let memoRevision = null;
 let backupInfo = null;
 let backupState = createBackupState();
+// 변경 없음/실패 상태는 Firestore 원본 문서에 섞지 않고 현재 브라우저 세션에서만 표시합니다.
+let automaticBackupRuntime = null;
 let guestBackupNoticeShown = false;
 let backupTimer = null;
 let backupAuthReady = false;
@@ -173,12 +175,25 @@ function getLastAutomaticComparisonSlot() {
     const localAttempt = readAutomaticBackupAttempt();
     return Math.max(
         Number(localAttempt?.scheduledFor || 0),
+        Number(automaticBackupRuntime?.lastScheduledFor || 0),
         Number(backupState.auto?.lastScheduledFor || 0),
         Number(backupState.auto?.lastAttemptScheduledFor || 0)
     );
 }
+function getAutomaticBackupStatus() {
+    const persisted = backupState.auto || {};
+    if (Number(automaticBackupRuntime?.lastAttemptAt || 0) <= Number(persisted.lastAttemptAt || 0)) return persisted;
+    return { ...persisted, ...automaticBackupRuntime };
+}
 function recordAutomaticBackupAttempt(scheduledFor, { status = 'running', attemptedAt = Date.now(), error = null } = {}) {
     if (!currentUser?.uid || !scheduledFor) return;
+    const lastStatus = status === 'created' ? 'success' : status;
+    automaticBackupRuntime = {
+        lastAttemptAt: attemptedAt,
+        lastStatus,
+        lastError: error,
+        lastScheduledFor: scheduledFor
+    };
     try {
         localStorage.setItem(BACKUP_AUTO_ATTEMPT_KEY, JSON.stringify({
             userId: currentUser.uid,
@@ -191,17 +206,12 @@ function recordAutomaticBackupAttempt(scheduledFor, { status = 'running', attemp
 }
 function mergeLocalAutomaticBackupAttempt() {
     const localAttempt = readAutomaticBackupAttempt();
-    if (!localAttempt || Number(localAttempt.attemptedAt || 0) <= Number(backupState.auto?.lastAttemptAt || 0)) return;
-    const lastStatus = localAttempt.status === 'created' ? 'success' : localAttempt.status;
-    backupState = {
-        ...backupState,
-        auto: {
-            ...(backupState.auto || {}),
-            lastAttemptAt: localAttempt.attemptedAt,
-            lastStatus,
-            lastError: localAttempt.error || null,
-            lastScheduledFor: localAttempt.scheduledFor
-        }
+    if (!localAttempt) return;
+    automaticBackupRuntime = {
+        lastAttemptAt: localAttempt.attemptedAt,
+        lastStatus: localAttempt.status === 'created' ? 'success' : localAttempt.status,
+        lastError: localAttempt.error || null,
+        lastScheduledFor: localAttempt.scheduledFor
     };
 }
 
@@ -425,6 +435,7 @@ if (auth) {
             backupTokenProvider.updateUser(user);
             backupAuthReady = false;
             backupSessionStartedAt = Date.now();
+            automaticBackupRuntime = null;
             updateHeaderUI(user);
             void refreshBackupAuthentication();
             if (user.isAnonymous && !guestBackupNoticeShown) {
@@ -452,6 +463,7 @@ if (auth) {
         memoRevision = null;
         backupInfo = null;
         backupState = createBackupState();
+        automaticBackupRuntime = null;
         guestBackupNoticeShown = false;
         lastStableMemoData = null;
         dataSafetyAlertShown = false;
@@ -874,7 +886,7 @@ async function createCloudBackup(reason, scheduledFor = null) {
     const attemptedAt = Date.now();
 
     if (!comparison.changed) {
-        backupState = addBackupUnchanged(backupState, { reason, createdAt: attemptedAt, scheduledFor });
+        // 변경 없음은 Firebase 문서에 기록하지 않습니다. 자동 상태는 호출 계층에서 로컬에만 기록합니다.
         renderBackupSettings();
         return { status: 'unchanged', attemptedAt, payloadChecksum: comparison.payloadChecksum };
     }
@@ -948,11 +960,11 @@ async function performBackupAttempt({ reason, scheduledFor = null }) {
                 status: result.status,
                 attemptedAt: result.attemptedAt
             });
+            renderBackupSettings();
         }
         return result;
     } catch (error) {
         const message = backupErrorMessage(error);
-        backupState = addBackupFailure(backupState, { reason, createdAt: attemptedAt, message, scheduledFor });
         if (reason === 'auto') {
             recordAutomaticBackupAttempt(scheduledFor, {
                 status: 'failure',
@@ -1898,7 +1910,7 @@ function formatBackupTime(value) { return value ? new Intl.DateTimeFormat('ko-KR
 function renderBackupSettings() {
     if (!backupStatus || !backupList) return;
     if (currentUser?.isAnonymous) { backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'; backupList.innerHTML=''; return; }
-    const auto=backupState.auto||{};
+    const auto=getAutomaticBackupStatus();
     const currentSessionFailure=auto.lastStatus==='failure' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
     const currentSessionUnchanged=auto.lastStatus==='unchanged' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
     backupStatus.textContent=!backupAuthReady
