@@ -10,6 +10,13 @@ function base64UrlBytes(value) {
   return Uint8Array.from(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")), character => character.charCodeAt(0));
 }
 function decodeJson(value) { return JSON.parse(new TextDecoder().decode(base64UrlBytes(value))); }
+export function hasValidFirebaseAuthTime(claims, now = Date.now()) {
+  const authTime = Number(claims?.auth_time);
+  return Number.isFinite(authTime) && authTime > 0 && authTime * 1000 <= now + 60_000;
+}
+export function isAnonymousFirebaseToken(claims) {
+  return claims?.firebase?.sign_in_provider === "anonymous";
+}
 async function getJwks({ forceRefresh = false } = {}) {
   if (!forceRefresh && jwksCache.keys.length && Date.now() < jwksCache.expires) return jwksCache.keys;
   const response = await fetch(JWKS_URL);
@@ -38,13 +45,14 @@ async function verifyToken(request, env) {
   const now = Date.now();
   if (header.alg !== "RS256" || !header.kid || !claims.sub || claims.sub.length > 128) throw new Error("INVALID_TOKEN");
   if (claims.aud !== env.FIREBASE_PROJECT_ID || claims.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`) throw new Error("TOKEN_PROJECT_MISMATCH");
-  if (!claims.exp || claims.exp * 1000 < now || !claims.iat || claims.iat * 1000 > now + 60_000) throw new Error("INVALID_TOKEN");
+  if (!claims.exp || claims.exp * 1000 < now || !claims.iat || claims.iat * 1000 > now + 60_000 || !hasValidFirebaseAuthTime(claims, now)) throw new Error("INVALID_TOKEN");
   let jwk = (await getJwks()).find(key => key.kid === header.kid);
   if (!jwk) jwk = (await getJwks({ forceRefresh: true })).find(key => key.kid === header.kid);
   if (!jwk) throw new Error("INVALID_TOKEN");
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, new TextEncoder().encode(`${encodedHeader}.${encodedClaims}`));
   if (!valid) throw new Error("INVALID_TOKEN");
+  if (isAnonymousFirebaseToken(claims)) throw new Error("GUEST_UNSUPPORTED");
   return claims.sub;
 }
 function objectKey(uid, backupId) { return `users/${uid}/${backupId}.json`; }
@@ -120,6 +128,7 @@ export default {
       return json({ code: "METHOD_NOT_ALLOWED" }, 405, origin, env);
     } catch (error) {
       if (["UNAUTHENTICATED", "INVALID_TOKEN", "TOKEN_PROJECT_MISMATCH"].includes(error.message)) return json({ code: error.message }, 401, origin, env);
+      if (error.message === "GUEST_UNSUPPORTED") return json({ code: error.message }, 403, origin, env);
       console.error("backup worker error", error);
       return json({ code: error.message === "WORKER_CONFIG_MISSING" ? error.message : "BACKUP_SERVICE_UNAVAILABLE" }, 500, origin, env);
     }
