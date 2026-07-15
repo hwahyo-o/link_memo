@@ -151,10 +151,10 @@ function acquireAutomaticBackupLease(scheduledFor) {
         return JSON.parse(localStorage.getItem(BACKUP_LEASE_KEY) || 'null')?.owner === backupTabId;
     } catch { return true; }
 }
-function releaseAutomaticBackupLease(scheduledFor) {
+function releaseAutomaticBackupLease(scheduledFor, keepUntilExpiry = false) {
     try {
         const current = JSON.parse(localStorage.getItem(BACKUP_LEASE_KEY) || 'null');
-        if (current?.owner === backupTabId && current?.scheduledFor === scheduledFor) localStorage.removeItem(BACKUP_LEASE_KEY);
+        if (!keepUntilExpiry && current?.owner === backupTabId && current?.scheduledFor === scheduledFor) localStorage.removeItem(BACKUP_LEASE_KEY);
     } catch {}
 }
 function startAutomaticBackupTimer() {
@@ -171,10 +171,11 @@ async function runScheduledBackup(scheduledFor) {
     if (backupSessionStartedAt && scheduledFor < backupSessionStartedAt) return startAutomaticBackupTimer();
     if (Number(backupState.auto?.lastScheduledFor || 0) >= scheduledFor) return startAutomaticBackupTimer();
     if (!acquireAutomaticBackupLease(scheduledFor)) return startAutomaticBackupTimer();
+    let succeeded = false;
     try {
-        await saveData({ forceBackup: true, reason: 'auto', scheduledFor });
+        succeeded = await saveData({ forceBackup: true, reason: 'auto', scheduledFor });
     } finally {
-        releaseAutomaticBackupLease(scheduledFor);
+        releaseAutomaticBackupLease(scheduledFor, succeeded);
         startAutomaticBackupTimer();
     }
 }
@@ -188,7 +189,7 @@ async function refreshBackupAuthentication({ forceRefresh = false } = {}) {
         backupAuthReady = true;
         startAutomaticBackupTimer();
         renderBackupSettings();
-        return true;
+        return !forceBackup || backupSucceeded;
     } catch (error) {
         backupAuthReady = false;
         renderBackupSettings();
@@ -801,6 +802,7 @@ function backupErrorMessage(error) {
 async function saveData({ allowCreate = false, reason = 'change', forceBackup = false, skipBackup = false, scheduledFor = null } = {}) {
     if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
     let staleBackups = [];
+    let backupSucceeded = true;
     try {
         if (forceBackup) {
             await refreshBackupAuthentication({ forceRefresh: true });
@@ -810,7 +812,7 @@ async function saveData({ allowCreate = false, reason = 'change', forceBackup = 
         const shouldBackup = !skipBackup && backupAuthReady && !currentUser.isAnonymous && forceBackup;
         if (shouldBackup) {
             try { staleBackups = await createCloudBackup(reason === 'manual' ? 'manual' : 'auto', scheduledFor); }
-            catch (error) { backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error), scheduledFor }); if (reason === 'manual') throw error; }
+            catch (error) { backupSucceeded = false; backupState = addBackupFailure(backupState, { reason:reason === 'manual' ? 'manual' : 'auto', createdAt:now, message:backupErrorMessage(error), scheduledFor }); if (reason === 'manual') throw error; }
         }
         const payload = buildMemoPayload();
         const result = await memoRepository.save(currentUser.uid, payload, { expectedRevision:memoRevision, allowCreate });
