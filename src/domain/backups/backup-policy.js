@@ -20,28 +20,6 @@ export function addBackupSuccess(state, backup) {
   return { state: next, removed };
 }
 
-export function addBackupUnchanged(state, { reason, createdAt, scheduledFor = null }) {
-  const next = createBackupState(state);
-  next.events = [{ type: "unchanged", reason, createdAt }, ...next.events].slice(0, 30);
-  if (reason === "auto") {
-    next.auto = {
-      lastAttemptAt: createdAt,
-      lastSuccessAt: next.auto.lastSuccessAt || null,
-      lastStatus: "unchanged",
-      lastError: null,
-      lastScheduledFor: scheduledFor || next.auto.lastScheduledFor || null
-    };
-  }
-  return next;
-}
-
-export function addBackupFailure(state, { reason, createdAt, message, scheduledFor = null }) {
-  const next = createBackupState(state);
-  next.events = [{ type: "failure", reason, createdAt, message }, ...next.events].slice(0,30);
-  if (reason === "auto") next.auto = { lastAttemptAt: createdAt, lastSuccessAt: next.auto.lastSuccessAt || null, lastStatus: "failure", lastError: message, lastScheduledFor: next.auto.lastScheduledFor || null, lastAttemptScheduledFor: scheduledFor };
-  return next;
-}
-
 export function validateImportedBackup(value, userId) {
   if (!value || value.schemaVersion !== BACKUP_SCHEMA_VERSION || !value.payload) return { ok:false, error:"지원하지 않는 백업 파일입니다." };
   if (value.userId !== userId) return { ok:false, error:"현재 로그인한 계정의 백업 파일만 복원할 수 있습니다." };
