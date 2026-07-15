@@ -68,6 +68,7 @@ jobs:
           VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
           VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
           VITE_DRIVE_WORKER_URL: ${{ secrets.VITE_DRIVE_WORKER_URL }}
+          VITE_BACKUP_WORKER_URL: ${{ secrets.VITE_BACKUP_WORKER_URL }}
         run: npm run build
 
       - name: Setup Pages
