@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addBackupSuccess, createBackupState, validateImportedBackup } from "../src/domain/backups/backup-policy.js";
+import { addBackupSuccess, addBackupUnchanged, createBackupState, validateImportedBackup } from "../src/domain/backups/backup-policy.js";
 
 describe("Cloudflare backup retention", () => {
   it("keeps only the three newest successful backups", () => {
@@ -17,6 +17,17 @@ describe("Cloudflare backup retention", () => {
   it("records the successful automatic slot", () => {
     const result = addBackupSuccess(createBackupState(), { id: "backup_slot_1", createdAt: 10, scheduledFor: 1234, reason: "auto", size: 1 });
     expect(result.state.auto.lastScheduledFor).toBe(1234);
+  });
+
+  it("records an unchanged automatic comparison without creating a backup descriptor", () => {
+    const state = addBackupUnchanged(createBackupState(), {
+      reason: "auto",
+      createdAt: 20,
+      scheduledFor: 5678
+    });
+    expect(state.backups).toEqual([]);
+    expect(state.auto.lastStatus).toBe("unchanged");
+    expect(state.auto.lastScheduledFor).toBe(5678);
   });
 
   it("does not allow another account's backup file to be restored", () => {
