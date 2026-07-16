@@ -1033,6 +1033,21 @@ function saveData({ allowCreate = false, throwOnError = false } = {}) {
     return queued;
 }
 
+function saveDataInBackground(options = {}) {
+    // UI를 네트워크 왕복에 묶지 않습니다. saveData는 실패 시 안전하게 원격 상태를 다시 동기화합니다.
+    void saveData(options);
+}
+
+function removeLinkImagesInBackground(links) {
+    const tasks = links.flatMap(link => getLinkImages(link).map(async image => {
+        await memoService.deleteImage(image.imageId);
+        await driveImageService.removeDriveImage(image.driveImage);
+    }));
+    void Promise.allSettled(tasks).then(results => {
+        if (results.some(result => result.status === 'rejected')) console.warn('삭제된 링크의 이미지 정리 중 일부가 실패했습니다.');
+    });
+}
+
 function initApp() {
     renderTabs();
     renderSubCategorySelect();
@@ -1217,7 +1232,6 @@ window.addMainCategory = () => {
         linkData[name] = [{ id: createId('sub'), title: '기본 분류', isOpen: true, links: [] }];
         activeTab = name;
         uiPreferences.lastViewedTab = name;
-        await saveData();
         showMain(name);
     });
 };
@@ -1233,7 +1247,6 @@ window.editMainCategory = oldCategory => {
         delete linkData[oldCategory];
         if (activeTab === oldCategory) activeTab = name;
         if (uiPreferences.lastViewedTab === oldCategory) uiPreferences.lastViewedTab = name;
-        await saveData();
         showMain(activeTab);
     });
 };
@@ -1241,13 +1254,14 @@ window.editMainCategory = oldCategory => {
 window.deleteMainCategory = category => {
     if (categories.length <= 1) return customAlert('최소 한 개의 탭은 유지해야 합니다.');
     customConfirm(`'${category}' 탭과 포함된 모든 데이터를 삭제하시겠습니까?`, async () => {
-        (linkData[category] || []).flatMap(subcategory => subcategory.links || []).forEach(link => deleteImage(link.imageId));
+        const removedLinks = (linkData[category] || []).flatMap(subcategory => subcategory.links || []);
         categories = categories.filter(item => item !== category);
         delete linkData[category];
         if (activeTab === category) activeTab = categories[0];
         if (uiPreferences.lastViewedTab === category) uiPreferences.lastViewedTab = activeTab;
-        await saveData();
         showMain(activeTab);
+        saveDataInBackground();
+        removeLinkImagesInBackground(removedLinks);
     });
 };
 
@@ -1269,8 +1283,8 @@ window.addSubcategory = () => {
         const name = value.trim();
         if (!name) return;
         linkData[activeTab].push({ id: createId('sub'), title: name, isOpen: true, links: [] });
-        await saveData();
         initApp();
+        saveDataInBackground();
     });
 };
 
@@ -1279,25 +1293,25 @@ window.editSubcategory = (subIndex, oldName) => {
         const name = value.trim();
         if (!name || name === oldName) return;
         linkData[activeTab][subIndex].title = name;
-        await saveData();
         initApp();
+        saveDataInBackground();
     });
 };
 
 window.deleteSubcategory = (subIndex, name) => {
     customConfirm(`'${name}' 소분류와 포함된 링크를 삭제하시겠습니까?`, async () => {
         const [removed] = linkData[activeTab].splice(subIndex, 1);
-        (removed?.links || []).forEach(link => deleteImage(link.imageId));
         if (!linkData[activeTab].length) linkData[activeTab].push({ id: createId('sub'), title: '기본 분류', isOpen: true, links: [] });
-        await saveData();
         initApp();
+        saveDataInBackground();
+        removeLinkImagesInBackground(removed?.links || []);
     });
 };
 
-window.toggleSubcategory = async subIndex => {
+window.toggleSubcategory = subIndex => {
     linkData[activeTab][subIndex].isOpen = !linkData[activeTab][subIndex].isOpen;
-    await saveData();
     renderLinks();
+    saveDataInBackground();
 };
 
 function renderLinks() {
@@ -1337,6 +1351,18 @@ function createSubcategoryPanel(subcategory, subIndex) {
 
     const header = document.createElement('div');
     header.className = `subcat-header flex justify-between items-center bg-gray-50 hover:bg-gray-100 px-4 py-3 cursor-pointer select-none border-b ${subcategory.isOpen ? 'border-gray-200' : 'border-transparent is-closed'}`;
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(subcategory.isOpen));
+    header.onclick = event => {
+        if (!event.target.closest('button')) window.toggleSubcategory(subIndex);
+    };
+    header.onkeydown = event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            window.toggleSubcategory(subIndex);
+        }
+    };
     header.draggable = true;
     header.addEventListener('dragstart', event => {
         if (event.target.closest('button')) return event.preventDefault();
@@ -1354,7 +1380,6 @@ function createSubcategoryPanel(subcategory, subIndex) {
 
     const title = document.createElement('div');
     title.className = 'flex items-center flex-1 min-w-0';
-    title.onclick = () => window.toggleSubcategory(subIndex);
     title.innerHTML = `<i class="fa-solid fa-grip-vertical text-gray-300 mr-2 text-sm"></i><i class="fa-solid fa-chevron-down text-gray-400 mr-3 text-sm"></i><h3 class="font-bold text-gray-700 truncate">${escapeHtml(subcategory.title)} <span class="text-xs text-gray-400 ml-1 font-normal">(${subcategory.links.length})</span></h3>`;
 
     const actions = document.createElement('div');
@@ -1784,9 +1809,9 @@ window.saveLink = async () => {
     };
     if (!files.length) delete link.imageUpload;
     linkData[activeTab][subIndex].links.push(link);
-    await saveData();
     renderLinks();
     renderHomeLanding();
+    saveDataInBackground();
     textInput.value = '';
     urlInput.value = '';
     commentInput.value = '';
@@ -1796,15 +1821,12 @@ window.saveLink = async () => {
     if (files.length) void processSelectedImagesInBackground(link.id, files);
 };
 window.deleteLink = (subIndex, linkIndex) => {
-    customConfirm('이 항목을 삭제하시겠습니까?', async () => {
+    customConfirm('이 항목을 삭제하시겠습니까?', () => {
         const [removed] = linkData[activeTab][subIndex].links.splice(linkIndex, 1);
-        for (const image of getLinkImages(removed)) {
-            await memoService.deleteImage(image.imageId);
-            await driveImageService.removeDriveImage(image.driveImage);
-        }
-        await saveData();
         renderLinks();
         renderHomeLanding();
+        saveDataInBackground();
+        removeLinkImagesInBackground(removed ? [removed] : []);
     });
 };
 
@@ -1857,9 +1879,9 @@ window.saveLinkEdit = async () => {
     if (!result.ok) return customAlert(result.error);
     const moved = result.moved;
     window.closeLinkEditModal();
-    await saveData();
     renderLinks();
     renderHomeLanding();
+    saveDataInBackground();
     customAlert(moved ? '링크를 수정하고 선택한 카테고리로 이동했습니다.' : '링크 텍스트를 수정했습니다.');
 };
 window.editLinkComment = (subIndex, linkIndex) => {
@@ -1868,8 +1890,8 @@ window.editLinkComment = (subIndex, linkIndex) => {
         if (!value.trim() && !link.url && !hasLinkImages(link)) return customAlert('링크, 이미지 또는 코멘트 중 하나는 유지해야 합니다.');
         link.comment = value;
         link.updatedAt = Date.now();
-        await saveData();
         renderLinks();
+        saveDataInBackground();
     });
 };
 
@@ -1910,14 +1932,12 @@ window.removeLinkImage = (subIndex, linkIndex) => {
     if (!hasLinkImages(link)) return;
     if (!link.url && !link.comment?.trim()) return customAlert('링크나 코멘트가 없는 이미지 전용 항목에서는 이미지를 제거할 수 없습니다.');
     customConfirm('첨부 이미지를 제거하시겠습니까?', async () => {
-        for (const image of getLinkImages(link)) {
-            await memoService.deleteImage(image.imageId);
-            await driveImageService.removeDriveImage(image.driveImage);
-        }
+        const removedImages = getLinkImages(link);
         link.images = [];
         link.updatedAt = Date.now();
-        await saveData();
         renderLinks();
+        saveDataInBackground();
+        removeLinkImagesInBackground([{ images: removedImages }]);
     });
 };
 
