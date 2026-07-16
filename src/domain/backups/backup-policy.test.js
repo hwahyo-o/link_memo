@@ -18,14 +18,14 @@ describe("backup policy", () => {
   it("keeps the latest three backups for each type", () => {
     let state = createBackupState();
     for (let createdAt = 1; createdAt <= 4; createdAt += 1) {
-      state = addBackupSuccess(state, { id: `auto-${createdAt}`, reason: "auto", createdAt }).state;
-      state = addBackupSuccess(state, { id: `manual-${createdAt}`, reason: "manual", createdAt }).state;
+      state = addBackupSuccess(state, { id: `auto-${createdAt}`, reason: "auto", createdAt: createdAt * 2 - 1 }).state;
+      state = addBackupSuccess(state, { id: `manual-${createdAt}`, reason: "manual", createdAt: createdAt * 2 }).state;
     }
 
     expect(state.autoBackups.map(backup => backup.id)).toEqual(["auto-4", "auto-3", "auto-2"]);
     expect(state.manualBackups.map(backup => backup.id)).toEqual(["manual-4", "manual-3", "manual-2"]);
     expect(getBackupList(state).map(backup => backup.id)).toEqual([
-      "auto-4", "manual-4", "auto-3", "manual-3", "auto-2", "manual-2"
+      "manual-4", "auto-4", "manual-3", "auto-3", "manual-2", "auto-2"
     ]);
   });
 
