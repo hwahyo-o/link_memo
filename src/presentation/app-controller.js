@@ -9,6 +9,7 @@ import { imageRepository } from "../infrastructure/browser/indexeddb-image-repos
 import { createIndexedDbMemoRepository } from "../infrastructure/browser/indexeddb-memo-repository.js";
 import { createMemoService } from "../application/memos/memo-service.js";
 import { createMemoSyncService } from "../application/memos/memo-sync-service.js";
+import { createIdleSyncScheduler } from "../application/memos/idle-sync-scheduler.js";
 import { createImageAttachmentQueue } from "../application/memos/image-attachment-queue.js";
 import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-repository.js";
 import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
@@ -58,8 +59,9 @@ const VALID_COLUMNS = [3, 4, 5, 6];
 const BACKUP_LEASE_KEY = 'link-memo:auto-backup-lease';
 const BACKUP_AUTO_ATTEMPT_KEY = 'link-memo:auto-backup-attempt';
 const BACKUP_LEASE_MS = 10 * 60 * 1000;
-const MEMO_SYNC_DELAY_MS = 350;
+const MEMO_SYNC_IDLE_MS = 3 * 60 * 1000;
 
+const memoSyncScheduler = createIdleSyncScheduler({ delay: MEMO_SYNC_IDLE_MS });
 const { customAlert, customConfirm, customPrompt } = createModalController();
 window.customAlert = customAlert;
 window.customConfirm = customConfirm;
@@ -124,7 +126,6 @@ let saveQueue = Promise.resolve();
 let localWriteQueue = Promise.resolve();
 let pendingLocalSaveCount = 0;
 let localMemoDirty = false;
-let memoSyncTimer = null;
 let backupQueue = Promise.resolve();
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -280,9 +281,15 @@ async function resumeAutomaticBackup() {
     }
 }
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void resumeAutomaticBackup();
+    if (document.visibilityState === 'visible') {
+        void resumeAutomaticBackup();
+        void resumePendingMemoSync();
+    }
 });
-window.addEventListener('online', () => { void resumeAutomaticBackup(); });
+window.addEventListener('online', () => {
+    void resumeAutomaticBackup();
+    void resumePendingMemoSync();
+});
 
 function createDefaultPreferences(lastViewedTab = DEFAULT_CATEGORIES[0]) {
     return { darkMode: false, folderColumns: DEFAULT_COLUMNS, lastViewedTab };
@@ -470,7 +477,7 @@ if (auth) {
                 if (restored) {
                     isFirstLoad = false;
                     showHome();
-                    if (localMemoDirty) void saveData({ localWritten: true });
+                    if (localMemoDirty) void resumePendingMemoSync();
                 }
                 loadDataFromFirestore();
             })();
@@ -481,8 +488,7 @@ if (auth) {
         backupTokenProvider.updateUser(null);
         backupAuthReady = false;
         backupSessionStartedAt = null;
-        if (memoSyncTimer) clearTimeout(memoSyncTimer);
-        memoSyncTimer = null;
+        memoSyncScheduler.cancel();
         if (backupTimer) clearInterval(backupTimer);
         backupTimer = null;
         if (unsubscribeSnapshot) unsubscribeSnapshot();
@@ -1076,15 +1082,22 @@ async function writeLocalMemo() {
 }
 
 function scheduleMemoSync(options = {}) {
-    if (memoSyncTimer) clearTimeout(memoSyncTimer);
-    memoSyncTimer = setTimeout(() => {
-        memoSyncTimer = null;
-        void saveData({ ...options, localWritten: true });
-    }, MEMO_SYNC_DELAY_MS);
+    memoSyncScheduler.schedule(() => saveData({ ...options, localWritten: true }));
+}
+
+async function resumePendingMemoSync() {
+    if (!currentUser || isDeletingAccount) return;
+    const local = await localMemoRepository.load(currentUser.uid);
+    localMemoDirty = Boolean(local?.dirty);
+    if (!localMemoDirty) return;
+
+    // 복귀 시 대기 스냅샷만 즉시 전송하고, 이후 변경은 3분 유휴 규칙으로 한 번 더 확인합니다.
+    void flushMemoSync();
+    scheduleMemoSync();
 }
 
 async function persistData({ allowCreate = false } = {}) {
-    if (!currentUser || isDeletingAccount || (dataLoadState !== "ready" && !allowCreate)) return false;
+    if (!currentUser || isDeletingAccount || (dataLoadState !== "ready" && !allowCreate && !localMemoDirty)) return false;
     const result = await memoSyncService.flush(currentUser.uid, { allowCreate });
     memoRevision = result.revision ?? memoRevision;
     localMemoDirty = Boolean((await localMemoRepository.load(currentUser.uid))?.dirty);
@@ -1096,10 +1109,7 @@ function saveData({ allowCreate = false, throwOnError = false, localWritten = fa
     // 일반 변경은 로컬에 먼저 확정하고 짧게 묶어 원격 호출 수를 줄입니다.
     if (!localWritten && !throwOnError) return saveDataInBackground({ allowCreate });
 
-    if (throwOnError && memoSyncTimer) {
-        clearTimeout(memoSyncTimer);
-        memoSyncTimer = null;
-    }
+    if (throwOnError) memoSyncScheduler.cancel();
     pendingLocalSaveCount += 1;
     const operation = async () => {
         try {
@@ -1125,10 +1135,7 @@ async function saveDataInBackground(options = {}) {
 }
 
 async function flushMemoSync({ allowCreate = false, throwOnError = false } = {}) {
-    if (memoSyncTimer) {
-        clearTimeout(memoSyncTimer);
-        memoSyncTimer = null;
-    }
+    memoSyncScheduler.cancel();
     return saveData({ allowCreate, throwOnError, localWritten: true });
 }
 
