@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { addBackupSuccess, createBackupState, validateImportedBackup } from "../src/domain/backups/backup-policy.js";
+import { addBackupSuccess, createBackupState, getBackupList, validateImportedBackup } from "../src/domain/backups/backup-policy.js";
 
 describe("Cloudflare backup retention", () => {
-  it("keeps only the three newest successful backups", () => {
+  it("keeps only the three newest successful manual backups", () => {
     let state = createBackupState();
     const removed = [];
     for (const createdAt of [1, 2, 3, 4]) {
@@ -10,7 +10,7 @@ describe("Cloudflare backup retention", () => {
       state = result.state;
       removed.push(...result.removed.map(item => item.id));
     }
-    expect(state.backups.map(item => item.id)).toEqual(["backup_test_4", "backup_test_3", "backup_test_2"]);
+    expect(getBackupList(state).map(item => item.id)).toEqual(["backup_test_4", "backup_test_3", "backup_test_2"]);
     expect(removed).toEqual(["backup_test_1"]);
   });
 

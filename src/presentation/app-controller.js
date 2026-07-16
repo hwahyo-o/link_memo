@@ -23,7 +23,7 @@ import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-w
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
 import { createCloudflareBackupRepository } from "../infrastructure/http/cloudflare-backup-repository.js";
 import { createBackupService } from "../application/backups/backup-service.js";
-import { createBackupState, addBackupSuccess, validateImportedBackup } from "../domain/backups/backup-policy.js";
+import { createBackupState, addBackupSuccess, getBackupList, validateImportedBackup } from "../domain/backups/backup-policy.js";
 import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-token-provider.js";
 import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../domain/backups/backup-schedule-policy.js";
 
@@ -114,6 +114,7 @@ let dataLoadState = 'loading';
 let memoRevision = null;
 let backupInfo = null;
 let backupState = createBackupState();
+let isBackupListExpanded = false;
 // 변경 없음/실패 상태는 Firestore 원본 문서에 섞지 않고 현재 브라우저 세션에서만 표시합니다.
 let automaticBackupRuntime = null;
 let guestBackupNoticeShown = false;
@@ -948,7 +949,8 @@ async function createCloudBackup(reason, scheduledFor = null) {
     if (!backupService.configured()) throw new Error('BACKUP_WORKER_URL_MISSING');
 
     const snapshotData = cloneMemoPayload(await buildDurableBackupPayload());
-    const latestBackup = backupState.backups[0] || null;
+    // 예약 자동 백업은 내용이 같아도 해당 시점의 복원 지점을 반드시 만듭니다.
+    const latestBackup = reason === 'auto' ? null : (getBackupList(backupState)[0] || null);
     const comparison = await backupService.compare({ user: currentUser, latestBackup, payload: snapshotData });
     const attemptedAt = Date.now();
 
@@ -2043,7 +2045,12 @@ window.removeLinkImage = (subIndex, linkIndex) => {
 function formatBackupTime(value) { return value ? new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Seoul'}).format(new Date(value)) : '-'; }
 function renderBackupSettings() {
     if (!backupStatus || !backupList) return;
-    if (currentUser?.isAnonymous) { backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.'; backupList.innerHTML=''; return; }
+    if (currentUser?.isAnonymous) {
+        backupStatus.textContent='게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.';
+        backupList.innerHTML='';
+        return;
+    }
+
     const auto=getAutomaticBackupStatus();
     const currentSessionFailure=auto.lastStatus==='failure' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
     const currentSessionUnchanged=auto.lastStatus==='unchanged' && (!backupSessionStartedAt || (auto.lastAttemptAt && auto.lastAttemptAt >= backupSessionStartedAt));
@@ -2056,9 +2063,28 @@ function renderBackupSettings() {
                 : auto.lastSuccessAt && (!backupSessionStartedAt || auto.lastSuccessAt >= backupSessionStartedAt)
                     ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)} · 다음 백업: ${formatBackupTime(nextAutomaticBackupAt)}`
                     : `백업 인증이 준비되었습니다. 다음 자동 백업: ${formatBackupTime(nextAutomaticBackupAt)}`;
+
+    const backups = getBackupList(backupState);
+    const visibleBackups = isBackupListExpanded ? backups : backups.slice(0, 3);
     backupList.innerHTML='';
-    if (!backupState.backups.length) backupList.innerHTML='<p class="text-xs text-gray-500">저장된 수동 또는 자동 백업이 없습니다.</p>';
-    backupState.backups.forEach(backup=>{ const item=document.createElement('div'); item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'; item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`; backupList.appendChild(item); });
+    if (!backups.length) backupList.innerHTML='<p class="text-xs text-gray-500">저장된 수동 또는 자동 백업이 없습니다.</p>';
+
+    visibleBackups.forEach(backup => {
+        const item=document.createElement('div');
+        item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2';
+        item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`;
+        backupList.appendChild(item);
+    });
+
+    if (backups.length > 3) {
+        const moreButton=document.createElement('button');
+        moreButton.type='button';
+        moreButton.className='w-full text-sm text-blue-700 border border-blue-200 rounded px-3 py-2 hover:bg-blue-50';
+        moreButton.textContent=isBackupListExpanded?'접기':`더보기 (${backups.length - 3}개)`;
+        moreButton.onclick=()=>{ isBackupListExpanded=!isBackupListExpanded; renderBackupSettings(); };
+        backupList.appendChild(moreButton);
+    }
+
     backupList.querySelectorAll('.backup-download').forEach(button=>button.onclick=()=>window.downloadCloudBackup(button.dataset.id));
     backupList.querySelectorAll('.backup-restore').forEach(button=>button.onclick=()=>window.restoreCloudBackup(button.dataset.id));
 }
@@ -2100,6 +2126,7 @@ window.openBackupFilePicker=()=>backupFileInput?.click();
 backupFileInput?.addEventListener('change',async()=>{const file=backupFileInput.files?.[0];backupFileInput.value='';if(!file)return;try{const validation=validateImportedBackup(JSON.parse(await file.text()),currentUser.uid);if(!validation.ok)return customAlert(validation.error);customConfirm('선택한 백업 파일로 현재 데이터를 복원하시겠습니까?',async()=>{await applyBackupPayload(validation.value);customAlert('백업 파일을 복원했습니다.');});}catch{customAlert('백업 파일을 읽을 수 없습니다.');}});
 
 function openSettingsModal() {
+    isBackupListExpanded = false;
     applyPreferences();
     renderBackupSettings();
     settingsModal.classList.remove('hidden');

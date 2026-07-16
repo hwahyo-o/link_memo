@@ -1,30 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { addBackupSuccess, createBackupState } from "./backup-policy.js";
+import { addBackupSuccess, createBackupState, getBackupList } from "./backup-policy.js";
 
 describe("backup policy", () => {
-  it("keeps manual and automatic backups together in newest-first order", () => {
+  it("migrates legacy backups into separate manual and automatic catalogs", () => {
     const state = createBackupState({
       backups: [
-        { id: "manual-old", reason: "manual", createdAt: 10 },
-        { id: "auto-new", reason: "auto", createdAt: 30 },
-        { id: "manual-mid", reason: "manual", createdAt: 20 }
+        { id: "manual", reason: "manual", createdAt: 10 },
+        { id: "auto", reason: "auto", createdAt: 20 }
       ]
     });
 
-    expect(state.backups.map(backup => backup.id)).toEqual(["auto-new", "manual-mid", "manual-old"]);
+    expect(state.manualBackups.map(backup => backup.id)).toEqual(["manual"]);
+    expect(state.autoBackups.map(backup => backup.id)).toEqual(["auto"]);
+    expect(getBackupList(state).map(backup => backup.id)).toEqual(["auto", "manual"]);
   });
 
-  it("retains the newest three catalog entries and returns stale objects", () => {
-    const initial = createBackupState({
-      backups: [
-        { id: "old", reason: "auto", createdAt: 1 },
-        { id: "mid", reason: "manual", createdAt: 2 },
-        { id: "new", reason: "auto", createdAt: 3 }
-      ]
-    });
-    const result = addBackupSuccess(initial, { id: "latest", reason: "manual", createdAt: 4 });
+  it("keeps the latest three backups for each type", () => {
+    let state = createBackupState();
+    for (let createdAt = 1; createdAt <= 4; createdAt += 1) {
+      state = addBackupSuccess(state, { id: `auto-${createdAt}`, reason: "auto", createdAt: createdAt * 2 - 1 }).state;
+      state = addBackupSuccess(state, { id: `manual-${createdAt}`, reason: "manual", createdAt: createdAt * 2 }).state;
+    }
 
-    expect(result.state.backups.map(backup => backup.id)).toEqual(["latest", "new", "mid"]);
-    expect(result.removed.map(backup => backup.id)).toEqual(["old"]);
+    expect(state.autoBackups.map(backup => backup.id)).toEqual(["auto-4", "auto-3", "auto-2"]);
+    expect(state.manualBackups.map(backup => backup.id)).toEqual(["manual-4", "manual-3", "manual-2"]);
+    expect(getBackupList(state).map(backup => backup.id)).toEqual([
+      "manual-4", "auto-4", "manual-3", "auto-3", "manual-2", "auto-2"
+    ]);
+  });
+
+  it("removes only the stale backup of the same type", () => {
+    const state = createBackupState({
+      autoBackups: [
+        { id: "auto-3", reason: "auto", createdAt: 3 },
+        { id: "auto-2", reason: "auto", createdAt: 2 },
+        { id: "auto-1", reason: "auto", createdAt: 1 }
+      ],
+      manualBackups: [{ id: "manual-1", reason: "manual", createdAt: 1 }]
+    });
+    const result = addBackupSuccess(state, { id: "auto-4", reason: "auto", createdAt: 4 });
+
+    expect(result.removed.map(backup => backup.id)).toEqual(["auto-1"]);
+    expect(result.state.manualBackups.map(backup => backup.id)).toEqual(["manual-1"]);
   });
 });
