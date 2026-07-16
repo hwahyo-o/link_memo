@@ -2043,7 +2043,6 @@ window.removeLinkImage = (subIndex, linkIndex) => {
 };
 
 function formatBackupTime(value) { return value ? new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Seoul'}).format(new Date(value)) : '-'; }
-function formatBackupTime(value) { return value ? new Intl.DateTimeFormat('ko-KR',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Seoul'}).format(new Date(value)) : '-'; }
 function renderBackupSettings() {
     if (!backupStatus || !backupList) return;
     if (currentUser?.isAnonymous) {
