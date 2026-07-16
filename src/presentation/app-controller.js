@@ -452,7 +452,15 @@ if (auth) {
                 guestBackupNoticeShown = true;
                 setTimeout(() => customAlert('게스트 계정은 백업 및 복구의 이용이 불가합니다. 더 원활한 데이터 관리를 원하실 경우 구글 계정 연동을 진행해주세요.'), 350);
             }
-            loadDataFromFirestore();
+            void (async () => {
+                const restored = await restoreLocalMemo(user.uid);
+                if (restored) {
+                    isFirstLoad = false;
+                    showHome();
+                    if (localMemoDirty) void saveData({ localWritten: true });
+                }
+                loadDataFromFirestore();
+            })();
             return;
         }
         currentUser = null;
@@ -700,6 +708,8 @@ window.handleGuestLogin = async () => {
 window.handleLogout = () => {
     if (!auth) return;
     customConfirm('로그아웃 하시겠습니까?', async () => {
+        await saveDataInBackground();
+        await saveData({ localWritten: true });
         await signOut(auth);
         document.getElementById('loginEmail').value = '';
         document.getElementById('loginPassword').value = '';
@@ -1357,10 +1367,10 @@ window.deleteSubcategory = (subIndex, name) => {
     });
 };
 
-window.toggleSubcategory = subIndex => {
+window.toggleSubcategory = async subIndex => {
     linkData[activeTab][subIndex].isOpen = !linkData[activeTab][subIndex].isOpen;
+    await saveDataInBackground();
     renderLinks();
-    saveDataInBackground();
 };
 
 function renderLinks() {
@@ -1776,9 +1786,7 @@ function findLinkById(linkId) {
 
 function scheduleBackgroundImageSave() {
     clearTimeout(queuedImageSaveTimer);
-    queuedImageSaveTimer = setTimeout(async () => {
-        await saveData();
-    }, 350);
+    queuedImageSaveTimer = setTimeout(() => { void saveDataInBackground(); }, 350);
 }
 
 async function processSelectedImagesInBackground(linkId, files) {
@@ -1858,9 +1866,9 @@ window.saveLink = async () => {
     };
     if (!files.length) delete link.imageUpload;
     linkData[activeTab][subIndex].links.push(link);
+    await saveDataInBackground();
     renderLinks();
     renderHomeLanding();
-    saveDataInBackground();
     textInput.value = '';
     urlInput.value = '';
     commentInput.value = '';
@@ -1870,11 +1878,11 @@ window.saveLink = async () => {
     if (files.length) void processSelectedImagesInBackground(link.id, files);
 };
 window.deleteLink = (subIndex, linkIndex) => {
-    customConfirm('이 항목을 삭제하시겠습니까?', () => {
+    customConfirm('이 항목을 삭제하시겠습니까?', async () => {
         const [removed] = linkData[activeTab][subIndex].links.splice(linkIndex, 1);
+        await saveDataInBackground();
         renderLinks();
         renderHomeLanding();
-        saveDataInBackground();
         removeLinkImagesInBackground(removed ? [removed] : []);
     });
 };
@@ -1928,9 +1936,9 @@ window.saveLinkEdit = async () => {
     if (!result.ok) return customAlert(result.error);
     const moved = result.moved;
     window.closeLinkEditModal();
+    await saveDataInBackground();
     renderLinks();
     renderHomeLanding();
-    saveDataInBackground();
     customAlert(moved ? '링크를 수정하고 선택한 카테고리로 이동했습니다.' : '링크 텍스트를 수정했습니다.');
 };
 window.editLinkComment = (subIndex, linkIndex) => {
@@ -1939,8 +1947,8 @@ window.editLinkComment = (subIndex, linkIndex) => {
         if (!value.trim() && !link.url && !hasLinkImages(link)) return customAlert('링크, 이미지 또는 코멘트 중 하나는 유지해야 합니다.');
         link.comment = value;
         link.updatedAt = Date.now();
+        await saveDataInBackground();
         renderLinks();
-        saveDataInBackground();
     });
 };
 
@@ -1984,8 +1992,8 @@ window.removeLinkImage = (subIndex, linkIndex) => {
         const removedImages = getLinkImages(link);
         link.images = [];
         link.updatedAt = Date.now();
+        await saveDataInBackground();
         renderLinks();
-        saveDataInBackground();
         removeLinkImagesInBackground([{ images: removedImages }]);
     });
 };
@@ -2190,6 +2198,8 @@ imagePreviewModal.addEventListener('click', event => { if (event.target === imag
 settingsModal.addEventListener('click', event => { if (event.target === settingsModal) closeSettingsModal(); });
 accountDeleteModal.addEventListener('click', event => { if (event.target === accountDeleteModal) closeAccountDeleteModal(); });
 linkEditModal.addEventListener('click', event => { if (event.target === linkEditModal) window.closeLinkEditModal(); });
+
+window.addEventListener("pagehide", () => { void saveDataInBackground(); });
 
 document.addEventListener('keydown', event => {
     if (!imagePreviewModal.classList.contains('hidden') && event.key === 'ArrowLeft') {
