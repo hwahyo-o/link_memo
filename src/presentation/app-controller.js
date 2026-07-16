@@ -324,6 +324,17 @@ function buildBackupPayload() {
     return { categories, linkData, uiPreferences, driveConnection };
 }
 
+async function buildDurableBackupPayload() {
+    const local = currentUser ? await localMemoRepository.load(currentUser.uid) : null;
+    const source = local?.payload || buildMemoPayload();
+    return {
+        categories: source.categories,
+        linkData: source.linkData,
+        uiPreferences: source.uiPreferences,
+        driveConnection: source.driveConnection
+    };
+}
+
 function cloneMemoPayload(value) {
     return JSON.parse(JSON.stringify(value));
 }
@@ -925,7 +936,7 @@ async function createCloudBackup(reason, scheduledFor = null) {
     if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
     if (!backupService.configured()) throw new Error('BACKUP_WORKER_URL_MISSING');
 
-    const snapshotData = cloneMemoPayload(buildBackupPayload());
+    const snapshotData = cloneMemoPayload(await buildDurableBackupPayload());
     const latestBackup = backupState.backups[0] || null;
     const comparison = await backupService.compare({ user: currentUser, latestBackup, payload: snapshotData });
     const attemptedAt = Date.now();
