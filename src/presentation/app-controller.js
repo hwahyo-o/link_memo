@@ -1222,7 +1222,7 @@ function createTabButton(category) {
     const label = document.createElement('span');
     label.textContent = category;
     const actions = document.createElement('span');
-    actions.className = 'tab-actions hidden ml-2 items-center gap-1';
+    actions.className = `tab-actions ${isActive ? 'inline-flex' : 'hidden'} ml-2 items-center gap-1`;
     actions.setAttribute('aria-label', `${category} 탭 관리`);
 
     const editButton = document.createElement('button');
@@ -1256,8 +1256,8 @@ function createTabButton(category) {
             actions.classList.add('inline-flex');
         },
         onClose: () => {
-            actions.classList.add('hidden');
-            actions.classList.remove('inline-flex');
+            actions.classList.toggle('hidden', !isActive);
+            actions.classList.toggle('inline-flex', isActive);
             if (activeTabActionController === controller) activeTabActionController = null;
         }
     });
