@@ -113,6 +113,8 @@ let nextAutomaticBackupAt = null;
 const backupTabId = crypto.randomUUID?.() || `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 let lastStableMemoData = null;
 let saveQueue = Promise.resolve();
+let pendingLocalSaveCount = 0;
+let pendingReloadOnSaveFailure = false;
 let backupQueue = Promise.resolve();
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -825,7 +827,7 @@ function loadDataFromFirestore() {
     lastStableMemoData = null;
 
     unsubscribeSnapshot = memoRepository.subscribe(currentUser.uid, snapshot => {
-        if (isDeletingAccount) return;
+        if (isDeletingAccount || pendingLocalSaveCount > 0) return;
         if (snapshot.exists()) {
             const data = snapshot.data();
             categories = Array.isArray(data.categories) ? data.categories : [...DEFAULT_CATEGORIES];
@@ -1018,14 +1020,21 @@ async function persistData({ allowCreate = false } = {}) {
 }
 
 function saveData({ allowCreate = false, throwOnError = false } = {}) {
+    pendingLocalSaveCount += 1;
     const operation = async () => {
         try {
             return await persistData({ allowCreate });
         } catch (error) {
             console.error('클라우드 저장 실패:', error);
-            if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') loadDataFromFirestore();
+            if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') pendingReloadOnSaveFailure = true;
             if (throwOnError) throw error;
             return false;
+        } finally {
+            pendingLocalSaveCount -= 1;
+            if (pendingLocalSaveCount === 0 && pendingReloadOnSaveFailure) {
+                pendingReloadOnSaveFailure = false;
+                loadDataFromFirestore();
+            }
         }
     };
     const queued = saveQueue.then(operation, operation);
