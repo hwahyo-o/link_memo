@@ -31,7 +31,7 @@ const localMemoRepository = createIndexedDbMemoRepository();
 const memoSyncService = createMemoSyncService({
     localRepository: localMemoRepository,
     remoteRepository: memoRepository,
-    onError: error => console.warn("메모 동기화는 나중에 다시 시도합니다.", error)
+    onError: () => {}
 });
 const memoService = createMemoService({ imageRepository });
 const driveCodeProvider = createGoogleDriveCodeProvider();
@@ -58,6 +58,7 @@ const VALID_COLUMNS = [3, 4, 5, 6];
 const BACKUP_LEASE_KEY = 'link-memo:auto-backup-lease';
 const BACKUP_AUTO_ATTEMPT_KEY = 'link-memo:auto-backup-attempt';
 const BACKUP_LEASE_MS = 10 * 60 * 1000;
+const MEMO_SYNC_DELAY_MS = 350;
 
 const { customAlert, customConfirm, customPrompt } = createModalController();
 window.customAlert = customAlert;
@@ -120,9 +121,10 @@ let backupSessionStartedAt = null;
 let nextAutomaticBackupAt = null;
 const backupTabId = crypto.randomUUID?.() || `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 let saveQueue = Promise.resolve();
+let localWriteQueue = Promise.resolve();
 let pendingLocalSaveCount = 0;
-let pendingReloadOnSaveFailure = false;
 let localMemoDirty = false;
+let memoSyncTimer = null;
 let backupQueue = Promise.resolve();
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -479,6 +481,8 @@ if (auth) {
         backupTokenProvider.updateUser(null);
         backupAuthReady = false;
         backupSessionStartedAt = null;
+        if (memoSyncTimer) clearTimeout(memoSyncTimer);
+        memoSyncTimer = null;
         if (backupTimer) clearInterval(backupTimer);
         backupTimer = null;
         if (unsubscribeSnapshot) unsubscribeSnapshot();
@@ -720,7 +724,8 @@ window.handleLogout = () => {
     if (!auth) return;
     customConfirm('로그아웃 하시겠습니까?', async () => {
         await saveDataInBackground();
-        await saveData({ localWritten: true });
+        // 원격 저장은 IndexedDB에 안전하게 남긴 뒤 백그라운드에서 재개합니다. 로그아웃은 네트워크에 묶지 않습니다.
+        void flushMemoSync();
         await signOut(auth);
         document.getElementById('loginEmail').value = '';
         document.getElementById('loginPassword').value = '';
@@ -947,9 +952,6 @@ async function createCloudBackup(reason, scheduledFor = null) {
         return { status: 'unchanged', attemptedAt, payloadChecksum: comparison.payloadChecksum };
     }
 
-    // 현재 원본이 이미 Firestore와 같으면 저장소 계층에서 쓰기를 자동 생략합니다.
-    await saveData({ throwOnError: true });
-
     const backupId = createId('backup');
     const descriptor = await backupService.create({
         user: currentUser,
@@ -974,13 +976,15 @@ async function createCloudBackup(reason, scheduledFor = null) {
         sourceRevision: descriptor.sourceRevision
     };
 
-    // R2가 반환한 작은 식별 정보와 최신 3개 목록만 Firebase 원본 문서에 저장합니다.
+    // R2 백업이 성공한 뒤에만 작은 카탈로그를 한 번 즉시 동기화합니다.
     try {
         await saveData({ throwOnError: true });
     } catch (error) {
         // 식별 정보 저장이 실패하면 새 R2 객체를 되돌려 고아 백업이 누적되지 않게 합니다.
         backupState = previousBackupState;
         backupInfo = previousBackupInfo;
+        await writeLocalMemo();
+        scheduleMemoSync();
         try {
             await backupService.remove({ user: currentUser, backupId: descriptor.id });
         } catch (rollbackError) {
@@ -1043,7 +1047,6 @@ async function performBackupAttempt({ reason, scheduledFor = null }) {
                 error: message
             });
             renderBackupSettings();
-            console.error('자동 백업 비교 또는 저장 실패:', error);
             return { status: 'failed', attemptedAt, error };
         }
         throw error;
@@ -1062,11 +1065,22 @@ function runBackup(options) {
 
 async function writeLocalMemo() {
     if (!currentUser || isDeletingAccount || dataLoadState !== "ready") return null;
-    const record = await localMemoRepository.savePending(currentUser.uid, cloneMemoPayload(buildMemoPayload()), {
-        remoteRevision: memoRevision
-    });
+    const userId = currentUser.uid;
+    const payload = cloneMemoPayload(buildMemoPayload());
+    const remoteRevision = memoRevision;
     localMemoDirty = true;
-    return record;
+    const write = () => localMemoRepository.savePending(userId, payload, { remoteRevision });
+    const queued = localWriteQueue.then(write, write);
+    localWriteQueue = queued.catch(() => {});
+    return queued;
+}
+
+function scheduleMemoSync(options = {}) {
+    if (memoSyncTimer) clearTimeout(memoSyncTimer);
+    memoSyncTimer = setTimeout(() => {
+        memoSyncTimer = null;
+        void saveData({ ...options, localWritten: true });
+    }, MEMO_SYNC_DELAY_MS);
 }
 
 async function persistData({ allowCreate = false } = {}) {
@@ -1079,22 +1093,24 @@ async function persistData({ allowCreate = false } = {}) {
 }
 
 function saveData({ allowCreate = false, throwOnError = false, localWritten = false } = {}) {
+    // 일반 변경은 로컬에 먼저 확정하고 짧게 묶어 원격 호출 수를 줄입니다.
+    if (!localWritten && !throwOnError) return saveDataInBackground({ allowCreate });
+
+    if (throwOnError && memoSyncTimer) {
+        clearTimeout(memoSyncTimer);
+        memoSyncTimer = null;
+    }
     pendingLocalSaveCount += 1;
     const operation = async () => {
         try {
             if (!localWritten) await writeLocalMemo();
             return await persistData({ allowCreate });
         } catch (error) {
-            console.error('클라우드 저장 실패:', error);
             if (error?.code === "MEMO_CONFLICT" || error?.message === "MEMO_CONFLICT") localMemoDirty = true;
             if (throwOnError) throw error;
             return false;
         } finally {
             pendingLocalSaveCount -= 1;
-            if (pendingLocalSaveCount === 0 && pendingReloadOnSaveFailure) {
-                pendingReloadOnSaveFailure = false;
-                loadDataFromFirestore();
-            }
         }
     };
     const queued = saveQueue.then(operation, operation);
@@ -1104,8 +1120,16 @@ function saveData({ allowCreate = false, throwOnError = false, localWritten = fa
 
 async function saveDataInBackground(options = {}) {
     const record = await writeLocalMemo();
-    if (record) void saveData({ ...options, localWritten: true });
+    if (record) scheduleMemoSync(options);
     return record;
+}
+
+async function flushMemoSync({ allowCreate = false, throwOnError = false } = {}) {
+    if (memoSyncTimer) {
+        clearTimeout(memoSyncTimer);
+        memoSyncTimer = null;
+    }
+    return saveData({ allowCreate, throwOnError, localWritten: true });
 }
 
 function removeLinkImagesInBackground(links) {
@@ -2026,6 +2050,7 @@ function renderBackupSettings() {
                     ? `최근 자동 백업 성공: ${formatBackupTime(auto.lastSuccessAt)} · 다음 백업: ${formatBackupTime(nextAutomaticBackupAt)}`
                     : `백업 인증이 준비되었습니다. 다음 자동 백업: ${formatBackupTime(nextAutomaticBackupAt)}`;
     backupList.innerHTML='';
+    if (!backupState.backups.length) backupList.innerHTML='<p class="text-xs text-gray-500">저장된 수동 또는 자동 백업이 없습니다.</p>';
     backupState.backups.forEach(backup=>{ const item=document.createElement('div'); item.className='rounded border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2'; item.innerHTML=`<div><p class="font-semibold text-sm text-gray-800">${backup.reason==='manual'?'수동':'자동'} 백업</p><p class="text-xs text-gray-500">${formatBackupTime(backup.createdAt)} · ${Math.ceil((backup.size||0)/1024)}KB</p></div><div class="flex gap-2"><button class="backup-download secondary-command border border-blue-300 text-blue-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">다운로드</button><button class="backup-restore secondary-command border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded text-sm" data-id="${backup.id}">복원</button></div>`; backupList.appendChild(item); });
     backupList.querySelectorAll('.backup-download').forEach(button=>button.onclick=()=>window.downloadCloudBackup(button.dataset.id));
     backupList.querySelectorAll('.backup-restore').forEach(button=>button.onclick=()=>window.restoreCloudBackup(button.dataset.id));
@@ -2157,6 +2182,7 @@ window.confirmAccountDeletion = async () => {
         await memoRepository.delete(user.uid);
         dataDeleted = true;
         await memoService.clearImages(user.uid);
+        await localMemoRepository.clear(user.uid);
         await deleteUser(user);
         isDeletingAccount = false;
         accountDeleteModal.classList.add('hidden');
