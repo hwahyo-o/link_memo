@@ -6,7 +6,9 @@ import {
     deleteUser, auth, hasFirebaseConfig
 } from "../infrastructure/firebase/auth-gateway.js";
 import { imageRepository } from "../infrastructure/browser/indexeddb-image-repository.js";
+import { createIndexedDbMemoRepository } from "../infrastructure/browser/indexeddb-memo-repository.js";
 import { createMemoService } from "../application/memos/memo-service.js";
+import { createMemoSyncService } from "../application/memos/memo-sync-service.js";
 import { createImageAttachmentQueue } from "../application/memos/image-attachment-queue.js";
 import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-repository.js";
 import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
@@ -25,6 +27,12 @@ import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-tok
 import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../domain/backups/backup-schedule-policy.js";
 
 const memoRepository = createFirestoreMemoRepository();
+const localMemoRepository = createIndexedDbMemoRepository();
+const memoSyncService = createMemoSyncService({
+    localRepository: localMemoRepository,
+    remoteRepository: memoRepository,
+    onError: error => console.warn("메모 동기화는 나중에 다시 시도합니다.", error)
+});
 const memoService = createMemoService({ imageRepository });
 const driveCodeProvider = createGoogleDriveCodeProvider();
 const driveImageRepository = createDriveWorkerImageRepository({ auth });
@@ -114,6 +122,7 @@ const backupTabId = crypto.randomUUID?.() || `tab_${Date.now()}_${Math.random().
 let saveQueue = Promise.resolve();
 let pendingLocalSaveCount = 0;
 let pendingReloadOnSaveFailure = false;
+let localMemoDirty = false;
 let backupQueue = Promise.resolve();
 let dataSafetyAlertShown = false;
 let unsubscribeSnapshot = null;
@@ -817,6 +826,26 @@ function migrateDataFormat() {
     return modified;
 }
 
+async function restoreLocalMemo(userId) {
+    const local = await localMemoRepository.load(userId);
+    if (!local?.payload) return false;
+    const payload = local.payload;
+    categories = Array.isArray(payload.categories) ? payload.categories : [...DEFAULT_CATEGORIES];
+    linkData = payload.linkData && typeof payload.linkData === "object" ? payload.linkData : {};
+    uiPreferences = payload.uiPreferences || createDefaultPreferences(categories[0]);
+    driveConnection = normalizeDriveConnection(payload.driveConnection);
+    backupInfo = payload.backupInfo || null;
+    backupState = createBackupState(payload.backupState);
+    memoRevision = Number(local.remoteRevision || 0);
+    localMemoDirty = local.dirty;
+    memoSyncService.setRevision(memoRevision);
+    dataLoadState = "ready";
+    migrateDataFormat();
+    activeTab = categories.includes(uiPreferences.lastViewedTab) ? uiPreferences.lastViewedTab : categories[0];
+    applyPreferences();
+    return true;
+}
+
 function loadDataFromFirestore() {
     if (!currentUser) return;
     if (unsubscribeSnapshot) unsubscribeSnapshot();
@@ -825,6 +854,11 @@ function loadDataFromFirestore() {
 
     unsubscribeSnapshot = memoRepository.subscribe(currentUser.uid, snapshot => {
         if (isDeletingAccount || pendingLocalSaveCount > 0) return;
+        if (localMemoDirty) {
+            memoRevision = Number(snapshot.data()?.revision || memoRevision || 0);
+            memoSyncService.setRevision(memoRevision);
+            return;
+        }
         if (snapshot.exists()) {
             const data = snapshot.data();
             categories = Array.isArray(data.categories) ? data.categories : [...DEFAULT_CATEGORIES];
@@ -834,6 +868,9 @@ function loadDataFromFirestore() {
             memoRevision = Number(data.revision || 0);
             backupInfo = data.backupInfo || null;
             backupState = createBackupState(data.backupState);
+            localMemoDirty = false;
+            memoSyncService.setRevision(memoRevision);
+            void localMemoRepository.cache(currentUser.uid, buildMemoPayload(), { remoteRevision: memoRevision });
             mergeLocalAutomaticBackupAttempt();
             dataLoadState = 'ready';
             const modified = migrateDataFormat();
@@ -1002,26 +1039,33 @@ function runBackup(options) {
     return queued;
 }
 
-async function persistData({ allowCreate = false } = {}) {
-    if (!currentUser || isDeletingAccount || (dataLoadState !== 'ready' && !allowCreate)) return false;
-    const payload = buildMemoPayload();
-    const result = await memoRepository.save(currentUser.uid, payload, {
-        expectedRevision: memoRevision,
-        allowCreate
+async function writeLocalMemo() {
+    if (!currentUser || isDeletingAccount || dataLoadState !== "ready") return null;
+    const record = await localMemoRepository.savePending(currentUser.uid, cloneMemoPayload(buildMemoPayload()), {
+        remoteRevision: memoRevision
     });
-    memoRevision = result.revision;
-    dataLoadState = 'ready';
-    return true;
+    localMemoDirty = true;
+    return record;
 }
 
-function saveData({ allowCreate = false, throwOnError = false } = {}) {
+async function persistData({ allowCreate = false } = {}) {
+    if (!currentUser || isDeletingAccount || (dataLoadState !== "ready" && !allowCreate)) return false;
+    const result = await memoSyncService.flush(currentUser.uid, { allowCreate });
+    memoRevision = result.revision ?? memoRevision;
+    localMemoDirty = Boolean((await localMemoRepository.load(currentUser.uid))?.dirty);
+    dataLoadState = "ready";
+    return result.synced;
+}
+
+function saveData({ allowCreate = false, throwOnError = false, localWritten = false } = {}) {
     pendingLocalSaveCount += 1;
     const operation = async () => {
         try {
+            if (!localWritten) await writeLocalMemo();
             return await persistData({ allowCreate });
         } catch (error) {
             console.error('클라우드 저장 실패:', error);
-            if (error?.code === 'MEMO_CONFLICT' || error?.message === 'MEMO_CONFLICT') pendingReloadOnSaveFailure = true;
+            if (error?.code === "MEMO_CONFLICT" || error?.message === "MEMO_CONFLICT") localMemoDirty = true;
             if (throwOnError) throw error;
             return false;
         } finally {
@@ -1037,9 +1081,10 @@ function saveData({ allowCreate = false, throwOnError = false } = {}) {
     return queued;
 }
 
-function saveDataInBackground(options = {}) {
-    // UI를 네트워크 왕복에 묶지 않습니다. saveData는 실패 시 안전하게 원격 상태를 다시 동기화합니다.
-    void saveData(options);
+async function saveDataInBackground(options = {}) {
+    const record = await writeLocalMemo();
+    if (record) void saveData({ ...options, localWritten: true });
+    return record;
 }
 
 function removeLinkImagesInBackground(links) {
