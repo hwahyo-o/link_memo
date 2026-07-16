@@ -31,7 +31,7 @@ const localMemoRepository = createIndexedDbMemoRepository();
 const memoSyncService = createMemoSyncService({
     localRepository: localMemoRepository,
     remoteRepository: memoRepository,
-    onError: error => console.warn(`메모 동기화 보류: ${error?.code || error?.message || "알 수 없는 오류"}`)
+    onError: () => {}
 });
 const memoService = createMemoService({ imageRepository });
 const driveCodeProvider = createGoogleDriveCodeProvider();
@@ -1047,7 +1047,6 @@ async function performBackupAttempt({ reason, scheduledFor = null }) {
                 error: message
             });
             renderBackupSettings();
-            console.error('자동 백업 비교 또는 저장 실패:', error);
             return { status: 'failed', attemptedAt, error };
         }
         throw error;
