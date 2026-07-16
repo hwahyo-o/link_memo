@@ -466,7 +466,7 @@ if (auth) {
         backupState = createBackupState();
         automaticBackupRuntime = null;
         guestBackupNoticeShown = false;
-            dataSafetyAlertShown = false;
+        dataSafetyAlertShown = false;
         drivePromptRequested = false;
         driveImageRepository.clearCache();
         document.body.classList.remove('theme-dark');
@@ -837,7 +837,7 @@ function loadDataFromFirestore() {
             mergeLocalAutomaticBackupAttempt();
             dataLoadState = 'ready';
             const modified = migrateDataFormat();
-                    if (modified) void saveData({ skipBackup: true });
+            if (modified) void saveData({ skipBackup: true });
         } else {
             categories = [...DEFAULT_CATEGORIES];
             linkData = createDefaultLinkData(categories);
