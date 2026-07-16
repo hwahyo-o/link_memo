@@ -111,7 +111,6 @@ let backupAuthReady = false;
 let backupSessionStartedAt = null;
 let nextAutomaticBackupAt = null;
 const backupTabId = crypto.randomUUID?.() || `tab_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-let lastStableMemoData = null;
 let saveQueue = Promise.resolve();
 let pendingLocalSaveCount = 0;
 let pendingReloadOnSaveFailure = false;
@@ -467,8 +466,7 @@ if (auth) {
         backupState = createBackupState();
         automaticBackupRuntime = null;
         guestBackupNoticeShown = false;
-        lastStableMemoData = null;
-        dataSafetyAlertShown = false;
+            dataSafetyAlertShown = false;
         drivePromptRequested = false;
         driveImageRepository.clearCache();
         document.body.classList.remove('theme-dark');
@@ -824,7 +822,6 @@ function loadDataFromFirestore() {
     if (unsubscribeSnapshot) unsubscribeSnapshot();
     dataLoadState = 'loading';
     memoRevision = null;
-    lastStableMemoData = null;
 
     unsubscribeSnapshot = memoRepository.subscribe(currentUser.uid, snapshot => {
         if (isDeletingAccount || pendingLocalSaveCount > 0) return;
@@ -840,8 +837,7 @@ function loadDataFromFirestore() {
             mergeLocalAutomaticBackupAttempt();
             dataLoadState = 'ready';
             const modified = migrateDataFormat();
-            lastStableMemoData = cloneMemoPayload(buildMemoPayload());
-            if (modified) void saveData({ skipBackup: true });
+                    if (modified) void saveData({ skipBackup: true });
         } else {
             categories = [...DEFAULT_CATEGORIES];
             linkData = createDefaultLinkData(categories);
@@ -1014,7 +1010,6 @@ async function persistData({ allowCreate = false } = {}) {
         allowCreate
     });
     memoRevision = result.revision;
-    lastStableMemoData = cloneMemoPayload(payload);
     dataLoadState = 'ready';
     return true;
 }
