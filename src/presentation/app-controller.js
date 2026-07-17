@@ -2240,7 +2240,7 @@ window.confirmAccountDeletion = async () => {
         accountDeleteStatus.textContent = '계정과 데이터를 삭제하는 중입니다.';
         if (unsubscribeSnapshot) unsubscribeSnapshot();
         unsubscribeSnapshot = null;
-        await memoRepository.delete(user.uid);
+        await memoRepository.delete(user.uid, { archiveIds: getBackupList(backupState).map(backup => backup.id) });
         dataDeleted = true;
         await memoService.clearImages(user.uid);
         await localMemoRepository.clear(user.uid);
