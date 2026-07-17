@@ -23,6 +23,7 @@ import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-w
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
 import { createCloudflareBackupRepository } from "../infrastructure/http/cloudflare-backup-repository.js";
 import { createBackupService } from "../application/backups/backup-service.js";
+import { createManualBackupSyncService } from "../application/backups/manual-backup-sync-service.js";
 import { createBackupState, addBackupSuccess, getBackupList, validateImportedBackup } from "../domain/backups/backup-policy.js";
 import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-token-provider.js";
 import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../domain/backups/backup-schedule-policy.js";
@@ -45,6 +46,12 @@ const driveImageService = createDriveImageService({
 const backupTokenProvider = createFirebaseTokenProvider({ getUser: () => currentUser });
 const cloudBackupRepository = createCloudflareBackupRepository({ tokenProvider: backupTokenProvider });
 const backupService = createBackupService({ cloudRepository: cloudBackupRepository });
+const manualBackupSyncService = createManualBackupSyncService({
+    backupService,
+    memoRepository,
+    localRepository: localMemoRepository,
+    onCleanupError: (...args) => console.warn(...args)
+});
 const imageAttachmentQueue = createImageAttachmentQueue({
     saveLocalImage: file => saveImageFile(file),
     uploadDriveImage: file => saveDriveImage(file),
@@ -948,6 +955,25 @@ async function createCloudBackup(reason, scheduledFor = null) {
     if (!backupAuthReady) throw new Error('BACKUP_AUTH_NOT_READY');
     if (!backupService.configured()) throw new Error('BACKUP_WORKER_URL_MISSING');
 
+    if (reason === 'manual') {
+        const pending = await writeLocalMemo();
+        const result = await manualBackupSyncService.execute({
+            user: currentUser,
+            payload: cloneMemoPayload(buildBackupPayload()),
+            backupState,
+            sourceRevision: Number(memoRevision || 0),
+            localVersion: pending?.version || null,
+            createBackupId: () => createId('backup')
+        });
+        backupState = result.backupState;
+        backupInfo = result.backupInfo;
+        memoRevision = result.revision;
+        memoSyncService.setRevision(memoRevision);
+        localMemoDirty = Boolean((await localMemoRepository.load(currentUser.uid))?.dirty);
+        renderBackupSettings();
+        return { status: 'created', attemptedAt: result.descriptor.createdAt, descriptor: result.descriptor };
+    }
+
     const snapshotData = cloneMemoPayload(await buildDurableBackupPayload());
     // 예약 자동 백업은 내용이 같아도 해당 시점의 복원 지점을 반드시 만듭니다.
     const latestBackup = reason === 'auto' ? null : (getBackupList(backupState)[0] || null);
@@ -1022,6 +1048,7 @@ function backupErrorMessage(error) {
         BACKUP_GUEST_UNSUPPORTED: '게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.',
         BACKUP_AUTH_NOT_READY: '로그인 인증을 준비하는 중입니다. 잠시 후 다시 시도해주세요.',
         BACKUP_WORKER_URL_MISSING: 'Cloudflare 백업 서비스 주소가 설정되지 않았습니다.',
+        FIRESTORE_UNAVAILABLE: 'Firebase 저장소에 연결할 수 없어 현재 데이터를 동기화하지 않았습니다.',
         WORKER_CONFIG_MISSING: 'Cloudflare Worker의 Firebase 프로젝트 또는 R2 연결 설정이 누락되었습니다.',
         TOKEN_PROJECT_MISMATCH: 'Cloudflare Worker의 Firebase 프로젝트 ID가 현재 앱과 일치하지 않습니다.',
         BACKUP_SERVICE_UNAVAILABLE: 'Cloudflare 백업 서비스의 인증 검증 처리에 실패했습니다. Worker 최신 코드가 배포되었는지 확인해주세요.',
@@ -2105,7 +2132,7 @@ window.requestCloudBackup=async()=>{
         const result = await runBackup({ reason: 'manual' });
         if (result.status === 'created') {
             renderBackupSettings();
-            customAlert('현재 시점의 Cloudflare 백업이 완료되었습니다. 최신 3개만 안전하게 보존됩니다.');
+            customAlert('현재 데이터의 백업과 Firebase 동기화가 완료되었습니다. 직전 Firebase 데이터도 안전하게 보관됩니다.');
         } else if (result.status === 'unchanged') {
             renderBackupSettings();
             customAlert('새롭게 백업 할 내용이 없습니다.');
@@ -2213,7 +2240,7 @@ window.confirmAccountDeletion = async () => {
         accountDeleteStatus.textContent = '계정과 데이터를 삭제하는 중입니다.';
         if (unsubscribeSnapshot) unsubscribeSnapshot();
         unsubscribeSnapshot = null;
-        await memoRepository.delete(user.uid);
+        await memoRepository.delete(user.uid, { archiveIds: getBackupList(backupState).map(backup => backup.id) });
         dataDeleted = true;
         await memoService.clearImages(user.uid);
         await localMemoRepository.clear(user.uid);

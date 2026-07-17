@@ -10,6 +10,10 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
         if (!database || !userId) return null;
         return doc(database, "artifacts", applicationId, "users", userId, "memoData", "main");
     };
+    const getArchiveReference = (userId, archiveId) => {
+        if (!database || !userId || !archiveId) return null;
+        return doc(database, "artifacts", applicationId, "users", userId, "memoData", `archive_${archiveId}`);
+    };
 
     return {
         subscribe(userId, onData, onError) {
@@ -83,16 +87,56 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
             });
         },
 
+        async promote(userId, data, { archiveId, archiveMetadata = null } = {}) {
+            const reference = getReference(userId);
+            const archiveReference = getArchiveReference(userId, archiveId);
+            if (!reference || !archiveReference) {
+                const error = new Error("FIRESTORE_UNAVAILABLE");
+                error.code = "FIRESTORE_UNAVAILABLE";
+                throw error;
+            }
+
+            return runTransaction(database, async transaction => {
+                const current = await transaction.get(reference);
+                const previous = current.data() || null;
+                const revision = Number(previous?.revision || 0) + 1;
+                const updatedAt = Date.now();
+
+                if (previous) {
+                    transaction.set(archiveReference, {
+                        ...previous,
+                        archiveId,
+                        archivedAt: updatedAt,
+                        sourceRevision: Number(previous.revision || 0),
+                        archiveMetadata
+                    });
+                }
+
+                transaction.set(reference, { ...data, revision, updatedAt });
+                return { revision, archived: Boolean(previous) };
+            });
+        },
+
+        deleteArchive(userId, archiveId) {
+            const reference = getArchiveReference(userId, archiveId);
+            return reference ? deleteDoc(reference) : Promise.resolve();
+        },
+
         savePreferences(userId, uiPreferences) {
             const reference = getReference(userId);
             if (!reference) return Promise.resolve();
             return setDoc(reference, { uiPreferences }, { merge: true });
         },
 
-        delete(userId) {
+        delete(userId, { archiveIds = [] } = {}) {
             const reference = getReference(userId);
             if (!reference) return Promise.resolve();
-            return deleteDoc(reference);
+            const archiveDeletes = [...new Set(archiveIds)]
+                .map(archiveId => getArchiveReference(userId, archiveId))
+                .filter(Boolean)
+                .map(deleteDoc);
+            return Promise.all([deleteDoc(reference), ...archiveDeletes]);
         }
     };
 }
+
