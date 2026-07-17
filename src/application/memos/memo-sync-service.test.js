@@ -31,7 +31,7 @@ describe("memo sync service", () => {
         expect(acknowledgements).toEqual([{ version: "v1", revision: 4 }]);
     });
 
-    it("retries one revision conflict without looping", async () => {
+    it("keeps the local snapshot pending instead of overwriting another device after a conflict", async () => {
         const pending = createPending();
         const expectedRevisions = [];
         const service = createMemoSyncService({
@@ -39,21 +39,18 @@ describe("memo sync service", () => {
             remoteRepository: {
                 save: async (_userId, _payload, options) => {
                     expectedRevisions.push(options.expectedRevision);
-                    if (expectedRevisions.length === 1) {
-                        const error = new Error("MEMO_CONFLICT");
-                        error.code = "MEMO_CONFLICT";
-                        throw error;
-                    }
-                    return { revision: 5 };
+                    const error = new Error("MEMO_CONFLICT");
+                    error.code = "MEMO_CONFLICT";
+                    throw error;
                 }
             }
         });
 
-        await expect(service.flush("user-1")).resolves.toEqual({ synced: true, revision: 5 });
-        expect(expectedRevisions).toEqual([3, null]);
+        await expect(service.flush("user-1")).rejects.toMatchObject({ code: "MEMO_CONFLICT" });
+        expect(expectedRevisions).toEqual([3]);
     });
 
-    it("keeps a failed snapshot pending after the bounded retry", async () => {
+    it("keeps a failed snapshot pending for later recovery", async () => {
         const pending = createPending();
         const service = createMemoSyncService({
             localRepository: { load: async () => pending, acknowledge: async () => true },
@@ -70,3 +67,4 @@ describe("memo sync service", () => {
         await expect(service.flush("user-1")).rejects.toMatchObject({ code: "MEMO_CONFLICT" });
     });
 });
+
