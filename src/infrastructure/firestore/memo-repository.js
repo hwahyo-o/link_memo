@@ -128,10 +128,14 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
             return setDoc(reference, { uiPreferences }, { merge: true });
         },
 
-        delete(userId) {
+        delete(userId, { archiveIds = [] } = {}) {
             const reference = getReference(userId);
             if (!reference) return Promise.resolve();
-            return deleteDoc(reference);
+            const archiveDeletes = [...new Set(archiveIds)]
+                .map(archiveId => getArchiveReference(userId, archiveId))
+                .filter(Boolean)
+                .map(deleteDoc);
+            return Promise.all([deleteDoc(reference), ...archiveDeletes]);
         }
     };
 }
