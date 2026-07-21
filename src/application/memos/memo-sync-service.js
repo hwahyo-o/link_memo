@@ -16,6 +16,9 @@ export function createMemoSyncService({ localRepository, remoteRepository, onErr
                 const result = await remoteRepository.save(userId, local.payload, options);
                 revision = result.revision;
                 const acknowledged = await localRepository.acknowledge(userId, local.version, revision);
+                if (acknowledged && result.payload) {
+                    await localRepository.cache(userId, result.payload, { remoteRevision: revision });
+                }
                 return { synced: acknowledged, revision };
             } catch (error) {
                 onError(error);

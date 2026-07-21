@@ -84,6 +84,23 @@ export function createBackupService({ cloudRepository }) {
 
     remove({ user, backupId }) {
       return cloudRepository.remove(user, backupId);
+    },
+
+    async list({ user }) {
+      const result = await cloudRepository.list(user);
+      return Array.isArray(result.backups) ? result.backups : [];
+    },
+
+    async saveCheckpoint({ user, payload, updatedAt = Date.now() }) {
+      return cloudRepository.saveCheckpoint(user, { schemaVersion: BACKUP_SCHEMA_VERSION, userId: user.uid, updatedAt, payload });
+    },
+
+    loadCheckpoint({ user }) {
+      return cloudRepository.loadCheckpoint(user);
+    },
+
+    saveCheckpointKeepalive({ user, payload, updatedAt = Date.now() }) {
+      return cloudRepository.saveCheckpointKeepalive({ schemaVersion: BACKUP_SCHEMA_VERSION, userId: user.uid, updatedAt, payload });
     }
   };
 }

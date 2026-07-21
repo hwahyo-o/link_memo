@@ -1,15 +1,28 @@
-# Link Memo Cloudflare backup worker
+# Link Memo Cloudflare Backup Worker
 
-This Worker is the only component allowed to access the private R2 bucket. The browser never receives R2 credentials.
+이 Worker만 비공개 R2 bucket에 접근합니다. 브라우저는 R2 자격 증명이나 object key를 받지 않으며 Firebase ID Token으로만 요청합니다.
 
-## Dashboard setup
+## Cloudflare 설정
 
-1. In **R2**, create the private bucket `link-memo-backups`. Do not enable public access.
-2. In **Workers & Pages**, create a Worker from this directory and bind the bucket as `BACKUPS`.
-3. Set Worker variables:
-   - `FIREBASE_PROJECT_ID`: the existing Firebase project ID.
-   - `ALLOWED_ORIGINS`: comma-separated production and local origins, for example `https://hwahyo-o.github.io,http://localhost:5173`.
-4. Deploy the Worker and copy its HTTPS URL.
-5. Add its URL to the GitHub repository secret `VITE_BACKUP_WORKER_URL`; the existing Pages workflow must expose that secret at build time.
+1. R2에 private bucket `link-memo-backups`를 만들고 public access를 활성화하지 않습니다.
+2. Worker binding 이름 `BACKUPS`로 bucket을 연결합니다.
+3. 런타임 변수 `FIREBASE_PROJECT_ID`와 쉼표 구분 `ALLOWED_ORIGINS`를 등록합니다. 실제 값은 저장소에 커밋하지 않습니다.
+4. GitHub Secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`가 준비되면 `Deploy Backup Worker` workflow로 배포합니다.
+5. 배포 URL을 GitHub Secret `VITE_BACKUP_WORKER_URL`에 등록하고 Pages를 다시 배포합니다.
 
-The Worker verifies Firebase ID tokens, derives the R2 object path from the verified UID, and supports only create/read/delete of that user's objects. It does not list buckets or accept caller-provided object paths.
+## API와 보관 정책
+
+모든 경로는 `/v1` 아래이며 `Authorization: Bearer <Firebase ID token>`이 필요합니다.
+
+| 요청 | 역할 |
+|---|---|
+| `GET /v1/backups` | 인증 사용자 백업 목록 |
+| `POST /v1/backups` | 수동/자동 백업 생성 후 타입별 최신 3개 보관 |
+| `GET /v1/backups/:id` | 단일 백업 다운로드 |
+| `DELETE /v1/backups/:id` | 단일 백업 삭제 |
+| `GET /v1/checkpoints/latest` | 최신 종료 체크포인트 조회 |
+| `PUT /v1/checkpoints/latest` | 최신 종료 체크포인트 교체 |
+
+Worker는 검증된 UID로 R2 경로를 직접 만들고 호출자가 제공한 UID/object path를 신뢰하지 않습니다. 종료 체크포인트는 수동 3개 + 자동 3개 보관 제한과 별도로 최신 1개를 유지합니다.
+
+전체 배포와 운영은 [`docs/DEPLOYMENT_AND_OPERATIONS.md`](../docs/DEPLOYMENT_AND_OPERATIONS.md), Secret 원칙은 [`docs/SECURITY_AND_SECRETS.md`](../docs/SECURITY_AND_SECRETS.md)를 참조합니다.

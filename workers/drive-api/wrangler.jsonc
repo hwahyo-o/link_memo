@@ -3,23 +3,11 @@
   "name": "link-memo-drive-api",
   "main": "src/index.js",
   "compatibility_date": "2026-07-13",
-  "vars": {
-    "FIREBASE_PROJECT_ID": "link-note-c8c1d",
-    "ALLOWED_ORIGIN": "https://hwahyo-o.github.io",
-    "GOOGLE_OAUTH_REDIRECT_URI": "https://hwahyo-o.github.io"
-  },
   "d1_databases": [
     {
       "binding": "DRIVE_CREDENTIALS",
       "database_name": "link-memo-drive-credentials",
-      "database_id": "d41f773d-25d1-4be5-8671-d15f83693cbf"
+      "database_id": "__D1_DATABASE_ID__"
     }
-  ],
-  "secrets": {
-    "required": [
-      "GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET",
-      "TOKEN_ENCRYPTION_KEY"
-    ]
-  }
+  ]
 }

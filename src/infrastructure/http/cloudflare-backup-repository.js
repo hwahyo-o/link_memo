@@ -22,10 +22,28 @@ async function request(path, options = {}) {
 }
 
 export function createCloudflareBackupRepository({ tokenProvider = null } = {}) {
+  const checkpointPath = "/v1/checkpoints/latest";
   return {
     configured: () => Boolean(WORKER_URL),
     upload(user, envelope) { return request("/v1/backups", { method:"POST", user, tokenProvider, body:envelope }); },
     download(user, backupId) { return request(`/v1/backups/${encodeURIComponent(backupId)}`, { user, tokenProvider }); },
-    remove(user, backupId) { return request(`/v1/backups/${encodeURIComponent(backupId)}`, { method:"DELETE", user, tokenProvider }); }
+    remove(user, backupId) { return request(`/v1/backups/${encodeURIComponent(backupId)}`, { method:"DELETE", user, tokenProvider }); },
+    list(user) { return request("/v1/backups", { user, tokenProvider }); },
+    loadCheckpoint(user) { return request(checkpointPath, { user, tokenProvider }); },
+    saveCheckpoint(user, envelope) { return request(checkpointPath, { method: "POST", user, tokenProvider, body: envelope }); },
+    saveCheckpointKeepalive(envelope) {
+      const token = tokenProvider?.peekToken?.();
+      if (!WORKER_URL || !token) return false;
+      const body = JSON.stringify(envelope);
+      // Browsers cap all outstanding keepalive request bodies at roughly 64 KiB.
+      if (new TextEncoder().encode(body).byteLength > 60 * 1024) return false;
+      void fetch(`${WORKER_URL.replace(/\/$/, "")}${checkpointPath}`, {
+        method: "POST",
+        keepalive: true,
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body
+      }).catch(() => {});
+      return true;
+    }
   };
 }

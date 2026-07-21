@@ -8,4 +8,4 @@ bucket_name = "link-memo-backups"
 
 [vars]
 # Set FIREBASE_PROJECT_ID and ALLOWED_ORIGINS in the Cloudflare dashboard or with wrangler secret.
-# Example ALLOWED_ORIGINS: https://hwahyo-o.github.io,http://localhost:5173
+# Use the deployed application origin and explicit local development origins.

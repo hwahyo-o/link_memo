@@ -5,6 +5,9 @@
 .env
 .env.local
 .env.*.local
+.tools/
+.npm-cache/
+dist/
 
 ### Firebase ###
 .idea

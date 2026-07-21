@@ -44,5 +44,27 @@ export function addBackupSuccess(state, backup) {
 export function validateImportedBackup(value, userId) {
   if (!value || value.schemaVersion !== BACKUP_SCHEMA_VERSION || !value.payload) return { ok:false, error:"지원하지 않는 백업 파일입니다." };
   if (value.userId !== userId) return { ok:false, error:"현재 로그인한 계정의 백업 파일만 복원할 수 있습니다." };
-  return { ok:true, value:value.payload };
+  const payload = value.payload;
+  if (!Array.isArray(payload.categories) || !payload.linkData || typeof payload.linkData !== "object" || Array.isArray(payload.linkData)) {
+    return { ok:false, error:"백업 데이터 구조가 올바르지 않습니다." };
+  }
+  const serialized = JSON.stringify(payload);
+  if (serialized.length > 5_000_000 || /"(?:__proto__|prototype|constructor)"\s*:/.test(serialized)) {
+    return { ok:false, error:"안전하지 않거나 너무 큰 백업 파일입니다." };
+  }
+  const categories = payload.categories.filter(category => typeof category === "string" && category.length > 0 && category.length <= 100).slice(0, 100);
+  if (categories.length !== payload.categories.length) return { ok:false, error:"백업 카테고리 정보가 올바르지 않습니다." };
+  const linkData = Object.fromEntries(categories.map(category => [
+    category,
+    Array.isArray(payload.linkData[category]) ? structuredClone(payload.linkData[category]).slice(0, 1000) : []
+  ]));
+  return {
+    ok:true,
+    value:{
+      categories,
+      linkData,
+      uiPreferences: payload.uiPreferences && typeof payload.uiPreferences === "object" ? structuredClone(payload.uiPreferences) : {},
+      driveConnection: payload.driveConnection && typeof payload.driveConnection === "object" ? structuredClone(payload.driveConnection) : {}
+    }
+  };
 }

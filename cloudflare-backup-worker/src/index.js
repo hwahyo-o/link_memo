@@ -56,6 +56,7 @@ async function verifyToken(request, env) {
   return claims.sub;
 }
 function objectKey(uid, backupId) { return `users/${uid}/${backupId}.json`; }
+function checkpointKey(uid) { return `checkpoints/${uid}/latest.json`; }
 function validId(id) { return /^backup_[a-z0-9_-]{8,100}$/i.test(id || ""); }
 function validDigest(value) { return /^[a-f0-9]{64}$/i.test(value || ""); }
 function normalizeForChecksum(value) {
@@ -72,6 +73,42 @@ async function digest(value, { stable = false } = {}) {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(serialized));
   return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
+async function listUserBackups(env, uid) {
+  const listed = await env.BACKUPS.list({ prefix: `users/${uid}/`, include: ["customMetadata"] });
+  const descriptors = await Promise.all(listed.objects.map(async object => {
+    let metadata = object.customMetadata || {};
+    if (!metadata.reason) {
+      const legacy = await env.BACKUPS.get(object.key);
+      const envelope = legacy ? await legacy.json().catch(() => ({})) : {};
+      metadata = {
+        reason: envelope.reason,
+        createdAt: envelope.createdAt,
+        checksum: envelope.checksum,
+        payloadChecksum: envelope.payloadChecksum
+      };
+    }
+    return {
+      id: object.key.slice(object.key.lastIndexOf("/") + 1, -5),
+      createdAt: Number(metadata.createdAt || object.uploaded?.getTime?.() || 0),
+      reason: metadata.reason === "auto" ? "auto" : "manual",
+      checksum: metadata.checksum || null,
+      payloadChecksum: metadata.payloadChecksum || null,
+      size: Number(object.size || 0)
+    };
+  }));
+  return descriptors.sort((left, right) => right.createdAt - left.createdAt);
+}
+export function selectStaleBackupIds(backups) {
+  return ["manual", "auto"].flatMap(reason =>
+    backups.filter(item => item.reason === reason).sort((left, right) => right.createdAt - left.createdAt).slice(3).map(item => item.id)
+  );
+}
+async function enforceRetention(env, uid) {
+  const backups = await listUserBackups(env, uid);
+  const staleIds = selectStaleBackupIds(backups);
+  await Promise.all(staleIds.map(id => env.BACKUPS.delete(objectKey(uid, id))));
+  return backups.filter(item => !staleIds.includes(item.id));
+}
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("origin") || "";
@@ -79,6 +116,35 @@ export default {
     if (origin && !cors(origin, env)["access-control-allow-origin"]) return json({ code: "ORIGIN_NOT_ALLOWED" }, 403, origin, env);
     try {
       const uid = await verifyToken(request, env), url = new URL(request.url);
+      if (url.pathname === "/v1/checkpoints/latest") {
+        const key = checkpointKey(uid);
+        if (request.method === "GET") {
+          const object = await env.BACKUPS.get(key);
+          if (!object) return json({ code: "CHECKPOINT_NOT_FOUND" }, 404, origin, env);
+          return new Response(object.body, { headers: { "content-type": "application/json", ...cors(origin, env) } });
+        }
+        if (request.method === "POST") {
+          const contentLength = Number(request.headers.get("content-length") || 0);
+          if (contentLength > 5_000_000) return json({ code: "CHECKPOINT_TOO_LARGE" }, 413, origin, env);
+          const body = await request.json();
+          if (body?.schemaVersion !== 1 || body?.userId !== uid || !Number.isFinite(Number(body.updatedAt)) || !body.payload || typeof body.payload !== "object") {
+            return json({ code: "INVALID_CHECKPOINT" }, 400, origin, env);
+          }
+          const encoded = JSON.stringify(body);
+          if (encoded.length > 5_000_000) return json({ code: "CHECKPOINT_TOO_LARGE" }, 413, origin, env);
+          const current = await env.BACKUPS.get(key);
+          if (current) {
+            const previous = await current.json().catch(() => null);
+            if (Number(previous?.updatedAt || 0) > Number(body.updatedAt)) return json({ saved: false, stale: true }, 200, origin, env);
+          }
+          await env.BACKUPS.put(key, encoded, { httpMetadata: { contentType: "application/json" } });
+          return json({ saved: true, updatedAt: Number(body.updatedAt) }, 200, origin, env);
+        }
+        return json({ code: "METHOD_NOT_ALLOWED" }, 405, origin, env);
+      }
+      if (request.method === "GET" && url.pathname === "/v1/backups") {
+        return json({ backups: await listUserBackups(env, uid) }, 200, origin, env);
+      }
       if (request.method === "POST" && url.pathname === "/v1/backups") {
         const contentLength = Number(request.headers.get("content-length") || 0);
         if (contentLength > 5_000_000) return json({ code: "BACKUP_TOO_LARGE" }, 413, origin, env);
@@ -106,7 +172,16 @@ export default {
         if (body.checksum !== actualChecksum || body.payloadChecksum !== actualPayloadChecksum) {
           return json({ code: "BACKUP_CHECKSUM_INVALID" }, 400, origin, env);
         }
-        await env.BACKUPS.put(objectKey(uid, body.backupId), encoded, { httpMetadata: { contentType: "application/json" } });
+        await env.BACKUPS.put(objectKey(uid, body.backupId), encoded, {
+          httpMetadata: { contentType: "application/json" },
+          customMetadata: {
+            reason: body.reason,
+            createdAt: String(createdAt),
+            checksum: body.checksum,
+            payloadChecksum: body.payloadChecksum
+          }
+        });
+        await enforceRetention(env, uid);
         return json({
           backupId: body.backupId,
           createdAt,

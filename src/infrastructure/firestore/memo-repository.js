@@ -1,4 +1,5 @@
 import { db, appId, doc, setDoc, onSnapshot, deleteDoc, runTransaction, deleteField, FieldPath } from "../../services/firebase-client.js";
+import { mergeMemoPayloads } from "../../domain/sync/memo-merge-policy.js";
 
 function sameValue(left, right) {
     return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
@@ -35,34 +36,38 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
 
                 const remote = current.data() || {};
                 const remoteRevision = Number(remote.revision || 0);
-                if (expectedRevision !== null && remoteRevision !== expectedRevision) {
-                    const error = new Error("MEMO_CONFLICT");
-                    error.code = "MEMO_CONFLICT";
-                    throw error;
-                }
 
                 if (!current.exists()) {
                     const revision = remoteRevision + 1;
-                    transaction.set(reference, { ...data, revision, updatedAt: Date.now() });
-                    return { revision, skipped: false };
+                    const created = { ...data, revision, updatedAt: Number(data.updatedAt || Date.now()) };
+                    transaction.set(reference, created);
+                    return { revision, skipped: false, payload: created };
                 }
 
+                // A stale device never overwrites the current document wholesale. The transaction
+                // resolves every entity by updatedAt/mutationId and commits the deterministic merge.
+                const merged = mergeMemoPayloads(remote, data, {
+                    leftUpdatedAt: remote.updatedAt,
+                    rightUpdatedAt: data.updatedAt
+                });
+
                 const remoteLinkData = remote.linkData && typeof remote.linkData === "object" ? remote.linkData : {};
-                const nextLinkData = data.linkData && typeof data.linkData === "object" ? data.linkData : {};
+                const nextLinkData = merged.linkData && typeof merged.linkData === "object" ? merged.linkData : {};
                 const categoryNames = new Set([...Object.keys(remoteLinkData), ...Object.keys(nextLinkData)]);
                 const changedCategories = [...categoryNames].filter(
                     category => !sameValue(remoteLinkData[category], nextLinkData[category])
                 );
                 const metadataChanged = [
-                    ["categories", data.categories],
-                    ["uiPreferences", data.uiPreferences],
-                    ["driveConnection", data.driveConnection],
-                    ["backupInfo", data.backupInfo || null],
-                    ["backupState", data.backupState || null]
+                    ["categories", merged.categories],
+                    ["uiPreferences", merged.uiPreferences],
+                    ["driveConnection", merged.driveConnection],
+                    ["backupInfo", merged.backupInfo || null],
+                    ["backupState", merged.backupState || null],
+                    ["syncMeta", merged.syncMeta || null]
                 ].some(([key, value]) => !sameValue(remote[key], value));
 
                 if (!changedCategories.length && !metadataChanged) {
-                    return { revision: remoteRevision, skipped: true };
+                    return { revision: remoteRevision, skipped: true, payload: remote };
                 }
 
                 for (const category of changedCategories) {
@@ -75,15 +80,16 @@ export function createFirestoreMemoRepository({ database = db, applicationId = a
 
                 const revision = remoteRevision + 1;
                 transaction.update(reference, {
-                    categories: data.categories,
-                    uiPreferences: data.uiPreferences,
-                    driveConnection: data.driveConnection,
-                    backupInfo: data.backupInfo || null,
-                    backupState: data.backupState || null,
+                    categories: merged.categories,
+                    uiPreferences: merged.uiPreferences,
+                    driveConnection: merged.driveConnection,
+                    backupInfo: merged.backupInfo || null,
+                    backupState: merged.backupState || null,
+                    syncMeta: merged.syncMeta || null,
                     revision,
-                    updatedAt: Date.now()
+                    updatedAt: Math.max(Number(merged.updatedAt || 0), Date.now())
                 });
-                return { revision, skipped: false };
+                return { revision, skipped: false, payload: { ...merged, revision } };
             });
         },
 
