@@ -30,6 +30,7 @@ import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../
 import { isSameMemoPayload, mergeMemoPayloads, prepareLocalMemoPayload } from "../domain/sync/memo-merge-policy.js";
 import { createLifecycleSyncService } from "../application/sync/lifecycle-sync-service.js";
 import { getLogoutErrorMessage } from "./auth/logout-error-message.js";
+import { createMobileSaveController } from "./sync/mobile-save-controller.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const localMemoRepository = createIndexedDbMemoRepository();
@@ -113,6 +114,9 @@ const homeLanding = document.getElementById('homeLanding');
 const mainApp = document.getElementById('mainApp');
 const homeUserInfoDisplay = document.getElementById('homeUserInfoDisplay');
 const userInfoDisplay = document.getElementById('userInfoDisplay');
+const mobileSaveButton = document.getElementById('mobileSaveButton');
+const mobileSaveIcon = document.getElementById('mobileSaveIcon');
+const mobileSaveStatus = document.getElementById('mobileSaveStatus');
 const imageInput = document.getElementById('linkImage');
 const imagePreview = document.getElementById('imagePreview');
 const imagePreviewName = document.getElementById('imagePreviewName');
@@ -203,6 +207,15 @@ let deleteReauthMode = 'none';
 let driveConnection = createDefaultDriveConnection();
 let drivePromptRequested = false;
 const repairingDriveImageIds = new Set();
+const mobileSaveController = createMobileSaveController({
+    button: mobileSaveButton,
+    icon: mobileSaveIcon,
+    status: mobileSaveStatus,
+    getUser: () => currentUser,
+    saveNow: () => lifecycleSyncService.saveNow(),
+    alert: customAlert
+});
+window.handleMobileSave = () => { void mobileSaveController.save(); };
 
 function createId(prefix) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
@@ -421,6 +434,7 @@ async function savePreferences() {
 }
 
 function showLogin() {
+    mobileSaveController.updateVisibility(null);
     loginScreen.classList.remove('hidden');
     loginScreen.classList.add('flex');
     homeLanding.classList.add('hidden');
@@ -434,6 +448,7 @@ function showHome() {
     mainApp.classList.add('hidden');
     applyPreferences();
     renderHomeLanding();
+    mobileSaveController.maybeShowOnboarding();
 }
 
 function showMain(category = uiPreferences.lastViewedTab || activeTab) {
@@ -448,6 +463,7 @@ function showMain(category = uiPreferences.lastViewedTab || activeTab) {
     applyPreferences();
     initApp();
     savePreferences();
+    mobileSaveController.maybeShowOnboarding();
 }
 
 window.showHome = showHome;
@@ -462,6 +478,7 @@ function updateHeaderUI(user) {
     const content = `<i class="fa-solid fa-user-circle text-blue-500 mr-2 text-lg"></i><span class="mr-3 text-gray-700 font-bold truncate max-w-[11rem]">${escapeHtml(identifier)}</span>${linkButton}<button onclick="window.handleLogout()" class="text-xs bg-red-100 text-red-600 hover:bg-red-500 hover:text-white px-3 py-1.5 rounded font-semibold shadow-sm border border-red-200">로그아웃</button>`;
     userInfoDisplay.innerHTML = content;
     homeUserInfoDisplay.innerHTML = content;
+    mobileSaveController.updateVisibility(user);
 }
 
 function createFolderButton(label, icon, color, onClick, subtitle = '열기') {
