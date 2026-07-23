@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import {
+import backupWorker, {
   hasValidFirebaseAuthTime,
   isAnonymousFirebaseToken,
   selectStaleBackupIds
 } from "../cloudflare-backup-worker/src/index.js";
 
 describe("Cloudflare Worker Firebase token policy", () => {
+  it("exposes the deployed API contract without authentication", async () => {
+    const response = await backupWorker.fetch(new Request("https://worker.test/v1/health"), {});
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ service: "link-memo-backup", apiVersion: 1 });
+  });
+
   it("rejects anonymous sign-in providers", () => {
     expect(isAnonymousFirebaseToken({
       firebase: { sign_in_provider: "anonymous" }
