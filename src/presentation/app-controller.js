@@ -2440,7 +2440,6 @@ settingsModal.addEventListener('click', event => { if (event.target === settings
 accountDeleteModal.addEventListener('click', event => { if (event.target === accountDeleteModal) closeAccountDeleteModal(); });
 linkEditModal.addEventListener('click', event => { if (event.target === linkEditModal) window.closeLinkEditModal(); });
 
-window.addEventListener("pagehide", () => { void saveDataInBackground(); });
 
 document.addEventListener('keydown', event => {
     if (!imagePreviewModal.classList.contains('hidden') && event.key === 'ArrowLeft') {

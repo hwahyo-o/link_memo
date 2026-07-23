@@ -58,6 +58,19 @@
 
 Pages 배포는 Secret에 저장된 Worker 주소의 health 응답을 확인합니다. 서비스 계약, API 버전 또는 `ready: true`가 맞지 않으면 빌드 산출물을 운영에 배포하지 않습니다. Worker와 Pages가 동시에 배포될 수 있으므로 제한된 횟수만 재시도합니다.
 
+
+### 모바일 홈·뒤로가기 이탈
+
+모바일 브라우저의 홈 또는 뒤로가기는 `visibilitychange(hidden)` 다음 `pagehide`를 짧은 간격으로 발생시킬 수 있습니다. 이탈 동기화는 다음 순서를 유지합니다.
+
+1. 최신 화면 상태를 IndexedDB snapshot/outbox에 확정합니다.
+2. 겹쳐 발생한 이탈 이벤트는 같은 로컬 저장 Promise를 공유합니다.
+3. 일반 hidden 경로는 Firestore flush 후 Cloudflare 체크포인트를 저장합니다.
+4. pagehide 경로는 로컬 저장이 끝난 최신 payload만 keepalive 체크포인트로 전송합니다.
+5. 실패하면 최신 세션 payload로 keepalive를 한 번 더 시도하며 IndexedDB outbox는 삭제하지 않습니다.
+
+화면 계층에는 이탈 저장을 별도로 실행하는 중복 `pagehide` 리스너를 두지 않습니다. 모바일 운영체제가 웹 프로세스를 즉시 종료하면 네트워크 완료를 절대적으로 보장할 수 없으므로, 로컬 outbox와 다음 재접속 병합은 계속 최종 복구 경로로 유지합니다.
+
 ### 로그아웃 오류 안내
 
 처리 계층은 다음 단계명을 사용합니다.
