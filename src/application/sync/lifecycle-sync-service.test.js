@@ -17,6 +17,23 @@ describe("lifecycle sync service", () => {
         expect(order).toEqual(["images", "indexeddb", "firebase", "cloudflare"]);
     });
 
+    it("identifies a Cloudflare checkpoint failure before logout", async () => {
+        const service = createLifecycleSyncService({
+            getSession: () => ({ user: { uid: "u1", isAnonymous: false }, payload: {} }),
+            waitForUploads: vi.fn(),
+            persistLatest: vi.fn(),
+            flushFirebase: vi.fn(),
+            loadDurable: async () => ({ payload: { latest: true }, dirty: false }),
+            saveCheckpoint: async () => { throw new Error("NOT_FOUND"); },
+            saveCheckpointKeepalive: vi.fn()
+        });
+
+        await expect(service.flushBeforeLogout()).rejects.toMatchObject({
+            message: "NOT_FOUND",
+            syncStage: "cloudflare-checkpoint"
+        });
+    });
+
     it("falls back to a keepalive checkpoint if the hidden flush fails", async () => {
         const keepalive = vi.fn(() => true);
         const service = createLifecycleSyncService({
