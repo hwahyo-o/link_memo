@@ -78,6 +78,23 @@ jobs:
           test -n "$VITE_FIREBASE_APP_ID"
           test -n "$VITE_BACKUP_WORKER_URL"
 
+      - name: Verify Backup Worker compatibility
+        env:
+          VITE_BACKUP_WORKER_URL: ${{ secrets.VITE_BACKUP_WORKER_URL }}
+        shell: bash
+        run: |
+          health_url="${VITE_BACKUP_WORKER_URL%/}/v1/health"
+          for attempt in {1..12}; do
+            response="$(curl --silent --show-error --fail "$health_url" || true)"
+            if node -e 'const value=JSON.parse(process.argv[1]); process.exit(value.service === "link-memo-backup" && value.apiVersion === 1 ? 0 : 1)' "$response"; then
+              exit 0
+            fi
+            echo "Backup Worker compatibility check $attempt/12 failed; retrying..."
+            sleep 5
+          done
+          echo "Backup Worker is unavailable or incompatible: $health_url"
+          exit 1
+
       - name: Build
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
