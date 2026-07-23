@@ -12,16 +12,17 @@
 
 ## API와 보관 정책
 
-모든 경로는 `/v1` 아래이며 `Authorization: Bearer <Firebase ID token>`이 필요합니다.
+모든 경로는 `/v1` 아래입니다. 상태 확인 경로를 제외한 데이터 경로에는 `Authorization: Bearer <Firebase ID token>`이 필요합니다.
 
 | 요청 | 역할 |
 |---|---|
+| `GET /v1/health` | 배포 대상과 API 버전 확인(인증 불필요) |
 | `GET /v1/backups` | 인증 사용자 백업 목록 |
 | `POST /v1/backups` | 수동/자동 백업 생성 후 타입별 최신 3개 보관 |
 | `GET /v1/backups/:id` | 단일 백업 다운로드 |
 | `DELETE /v1/backups/:id` | 단일 백업 삭제 |
 | `GET /v1/checkpoints/latest` | 최신 종료 체크포인트 조회 |
-| `PUT /v1/checkpoints/latest` | 최신 종료 체크포인트 교체 |
+| `POST /v1/checkpoints/latest` | 최신 종료 체크포인트 교체 |
 
 Worker는 검증된 UID로 R2 경로를 직접 만들고 호출자가 제공한 UID/object path를 신뢰하지 않습니다. 종료 체크포인트는 수동 3개 + 자동 3개 보관 제한과 별도로 최신 1개를 유지합니다.
 

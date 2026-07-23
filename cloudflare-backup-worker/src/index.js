@@ -1,4 +1,5 @@
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+const API_VERSION = 1;
 let jwksCache = { expires: 0, keys: [] };
 function cors(origin, env) {
   const allowed = (env.ALLOWED_ORIGINS || "").split(",").map(value => value.trim()).filter(Boolean);
@@ -115,7 +116,11 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin, env) });
     if (origin && !cors(origin, env)["access-control-allow-origin"]) return json({ code: "ORIGIN_NOT_ALLOWED" }, 403, origin, env);
     try {
-      const uid = await verifyToken(request, env), url = new URL(request.url);
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/v1/health") {
+        return json({ service: "link-memo-backup", apiVersion: API_VERSION }, 200, origin, env);
+      }
+      const uid = await verifyToken(request, env);
       if (url.pathname === "/v1/checkpoints/latest") {
         const key = checkpointKey(uid);
         if (request.method === "GET") {
