@@ -17,6 +17,65 @@ describe("lifecycle sync service", () => {
         expect(order).toEqual(["images", "indexeddb", "firebase", "cloudflare"]);
     });
 
+    it("persists the latest payload before a hidden-page remote flush", async () => {
+        const order = [];
+        let persisted = false;
+        const saveCheckpoint = vi.fn(async () => order.push("cloudflare"));
+        const service = createLifecycleSyncService({
+            getSession: () => ({
+                user: { uid: "u1", isAnonymous: false },
+                payload: { version: persisted ? "latest" : "stale" }
+            }),
+            waitForUploads: vi.fn(),
+            persistLatest: async () => { order.push("indexeddb"); persisted = true; },
+            flushFirebase: async () => order.push("firebase"),
+            loadDurable: async () => ({ payload: { version: "latest" }, dirty: false }),
+            saveCheckpoint,
+            saveCheckpointKeepalive: vi.fn()
+        });
+
+        await expect(service.flushForPageExit()).resolves.toBe(true);
+        expect(order).toEqual(["indexeddb", "firebase", "cloudflare"]);
+        expect(saveCheckpoint).toHaveBeenCalledWith(
+            expect.objectContaining({ uid: "u1" }),
+            { version: "latest" },
+            expect.any(Number)
+        );
+    });
+
+    it("shares one local persistence across overlapping exit events", async () => {
+        let releasePersist;
+        let persisted = false;
+        const persistLatest = vi.fn(() => new Promise(resolve => {
+            releasePersist = () => { persisted = true; resolve(); };
+        }));
+        const keepalive = vi.fn(() => true);
+        const service = createLifecycleSyncService({
+            getSession: () => ({
+                user: { uid: "u1", isAnonymous: false },
+                payload: { version: persisted ? "latest" : "stale" }
+            }),
+            waitForUploads: vi.fn(),
+            persistLatest,
+            flushFirebase: vi.fn(async () => {}),
+            loadDurable: async () => ({ payload: { version: "latest" }, dirty: false }),
+            saveCheckpoint: vi.fn(async () => {}),
+            saveCheckpointKeepalive: keepalive
+        });
+
+        const hiddenFlush = service.flushForPageExit();
+        const pageHideFlush = service.flushForPageExit({ keepaliveOnly: true });
+        await vi.waitFor(() => expect(persistLatest).toHaveBeenCalledTimes(1));
+        releasePersist();
+
+        await expect(Promise.all([hiddenFlush, pageHideFlush])).resolves.toEqual([true, true]);
+        expect(keepalive).toHaveBeenCalledWith(
+            expect.objectContaining({ uid: "u1" }),
+            { version: "latest" },
+            expect.any(Number)
+        );
+    });
+
     it("identifies a Cloudflare checkpoint failure before logout", async () => {
         const service = createLifecycleSyncService({
             getSession: () => ({ user: { uid: "u1", isAnonymous: false }, payload: {} }),
