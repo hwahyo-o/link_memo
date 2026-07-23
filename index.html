@@ -64,9 +64,13 @@
     <div id="mainApp" class="app-surface hidden max-w-5xl mx-auto my-6 md:mt-10 bg-white p-6 md:p-8 rounded-xl shadow-lg border border-gray-200">
         <div class="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
             <div class="flex items-center gap-3 min-w-0">
-                <button onclick="window.showHome()" class="icon-command w-10 h-10 shrink-0 rounded-full bg-gray-100 hover:bg-blue-100 text-gray-600 hover:text-blue-600 flex items-center justify-center transition-colors" title="홈으로">
-                    <i class="fa-solid fa-house"></i>
+                <button onclick="window.showHome()" class="icon-command w-10 h-10 shrink-0 rounded-full bg-gray-100 hover:bg-blue-100 text-gray-600 hover:text-blue-600 flex items-center justify-center transition-colors" title="홈으로" aria-label="홈으로">
+                    <i class="fa-solid fa-house" aria-hidden="true"></i>
                 </button>
+                <button id="mobileSaveButton" type="button" onclick="window.handleMobileSave()" class="icon-command hidden md:hidden w-10 h-10 shrink-0 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 flex items-center justify-center transition-colors disabled:cursor-wait disabled:opacity-70" title="모든 데이터 즉시 저장" aria-label="모든 데이터 즉시 저장">
+                    <i id="mobileSaveIcon" class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                </button>
+                <span id="mobileSaveStatus" class="sr-only" role="status" aria-live="polite"></span>
                 <h1 class="app-heading text-3xl font-extrabold text-gray-800 tracking-tight truncate"><i class="fa-solid fa-bookmark text-blue-500 mr-2"></i>카테고리별 링크 메모장</h1>
             </div>
             <div id="userInfoDisplay" class="user-pill text-sm font-medium flex items-center bg-gray-50 px-4 py-2 rounded-full border border-gray-200 shadow-sm"></div>

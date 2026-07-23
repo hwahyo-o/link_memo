@@ -17,6 +17,31 @@ describe("lifecycle sync service", () => {
         expect(order).toEqual(["images", "indexeddb", "firebase", "cloudflare"]);
     });
 
+    it("shares one durable write between manual save and logout", async () => {
+        let releaseUploads;
+        const waitForUploads = vi.fn(() => new Promise(resolve => { releaseUploads = resolve; }));
+        const service = createLifecycleSyncService({
+            getSession: () => ({ user: { uid: "u1", isAnonymous: false }, payload: {} }),
+            waitForUploads,
+            persistLatest: vi.fn(async () => {}),
+            flushFirebase: vi.fn(async () => {}),
+            loadDurable: async () => ({ payload: { latest: true }, dirty: false }),
+            saveCheckpoint: vi.fn(async () => {}),
+            saveCheckpointKeepalive: vi.fn()
+        });
+
+        const manualSave = service.saveNow();
+        const logoutSave = service.flushBeforeLogout();
+        expect(logoutSave).toBe(manualSave);
+        await vi.waitFor(() => expect(waitForUploads).toHaveBeenCalledTimes(1));
+        releaseUploads();
+
+        await expect(Promise.all([manualSave, logoutSave])).resolves.toEqual([
+            expect.objectContaining({ dirty: false }),
+            expect.objectContaining({ dirty: false })
+        ]);
+    });
+
     it("persists the latest payload before a hidden-page remote flush", async () => {
         const order = [];
         let persisted = false;

@@ -9,6 +9,7 @@ export function createLifecycleSyncService({
     saveCheckpointKeepalive
 }) {
     let exitPersist = null;
+    let durableFlush = null;
 
     function canSync(session, userId = session?.user?.uid) {
         return Boolean(session?.user && !session.user.isAnonymous && !session.disabled && session.user.uid === userId);
@@ -51,7 +52,7 @@ export function createLifecycleSyncService({
         }
     }
 
-    async function flushBeforeLogout() {
+    async function performDurableFlush() {
         const session = getSession();
         if (!session?.user) throw new Error("UNAUTHENTICATED");
         await runStage("image-uploads", () => waitForUploads());
@@ -65,5 +66,16 @@ export function createLifecycleSyncService({
         return durable;
     }
 
-    return { flushForPageExit, flushBeforeLogout };
+    function saveNow() {
+        if (!durableFlush) {
+            durableFlush = performDurableFlush().finally(() => { durableFlush = null; });
+        }
+        return durableFlush;
+    }
+
+    function flushBeforeLogout() {
+        return saveNow();
+    }
+
+    return { flushForPageExit, saveNow, flushBeforeLogout };
 }
