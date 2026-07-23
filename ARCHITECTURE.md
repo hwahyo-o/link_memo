@@ -37,6 +37,8 @@
 
 `keepalive`는 브라우저가 전달을 최종 보장하는 프로토콜이 아닙니다. 따라서 정합성의 기준은 IndexedDB outbox와 다음 로그인 시 병합이며, 종료 체크포인트는 복구 가능성을 높이는 보조 경로입니다. 큰 이미지 바이너리는 종료 요청에 포함하지 않습니다.
 
+로그아웃 실패에는 Processing 계층이 `image-uploads`, `local-persist`, `firebase`, `local-verify`, `cloudflare-checkpoint` 단계만 표식으로 남깁니다. UI는 이 표식을 사용자 안내로 변환하며, Infrastructure 오류 문구나 HTTP 구현을 직접 해석하지 않습니다.
+
 ## 충돌 해결과 확장
 
 - 레코드 비교 우선순위는 유효한 `updatedAt`, 그다음 결정적인 `mutationId`입니다.
