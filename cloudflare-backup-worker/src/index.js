@@ -118,7 +118,8 @@ export default {
     try {
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname === "/v1/health") {
-        return json({ service: "link-memo-backup", apiVersion: API_VERSION }, 200, origin, env);
+        const ready = Boolean(env.FIREBASE_PROJECT_ID && env.ALLOWED_ORIGINS && env.BACKUPS);
+        return json({ service: "link-memo-backup", apiVersion: API_VERSION, ready }, ready ? 200 : 503, origin, env);
       }
       const uid = await verifyToken(request, env);
       if (url.pathname === "/v1/checkpoints/latest") {

@@ -86,7 +86,7 @@ jobs:
           health_url="${VITE_BACKUP_WORKER_URL%/}/v1/health"
           for attempt in {1..12}; do
             response="$(curl --silent --show-error --fail "$health_url" || true)"
-            if node -e 'try { const value=JSON.parse(process.argv[1]); process.exit(value.service === "link-memo-backup" && value.apiVersion === 1 ? 0 : 1); } catch { process.exit(1); }' "$response"; then
+            if node -e 'try { const value=JSON.parse(process.argv[1]); process.exit(value.service === "link-memo-backup" && value.apiVersion === 1 && value.ready === true ? 0 : 1); } catch { process.exit(1); }' "$response"; then
               exit 0
             fi
             echo "Backup Worker compatibility check $attempt/12 failed; retrying..."

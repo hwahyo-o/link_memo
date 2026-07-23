@@ -7,9 +7,16 @@ import backupWorker, {
 
 describe("Cloudflare Worker Firebase token policy", () => {
   it("exposes the deployed API contract without authentication", async () => {
-    const response = await backupWorker.fetch(new Request("https://worker.test/v1/health"), {});
+    const env = { FIREBASE_PROJECT_ID: "project", ALLOWED_ORIGINS: "https://app.test", BACKUPS: {} };
+    const response = await backupWorker.fetch(new Request("https://worker.test/v1/health"), env);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ service: "link-memo-backup", apiVersion: 1 });
+    await expect(response.json()).resolves.toEqual({ service: "link-memo-backup", apiVersion: 1, ready: true });
+  });
+
+  it("reports an incomplete runtime configuration", async () => {
+    const response = await backupWorker.fetch(new Request("https://worker.test/v1/health"), {});
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ ready: false });
   });
 
   it("rejects anonymous sign-in providers", () => {

@@ -6,7 +6,7 @@
 
 1. R2에 private bucket `link-memo-backups`를 만들고 public access를 활성화하지 않습니다.
 2. Worker binding 이름 `BACKUPS`로 bucket을 연결합니다.
-3. 런타임 변수 `FIREBASE_PROJECT_ID`와 쉼표 구분 `ALLOWED_ORIGINS`를 등록합니다. 실제 값은 저장소에 커밋하지 않습니다.
+3. 공개 배포 식별자인 `FIREBASE_PROJECT_ID`와 `ALLOWED_ORIGINS`는 `wrangler.toml`에서 관리합니다. 프로젝트 또는 운영 Origin이 바뀌면 함께 갱신합니다.
 4. GitHub Secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`가 준비되면 `Deploy Backup Worker` workflow로 배포합니다.
 5. 배포 URL을 GitHub Secret `VITE_BACKUP_WORKER_URL`에 등록하고 Pages를 다시 배포합니다.
 
