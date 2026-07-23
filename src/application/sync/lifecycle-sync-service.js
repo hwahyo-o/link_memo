@@ -8,6 +8,16 @@ export function createLifecycleSyncService({
     saveCheckpoint,
     saveCheckpointKeepalive
 }) {
+    async function runStage(syncStage, task) {
+        try {
+            return await task();
+        } catch (cause) {
+            const error = cause instanceof Error ? cause : new Error(String(cause));
+            error.syncStage ||= syncStage;
+            throw error;
+        }
+    }
+
     async function flushForPageExit({ keepaliveOnly = false } = {}) {
         const session = getSession();
         if (!session?.user || session.user.isAnonymous || session.disabled) return false;
@@ -25,12 +35,14 @@ export function createLifecycleSyncService({
     async function flushBeforeLogout() {
         const session = getSession();
         if (!session?.user) throw new Error("UNAUTHENTICATED");
-        await waitForUploads();
-        await persistLatest();
-        await flushFirebase({ throwOnError: true });
-        const durable = await loadDurable(session.user.uid);
+        await runStage("image-uploads", () => waitForUploads());
+        await runStage("local-persist", () => persistLatest());
+        await runStage("firebase", () => flushFirebase({ throwOnError: true }));
+        const durable = await runStage("local-verify", () => loadDurable(session.user.uid));
         if (!durable?.payload || durable.dirty) throw new Error("MEMO_SYNC_INCOMPLETE");
-        if (!session.user.isAnonymous) await saveCheckpoint(session.user, durable.payload, Date.now());
+        if (!session.user.isAnonymous) {
+            await runStage("cloudflare-checkpoint", () => saveCheckpoint(session.user, durable.payload, Date.now()));
+        }
         return durable;
     }
 
