@@ -29,6 +29,7 @@ import { createFirebaseTokenProvider } from "../infrastructure/firebase/auth-tok
 import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../domain/backups/backup-schedule-policy.js";
 import { isSameMemoPayload, mergeMemoPayloads, prepareLocalMemoPayload } from "../domain/sync/memo-merge-policy.js";
 import { createLifecycleSyncService } from "../application/sync/lifecycle-sync-service.js";
+import { getLogoutErrorMessage } from "./auth/logout-error-message.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const localMemoRepository = createIndexedDbMemoRepository();
@@ -808,7 +809,7 @@ window.handleLogout = () => {
             document.getElementById('loginPassword').value = '';
         } catch (error) {
             console.error('로그아웃 전 동기화 실패:', error);
-            customAlert('최신 데이터를 클라우드에 완전히 저장하지 못해 로그아웃을 중단했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.');
+            customAlert(getLogoutErrorMessage(error));
         }
     });
 };
