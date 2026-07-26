@@ -12,6 +12,8 @@ Link Memo는 텍스트·URL·이미지·설정을 기기 간 동기화하는 Van
 - KST 0/4/8/12/16/20시 접속 중 자동 백업
 - Cloudflare R2에 사용자별 수동 3개 + 자동 3개, 별도 종료 체크포인트 1개 유지
 - Google Drive 이미지 업로드와 Cloudflare D1의 암호화된 OAuth 토큰 보관
+- 독립 `pkm.html`의 PKM 그래프, 3단계 검색 강조, 분할 편집 Workspace
+- 모든 기기의 3분 유휴 동기화와 모바일·태블릿의 추가 수동 전체 저장
 
 ## 문서 안내
 
@@ -22,6 +24,7 @@ Link Memo는 텍스트·URL·이미지·설정을 기기 간 동기화하는 Van
 3. [docs/DEPLOYMENT_AND_OPERATIONS.md](docs/DEPLOYMENT_AND_OPERATIONS.md) — 최초 설정, 배포 순서, 검증, 운영 런북
 4. [docs/FREE_TIER_DRIVE_SETUP.md](docs/FREE_TIER_DRIVE_SETUP.md) — Google OAuth·Drive·D1 상세 설정
 5. [cloudflare-backup-worker/README.md](cloudflare-backup-worker/README.md) — R2 백업 Worker의 경계와 API
+6. [PKM_ARCHITECTURE.md](PKM_ARCHITECTURE.md) — PKM Vault, 검색, 그래프 Worker, 동기화와 확장 규칙
 
 문서와 코드가 다르면 코드를 먼저 확인하고, 같은 변경에서 문서를 함께 수정합니다. 실제 프로젝트 ID, 계정 ID, 데이터베이스 ID, Worker URL, 토큰, 키 값은 Markdown·소스·예제 로그에 기록하지 않습니다.
 
@@ -47,4 +50,3 @@ npm run dev
 - 인증된 UID 밖의 Firestore·R2·D1·Drive 데이터에 접근할 수 없음
 - Secret 또는 실제 인프라 식별자가 diff와 Markdown에 없음
 - 동기화, 백업, 환경변수, 운영 절차가 바뀌면 관련 Markdown도 함께 갱신됨
-

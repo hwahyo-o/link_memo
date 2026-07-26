@@ -68,7 +68,11 @@
                     <button onclick="window.showHome()" class="icon-command w-10 h-10 shrink-0 rounded-full bg-gray-100 hover:bg-blue-100 text-gray-600 hover:text-blue-600 flex items-center justify-center transition-colors" title="홈으로" aria-label="홈으로">
                         <i class="fa-solid fa-house" aria-hidden="true"></i>
                     </button>
-                    <button id="mobileSaveButton" type="button" onclick="window.handleMobileSave()" class="icon-command hidden md:hidden w-10 h-10 shrink-0 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 flex items-center justify-center transition-colors disabled:cursor-wait disabled:opacity-70" title="모든 데이터 즉시 저장" aria-label="모든 데이터 즉시 저장">
+                    <a href="./pkm.html" class="icon-command h-10 shrink-0 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-4 flex items-center justify-center gap-2 transition-colors text-sm font-bold" title="그래프 뷰 보러가기" aria-label="그래프 뷰 보러가기">
+                        <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
+                        <span class="hidden sm:inline">그래프 뷰 보러가기</span>
+                    </a>
+                    <button id="mobileSaveButton" type="button" onclick="window.handleMobileSave()" class="icon-command hidden w-10 h-10 shrink-0 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-700 flex items-center justify-center transition-colors disabled:cursor-wait disabled:opacity-70" title="모든 데이터 즉시 저장" aria-label="모든 데이터 즉시 저장">
                         <i id="mobileSaveIcon" class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
                     </button>
 
