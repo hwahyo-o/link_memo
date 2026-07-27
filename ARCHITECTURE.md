@@ -49,6 +49,8 @@
 
 핵심 구현은 `src/domain/sync/memo-merge-policy.js`, `src/application/memos/memo-sync-service.js`, `src/application/sync/lifecycle-sync-service.js`, `src/infrastructure/firestore/memo-repository.js`입니다.
 
+PKM Graph View는 같은 의존 방향을 `src/*/pkm/`에 적용합니다. 전용 IndexedDB, Firestore chunk, Vault 직렬 처리, 검색·강조 및 Worker 계약은 [`PKM_ARCHITECTURE.md`](PKM_ARCHITECTURE.md)를 기준으로 합니다.
+
 ## 백업 규칙
 
 - 수동 백업과 자동 백업은 각각 최신 3개를 독립적으로 유지합니다.
@@ -60,4 +62,3 @@
 ## 상태 복구 원칙
 
 Firestore, R2 또는 Drive 중 하나가 일시 실패해도 로컬 snapshot/outbox를 삭제하지 않습니다. 네트워크 복구 또는 다음 로그인 때 재시도하며, 성공 확인 전에는 더 오래된 원격 상태로 화면을 되돌리지 않습니다. 복원은 현재 상태를 별도 백업한 뒤 선택한 백업을 병합/적용하는 흐름을 유지합니다.
-

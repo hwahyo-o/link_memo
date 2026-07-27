@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>PKM 그래프 | Link Memo</title>
+    <link rel="shortcut icon" href="./img/favicon-96x96.png" type="image/png">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="./styles/pkm.css">
+</head>
+<body>
+    <div id="pkmApp" class="pkm-app" aria-busy="true">
+        <header class="pkm-header">
+            <a class="icon-button back-button" href="./index.html" aria-label="Link Memo로 돌아가기" title="Link Memo로 돌아가기">
+                <span aria-hidden="true">←</span>
+            </a>
+            <div class="brand">
+                <span class="brand-mark" aria-hidden="true">⌘</span>
+                <h1>PKM 그래프</h1>
+            </div>
+            <div class="search-command">
+                <label class="search-field" for="graphSearch">
+                    <span aria-hidden="true">⌕</span>
+                    <input id="graphSearch" type="search" placeholder="제목, 본문, 태그, 댓글 검색" autocomplete="off">
+                    <button id="clearSearch" class="clear-search" type="button" aria-label="검색 초기화">×</button>
+                </label>
+                <div class="search-mode" role="group" aria-label="검색 조건">
+                    <button type="button" data-search-mode="AND" aria-pressed="true">키워드 모두 포함</button>
+                    <button type="button" data-search-mode="OR" aria-pressed="false">키워드 중 하나라도 포함</button>
+                </div>
+            </div>
+            <div class="header-actions">
+                <span id="syncStatus" class="sync-status" role="status" aria-live="polite">로그인 확인 중</span>
+                <button id="pkmSaveButton" class="icon-button hidden" type="button" title="모든 데이터 즉시 저장" aria-label="모든 데이터 즉시 저장">
+                    <i id="pkmSaveIcon" class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                </button>
+                <span id="pkmSaveStatus" class="sr-only" role="status" aria-live="polite"></span>
+                <span id="pkmUser" class="user-chip"></span>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <aside id="filePanel" class="file-panel">
+                <div class="panel-heading">
+                    <div>
+                        <strong>파일</strong>
+                        <span id="fileCount">0</span>
+                    </div>
+                    <button id="newNoteButton" class="small-button" type="button">새 메모</button>
+                </div>
+                <label class="file-filter">
+                    <span class="sr-only">파일 검색</span>
+                    <input id="fileFilter" type="search" placeholder="파일 검색">
+                </label>
+                <nav id="fileTree" class="file-tree" aria-label="PKM 파일"></nav>
+                <div id="schemaSummary" class="schema-summary"></div>
+            </aside>
+            <div class="pane-resizer" data-pane-resizer="left" role="separator" aria-orientation="vertical" aria-label="파일 패널 크기 조절" tabindex="0"></div>
+
+            <section class="graph-panel" aria-label="지식 그래프">
+                <div id="graphCanvas" class="graph-canvas"></div>
+                <div class="graph-legend" aria-hidden="true">
+                    <span><i class="dot direct"></i>직접 일치</span>
+                    <span><i class="dot context"></i>1-hop 문맥</span>
+                    <span><i class="dot dimmed"></i>미일치</span>
+                </div>
+                <div class="graph-tools" aria-label="그래프 화면 제어">
+                    <button id="zoomIn" type="button" aria-label="확대">＋</button>
+                    <button id="zoomOut" type="button" aria-label="축소">−</button>
+                    <button id="fitGraph" type="button" aria-label="전체 그래프 맞춤">⌗</button>
+                    <button id="togglePan" type="button" aria-label="터치 이동 전환" aria-pressed="true">☝</button>
+                </div>
+                <button id="fitSearchResults" class="fit-results hidden" type="button">검색 결과 노드 모아보기</button>
+                <div id="graphEmpty" class="empty-state hidden">
+                    <strong>그래프로 표시할 메모가 없습니다.</strong>
+                    <span>새 메모를 만들거나 Link Memo 데이터를 불러오세요.</span>
+                </div>
+            </section>
+            <div class="pane-resizer" data-pane-resizer="right" role="separator" aria-orientation="vertical" aria-label="편집기 패널 크기 조절" tabindex="0"></div>
+
+            <section id="editorPanel" class="editor-panel" aria-label="메모 편집기">
+                <div id="editorTabs" class="editor-tabs" role="tablist"></div>
+                <div id="editorEmpty" class="editor-empty">
+                    <strong>그래프 노드를 두 번 누르거나 파일을 선택하세요.</strong>
+                    <span>편집 내용은 이 기기에 즉시 저장되고 3분 유휴 후 동기화됩니다.</span>
+                </div>
+                <div id="editorSurface" class="editor-surface hidden">
+                    <div class="editor-toolbar">
+                        <span id="activeFilePath"></span>
+                        <label class="image-upload">
+                            이미지 추가
+                            <input id="pkmImageInput" type="file" accept="image/*" hidden>
+                        </label>
+                        <button id="finishEditing" class="small-button" type="button">편집 완료</button>
+                    </div>
+                    <textarea id="markdownEditor" spellcheck="true" aria-label="Markdown 편집기"></textarea>
+                </div>
+            </section>
+        </main>
+
+        <footer class="pkm-footer">
+            <span id="localSaveState"><i></i>로컬 저장 준비됨</span>
+            <span>마지막 편집 후 3분 유휴 동기화</span>
+        </footer>
+        <div id="authGate" class="auth-gate hidden">
+            <div>
+                <h2>Link Memo 로그인이 필요합니다.</h2>
+                <p>같은 사이트의 Link Memo에서 로그인하면 세션을 그대로 이어서 사용할 수 있습니다.</p>
+                <a href="./index.html">Link Memo로 이동</a>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.34.0/dist/cytoscape.min.js"></script>
+    <script type="module" src="./src/bootstrap/pkm-main.js"></script>
+</body>
+</html>

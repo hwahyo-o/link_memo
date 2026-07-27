@@ -31,6 +31,11 @@ import { isSameMemoPayload, mergeMemoPayloads, prepareLocalMemoPayload } from ".
 import { createLifecycleSyncService } from "../application/sync/lifecycle-sync-service.js";
 import { getLogoutErrorMessage } from "./auth/logout-error-message.js";
 import { createMobileSaveController } from "./sync/mobile-save-controller.js";
+import { isNonPcDevice } from "../domain/sync/device-policy.js";
+import { readBrowserDeviceProfile } from "../infrastructure/browser/device-profile.js";
+import { createPkmSyncService } from "../application/pkm/pkm-sync-service.js";
+import { createIndexedDbVaultRepository } from "../infrastructure/pkm/indexeddb-vault-repository.js";
+import { createFirestoreVaultRepository } from "../infrastructure/pkm/firestore-vault-repository.js";
 
 const memoRepository = createFirestoreMemoRepository();
 const localMemoRepository = createIndexedDbMemoRepository();
@@ -105,6 +110,11 @@ const syncDeviceId = getSyncDeviceId();
 let syncSequence = 0;
 
 const memoSyncScheduler = createIdleSyncScheduler({ delay: MEMO_SYNC_IDLE_MS });
+const backgroundPkmSync = createPkmSyncService({
+    localRepository: createIndexedDbVaultRepository(),
+    remoteRepository: createFirestoreVaultRepository(),
+    scheduler: createIdleSyncScheduler({ delay: MEMO_SYNC_IDLE_MS })
+});
 const { customAlert, customConfirm, customPrompt } = createModalController();
 window.customAlert = customAlert;
 window.customConfirm = customConfirm;
@@ -212,8 +222,12 @@ const mobileSaveController = createMobileSaveController({
     icon: mobileSaveIcon,
     status: mobileSaveStatus,
     getUser: () => currentUser,
-    saveNow: () => lifecycleSyncService.saveNow(),
-    alert: customAlert
+    saveNow: () => Promise.all([
+        lifecycleSyncService.saveNow(),
+        currentUser ? backgroundPkmSync.flush(currentUser.uid) : Promise.resolve()
+    ]),
+    alert: customAlert,
+    isNonPc: () => isNonPcDevice(readBrowserDeviceProfile())
 });
 window.handleMobileSave = () => { void mobileSaveController.save(); };
 

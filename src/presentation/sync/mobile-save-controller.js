@@ -1,5 +1,5 @@
 const ONBOARDING_KEY = "link-memo:mobile-save-onboarding-v1";
-const ONBOARDING_MESSAGE = "모바일에서 편집을 완료한 후에는 상단의 세이브 버튼을 눌러 저장까지 완료해주세요.";
+const ONBOARDING_MESSAGE = "모바일·태블릿에서 편집을 완료한 후에는 상단의 세이브 버튼을 눌러 즉시 저장할 수도 있습니다. 3분 유휴 자동 동기화는 그대로 유지됩니다.";
 
 const BUTTON_STATES = {
     idle: ["fa-solid fa-floppy-disk", "모든 데이터 즉시 저장"],
@@ -16,7 +16,7 @@ export function createMobileSaveController({
     saveNow,
     alert,
     storage = localStorage,
-    isMobile = () => matchMedia("(max-width: 767px)").matches,
+    isNonPc = () => false,
     setTimer = setTimeout,
     onError = console.error
 }) {
@@ -33,11 +33,11 @@ export function createMobileSaveController({
     }
 
     function updateVisibility(user = getUser()) {
-        button.classList.toggle("hidden", !user || user.isAnonymous);
+        button.classList.toggle("hidden", !user || user.isAnonymous || !isNonPc());
     }
 
     function maybeShowOnboarding(user = getUser()) {
-        if (onboardingShown || !user || user.isAnonymous || !isMobile()) return false;
+        if (onboardingShown || !user || user.isAnonymous || !isNonPc()) return false;
         try {
             if (storage.getItem(ONBOARDING_KEY)) return false;
             storage.setItem(ONBOARDING_KEY, "1");
@@ -57,7 +57,7 @@ export function createMobileSaveController({
             .then(
                 () => { render("success"); return true; },
                 error => {
-                    onError("모바일 즉시 저장 실패", error);
+                    onError("비PC 즉시 저장 실패", error);
                     render("error");
                     alert("모든 데이터를 저장하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.");
                     return false;

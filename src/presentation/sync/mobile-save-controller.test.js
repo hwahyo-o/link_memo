@@ -30,7 +30,7 @@ describe("mobile save controller", () => {
             saveNow: vi.fn(),
             alert: vi.fn(),
             storage: { getItem: vi.fn(), setItem: vi.fn() },
-            isMobile: () => true
+            isNonPc: () => true
         });
 
         controller.updateVisibility({ isAnonymous: true });
@@ -54,7 +54,7 @@ describe("mobile save controller", () => {
             saveNow: vi.fn(),
             alert,
             storage,
-            isMobile: () => true,
+            isNonPc: () => true,
             setTimer: task => { timers.push(task); }
         };
         const controller = createMobileSaveController(options);
@@ -79,7 +79,7 @@ describe("mobile save controller", () => {
             saveNow,
             alert: vi.fn(),
             storage: { getItem: vi.fn(() => "1"), setItem: vi.fn() },
-            isMobile: () => true,
+            isNonPc: () => true,
             setTimer: task => { timers.push(task); }
         });
 
@@ -94,5 +94,19 @@ describe("mobile save controller", () => {
         timers.shift()();
         expect(elements.button.disabled).toBe(false);
         expect(elements.status.textContent).toContain("즉시 저장");
+    });
+
+    it("keeps the button hidden on PC even for a registered account", () => {
+        const elements = createElements();
+        const controller = createMobileSaveController({
+            ...elements,
+            getUser: () => ({ isAnonymous: false }),
+            saveNow: vi.fn(),
+            alert: vi.fn(),
+            storage: { getItem: vi.fn(), setItem: vi.fn() },
+            isNonPc: () => false
+        });
+        controller.updateVisibility();
+        expect(elements.button.classList.contains("hidden")).toBe(true);
     });
 });
