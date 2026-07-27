@@ -22,4 +22,19 @@ describe("JSON Canvas parser", () => {
             edges: [{ id: "e", fromNode: "a", toNode: "missing" }]
         })).toThrow("CANVAS_EDGE_NODE_MISSING");
     });
+
+    it("rejects canvases beyond the supported 10,000-node graph budget", () => {
+        expect(() => parseJsonCanvas({
+            nodes: Array.from({ length: 10_001 }, (_, index) => ({
+                id: `n${index}`,
+                type: "text",
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+                text: "n"
+            })),
+            edges: []
+        })).toThrow("CANVAS_NODE_LIMIT_EXCEEDED");
+    });
 });

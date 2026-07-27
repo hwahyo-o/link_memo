@@ -145,6 +145,18 @@ export function createWorkspace({
 
     return {
         render: renderTree,
+        reset() {
+            clearTimeout(editorTimer);
+            activePath = null;
+            openPaths = [];
+            editor.value = "";
+            activeFilePath.textContent = "";
+            editorSurface.classList.add("hidden");
+            editorEmpty.classList.remove("hidden");
+            editorPanel.classList.remove("mobile-fullscreen");
+            renderTabs();
+            renderTree();
+        },
         open,
         close: closePath,
         async finish() {

@@ -26,16 +26,16 @@ export function createVault({ deviceId = crypto.randomUUID?.() || `device_${Date
     }
 
     async function write(path, content, type) {
-        return process(path, () => {
-            const now = Date.now();
+        return process(path, current => {
+            const now = Math.max(Date.now(), Number(current?.updatedAt || 0) + 1);
             const next = normalizeVaultFile({
                 path,
                 content,
                 type,
                 updatedAt: now,
                 mutationId: `${deviceId}:${++sequence}:${now}`
-            });
-            snapshot = mergeVaultSnapshots(snapshot, { files: [next], updatedAt: now });
+            }, now);
+            snapshot = mergeVaultSnapshots(snapshot, { files: [next], updatedAt: now }, now);
             emit({ type: "write", path: next.path });
             return structuredClone(next);
         });
@@ -44,9 +44,9 @@ export function createVault({ deviceId = crypto.randomUUID?.() || `device_${Date
     async function remove(path) {
         return process(path, current => {
             if (!current) return false;
-            const now = Date.now();
+            const now = Math.max(Date.now(), Number(current.updatedAt || 0) + 1);
             const tombstone = { ...current, content: "", deleted: true, updatedAt: now, mutationId: `${deviceId}:${++sequence}:${now}` };
-            snapshot = mergeVaultSnapshots(snapshot, { files: [tombstone], updatedAt: now });
+            snapshot = mergeVaultSnapshots(snapshot, { files: [tombstone], updatedAt: now }, now);
             emit({ type: "remove", path: current.path });
             return true;
         });
@@ -55,7 +55,7 @@ export function createVault({ deviceId = crypto.randomUUID?.() || `device_${Date
     return {
         process,
         read: path => structuredClone(read(path)),
-        list: () => snapshot.files.filter(file => !file.deleted).map(structuredClone),
+        list: () => snapshot.files.filter(file => !file.deleted).map(file => structuredClone(file)),
         snapshot: () => structuredClone(snapshot),
         replace,
         merge(value) {

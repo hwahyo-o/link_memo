@@ -1,5 +1,11 @@
 import { mergeVaultSnapshots } from "../../domain/pkm/vault-policy.js";
 
+const MAX_SYNC_ATTEMPTS = 3;
+
+function isRevisionConflict(error) {
+    return error?.code === "PKM_REMOTE_REVISION_CHANGED" || error?.message === "PKM_REMOTE_REVISION_CHANGED";
+}
+
 export function createPkmSyncService({ localRepository, remoteRepository, scheduler, onSynced = () => {} }) {
     let queue = Promise.resolve();
 
@@ -13,12 +19,22 @@ export function createPkmSyncService({ localRepository, remoteRepository, schedu
         const task = async () => {
             const local = await localRepository.load(userId);
             if (!local?.dirty || !local.version) return { synced: false, snapshot: local?.snapshot || null };
-            const remote = await remoteRepository.load(userId);
-            const merged = mergeVaultSnapshots(remote?.snapshot, local.snapshot);
-            const result = await remoteRepository.save(userId, merged, { previousChunkIds: remote?.chunkIds || [] });
-            const acknowledged = await localRepository.acknowledge(userId, local.version, result.revision, merged);
-            if (acknowledged) onSynced(structuredClone(merged));
-            return { synced: acknowledged, snapshot: merged, revision: result.revision };
+            for (let attempt = 0; attempt < MAX_SYNC_ATTEMPTS; attempt += 1) {
+                const remote = await remoteRepository.load(userId);
+                const merged = mergeVaultSnapshots(remote?.snapshot, local.snapshot);
+                try {
+                    const result = await remoteRepository.save(userId, merged, {
+                        expectedRevision: remote?.revision || null,
+                        previousChunkIds: remote?.chunkIds || []
+                    });
+                    const acknowledged = await localRepository.acknowledge(userId, local.version, result.revision, merged);
+                    if (acknowledged) onSynced(structuredClone(merged), userId);
+                    return { synced: acknowledged, snapshot: merged, revision: result.revision };
+                } catch (error) {
+                    if (!isRevisionConflict(error) || attempt === MAX_SYNC_ATTEMPTS - 1) throw error;
+                }
+            }
+            throw new Error("PKM_SYNC_RETRY_EXHAUSTED");
         };
         const scheduled = queue.then(task, task);
         queue = scheduled.catch(() => {});

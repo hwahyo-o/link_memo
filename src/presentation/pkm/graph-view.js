@@ -118,6 +118,9 @@ export function createGraphView({ container, worker, onOpen }) {
     });
 
     function render({ nodes, edges }) {
+        nodes = nodes.slice(0, 10_000);
+        const nodeIds = new Set(nodes.map(node => node.id));
+        edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, 50_000);
         const existingIds = new Set(cy.elements().map(element => element.id()));
         const nextIds = new Set([...nodes.map(node => node.id), ...edges.map(edge => edge.id)]);
         cy.batch(() => {

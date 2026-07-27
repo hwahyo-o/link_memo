@@ -21,4 +21,9 @@ describe("PKM graph worker algorithms", () => {
         expect(positions).toHaveLength(10_000);
         expect(positions.every(position => Number.isFinite(position.x) && Number.isFinite(position.y))).toBe(true);
     }, 10_000);
+
+    it("bounds layout work even if a caller supplies more than 10,000 nodes", () => {
+        const nodes = Array.from({ length: 10_100 }, (_, index) => ({ id: `n${index}` }));
+        expect(layoutGraph(nodes, [], 0)).toHaveLength(10_000);
+    });
 });

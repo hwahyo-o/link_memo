@@ -1,11 +1,14 @@
 import { parseJsonCanvas } from "../../domain/pkm/json-canvas-parser.js";
 
+export const MAX_GRAPH_NODES = 10_000;
+export const MAX_GRAPH_EDGES = 50_000;
+
 function titleFor(path) {
     return path.split("/").pop().replace(/\.(md|json|canvas)$/i, "");
 }
 
 export function projectVaultGraph(files, metadataEntries) {
-    const visibleFiles = files.filter(file => !file.deleted);
+    const visibleFiles = files.filter(file => !file.deleted).slice(0, MAX_GRAPH_NODES);
     const filePaths = new Set(visibleFiles.map(file => file.path));
     const nodes = visibleFiles.map(file => ({
         id: file.path,
@@ -17,10 +20,12 @@ export function projectVaultGraph(files, metadataEntries) {
     const edgeIds = new Set();
     const nodeIds = new Set(nodes.map(node => node.id));
     const pushRawEdge = (source, target, label = "") => {
+        if (edges.length >= MAX_GRAPH_EDGES) return false;
         const id = `${source}->${target}:${label}`;
-        if (!nodeIds.has(source) || !nodeIds.has(target) || edgeIds.has(id)) return;
+        if (!nodeIds.has(source) || !nodeIds.has(target) || edgeIds.has(id)) return false;
         edgeIds.add(id);
         edges.push({ id, source, target, label });
+        return true;
     };
     const pushEdge = (source, target, label = "") => {
         if (filePaths.has(source) && filePaths.has(target)) pushRawEdge(source, target, label);
@@ -31,9 +36,11 @@ export function projectVaultGraph(files, metadataEntries) {
     }
 
     for (const file of visibleFiles.filter(item => item.type === "canvas")) {
+        if (nodes.length >= MAX_GRAPH_NODES) break;
         try {
             const canvas = parseJsonCanvas(file.content);
             for (const node of canvas.nodes) {
+                if (nodes.length >= MAX_GRAPH_NODES) break;
                 const id = `${file.path}::${node.id}`;
                 const label = node.type === "text"
                     ? node.text.replace(/^#+\s*/, "").slice(0, 50) || "텍스트"
@@ -52,6 +59,7 @@ export function projectVaultGraph(files, metadataEntries) {
                 if (node.type === "file" && filePaths.has(node.file)) pushEdge(file.path, node.file, "캔버스");
             }
             for (const edge of canvas.edges) {
+                if (edges.length >= MAX_GRAPH_EDGES) break;
                 pushRawEdge(
                     `${file.path}::${edge.fromNode}`,
                     `${file.path}::${edge.toNode}`,

@@ -1,5 +1,7 @@
 export const PKM_SCHEMA_VERSION = 1;
-const MAX_FILE_BYTES = 2_000_000;
+export const MAX_VAULT_FILE_BYTES = 2_000_000;
+export const MAX_VAULT_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const MAX_VAULT_PATH_LENGTH = 512;
 const SUPPORTED_TYPES = new Set(["md", "json", "canvas"]);
 
 export function normalizeVaultPath(value) {
@@ -7,7 +9,14 @@ export function normalizeVaultPath(value) {
     if (!path || path.includes("\0") || path.split("/").some(part => !part || part === "." || part === "..")) {
         throw new Error("INVALID_VAULT_PATH");
     }
-    return path.slice(0, 512);
+    if (path.length > MAX_VAULT_PATH_LENGTH) throw new Error("VAULT_PATH_TOO_LONG");
+    return path;
+}
+
+export function normalizeVaultTimestamp(value, now = Date.now()) {
+    const timestamp = Number(value);
+    if (!Number.isFinite(timestamp) || timestamp < 0) return now;
+    return Math.min(Math.trunc(timestamp), Math.min(Number.MAX_SAFE_INTEGER - 1, now + MAX_VAULT_CLOCK_SKEW_MS));
 }
 
 export function inferVaultFileType(path) {
@@ -18,13 +27,13 @@ export function inferVaultFileType(path) {
 export function normalizeVaultFile(value, now = Date.now()) {
     const path = normalizeVaultPath(value?.path);
     const content = typeof value?.content === "string" ? value.content : JSON.stringify(value?.content ?? "", null, 2);
-    if (new TextEncoder().encode(content).byteLength > MAX_FILE_BYTES) throw new Error("VAULT_FILE_TOO_LARGE");
+    if (new TextEncoder().encode(content).byteLength > MAX_VAULT_FILE_BYTES) throw new Error("VAULT_FILE_TOO_LARGE");
     return {
         path,
         type: SUPPORTED_TYPES.has(value?.type) ? value.type : inferVaultFileType(path),
         content,
-        updatedAt: Number(value?.updatedAt || now),
-        mutationId: String(value?.mutationId || ""),
+        updatedAt: normalizeVaultTimestamp(value?.updatedAt, now),
+        mutationId: String(value?.mutationId || "").slice(0, 256),
         deleted: value?.deleted === true
     };
 }
@@ -34,10 +43,10 @@ function compareFileClock(left, right) {
     return time || String(left?.mutationId || "").localeCompare(String(right?.mutationId || ""));
 }
 
-export function mergeVaultSnapshots(left, right) {
+export function mergeVaultSnapshots(left, right, now = Date.now()) {
     const files = new Map();
     for (const file of [...(left?.files || []), ...(right?.files || [])]) {
-        const normalized = normalizeVaultFile(file);
+        const normalized = normalizeVaultFile(file, now);
         const current = files.get(normalized.path);
         if (!current || compareFileClock(normalized, current) >= 0) files.set(normalized.path, normalized);
     }
@@ -45,8 +54,8 @@ export function mergeVaultSnapshots(left, right) {
         schemaVersion: PKM_SCHEMA_VERSION,
         files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)),
         updatedAt: Math.max(
-            Number(left?.updatedAt || 0),
-            Number(right?.updatedAt || 0),
+            normalizeVaultTimestamp(left?.updatedAt ?? 0, now),
+            normalizeVaultTimestamp(right?.updatedAt ?? 0, now),
             ...[...files.values()].map(file => Number(file.updatedAt || 0))
         )
     };

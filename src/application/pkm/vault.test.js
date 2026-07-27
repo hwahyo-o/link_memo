@@ -24,4 +24,24 @@ describe("PKM vault", () => {
         expect(vault.read("notes/a.md")).toBeNull();
         expect(vault.snapshot().files[0].deleted).toBe(true);
     });
+
+    it("returns cloned file records and writes past a bounded future clock", async () => {
+        const vault = createVault({ deviceId: "test" });
+        vault.replace({
+            files: [{
+                path: "notes/a.md",
+                content: "remote",
+                updatedAt: Number.MAX_VALUE,
+                mutationId: "remote"
+            }]
+        });
+        const listed = vault.list();
+        listed[0].content = "mutated";
+        expect(vault.read("notes/a.md").content).toBe("remote");
+
+        const previousClock = vault.read("notes/a.md").updatedAt;
+        await vault.write("notes/a.md", "local");
+        expect(vault.read("notes/a.md").updatedAt).toBeGreaterThan(previousClock);
+        expect(vault.read("notes/a.md").content).toBe("local");
+    });
 });

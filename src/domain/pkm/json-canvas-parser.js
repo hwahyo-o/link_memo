@@ -1,6 +1,8 @@
 const NODE_TYPES = new Set(["text", "file", "link", "group"]);
 const SIDES = new Set(["top", "right", "bottom", "left"]);
 const ENDS = new Set(["none", "arrow"]);
+export const MAX_CANVAS_NODES = 10_000;
+export const MAX_CANVAS_EDGES = 50_000;
 
 function requiredString(value, field) {
     if (typeof value !== "string" || !value) throw new Error(`INVALID_CANVAS_${field.toUpperCase()}`);
@@ -59,10 +61,14 @@ function parseEdge(value) {
 export function parseJsonCanvas(input) {
     const value = typeof input === "string" ? JSON.parse(input) : input;
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_JSON_CANVAS");
-    const nodes = (value.nodes || []).map(parseNode);
+    const rawNodes = value.nodes || [];
+    const rawEdges = value.edges || [];
+    if (!Array.isArray(rawNodes) || rawNodes.length > MAX_CANVAS_NODES) throw new Error("CANVAS_NODE_LIMIT_EXCEEDED");
+    if (!Array.isArray(rawEdges) || rawEdges.length > MAX_CANVAS_EDGES) throw new Error("CANVAS_EDGE_LIMIT_EXCEEDED");
+    const nodes = rawNodes.map(parseNode);
     const nodeIds = new Set(nodes.map(node => node.id));
     if (nodeIds.size !== nodes.length) throw new Error("DUPLICATE_CANVAS_NODE_ID");
-    const edges = (value.edges || []).map(parseEdge);
+    const edges = rawEdges.map(parseEdge);
     if (new Set(edges.map(edge => edge.id)).size !== edges.length) throw new Error("DUPLICATE_CANVAS_EDGE_ID");
     if (edges.some(edge => !nodeIds.has(edge.fromNode) || !nodeIds.has(edge.toNode))) throw new Error("CANVAS_EDGE_NODE_MISSING");
     return { nodes, edges };

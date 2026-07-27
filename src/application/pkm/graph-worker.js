@@ -30,6 +30,9 @@ export function parseMetadata(file) {
 }
 
 export function layoutGraph(nodes, edges, iterations = 36) {
+    nodes = nodes.slice(0, 10_000);
+    const nodeIds = new Set(nodes.map(node => node.id));
+    edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, 50_000);
     const count = nodes.length;
     const side = Math.max(1, Math.ceil(Math.sqrt(count)));
     const positions = new Map(nodes.map((node, index) => [node.id, {

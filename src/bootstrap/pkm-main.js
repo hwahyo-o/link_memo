@@ -6,6 +6,7 @@ import { createMemoSyncService } from "../application/memos/memo-sync-service.js
 import { createVault } from "../application/pkm/vault.js";
 import { createMetadataCache } from "../application/pkm/metadata-cache.js";
 import { createPkmSyncService } from "../application/pkm/pkm-sync-service.js";
+import { createPkmImageUploader } from "../application/pkm/pkm-image-uploader.js";
 import { createIndexedDbVaultRepository } from "../infrastructure/pkm/indexeddb-vault-repository.js";
 import { createFirestoreVaultRepository } from "../infrastructure/pkm/firestore-vault-repository.js";
 import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-repository.js";
@@ -27,7 +28,9 @@ const pkmSync = createPkmSyncService({
     localRepository: localVaultRepository,
     remoteRepository: remoteVaultRepository,
     scheduler: createIdleSyncScheduler({ delay: 3 * 60 * 1000 }),
-    onSynced: snapshot => vault.replace(snapshot)
+    onSynced: (snapshot, userId) => {
+        if (auth?.currentUser?.uid === userId) vault.replace(snapshot);
+    }
 });
 
 const localMemoRepository = createIndexedDbMemoRepository();
@@ -49,7 +52,7 @@ let driveConnection = null;
 
 async function discoverMainMemo(userId) {
     const discovered = await discoverMainMemoPayload(userId);
-    driveConnection = discovered?.payload?.driveConnection || null;
+    if (auth?.currentUser?.uid === userId) driveConnection = discovered?.payload?.driveConnection || null;
     return discovered;
 }
 
@@ -63,16 +66,13 @@ async function saveMainNow(user) {
     return result;
 }
 
-async function uploadImage(file) {
-    const user = auth?.currentUser;
-    if (!user) throw new Error("UNAUTHENTICATED");
-    const imageId = crypto.randomUUID?.() || `pkm_image_${Date.now()}`;
-    await imageRepository.save(file, { id: imageId, userId: user.uid });
-    const result = await driveService.upload(file, driveConnection);
-    driveConnection = result.connection;
-    const source = result.driveImage?.fileId ? `drive://${result.driveImage.fileId}` : `indexeddb://${imageId}`;
-    return `![${file.name || "이미지"}](${source})`;
-}
+const uploadImage = createPkmImageUploader({
+    getCurrentUser: () => auth?.currentUser,
+    localImageRepository: imageRepository,
+    driveImageService: driveService,
+    getDriveConnection: () => driveConnection,
+    setDriveConnection: connection => { driveConnection = connection; }
+});
 
 createPkmApp({
     auth,

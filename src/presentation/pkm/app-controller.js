@@ -58,6 +58,7 @@ export function createPkmApp({
     let searchMode = "AND";
     let renderSequence = 0;
     let searchTimer = null;
+    let authSession = 0;
     const pendingUploads = new Set();
     enablePaneResizers(document.querySelector(".workspace"));
 
@@ -72,8 +73,12 @@ export function createPkmApp({
         status: byId("pkmSaveStatus"),
         getUser: () => currentUser,
         saveNow: async () => {
+            const user = currentUser;
+            const session = authSession;
+            if (!user) throw new Error("UNAUTHENTICATED");
             await Promise.allSettled([...pendingUploads]);
-            await Promise.all([pkmSync.flush(currentUser.uid), saveMainNow(currentUser)]);
+            if (session !== authSession || currentUser?.uid !== user.uid) throw new Error("AUTH_SESSION_CHANGED");
+            await Promise.all([pkmSync.flush(user.uid), saveMainNow(user)]);
         },
         alert: message => globalThis.alert(message),
         isNonPc: deviceIsNonPc
@@ -151,13 +156,16 @@ export function createPkmApp({
         return workspace;
     }
 
-    async function hydrate(user) {
+    const sessionIsCurrent = (session, userId) => session === authSession && currentUser?.uid === userId;
+
+    async function hydrate(user, session) {
         setSyncStatus("데이터 불러오는 중", "saving");
         const [hydrated, localSchemas, mainMemo] = await Promise.all([
             pkmSync.hydrate(user.uid),
             discoverLocalSchemas().catch(() => []),
             discoverMainMemo(user.uid).catch(() => null)
         ]);
+        if (!sessionIsCurrent(session, user.uid)) return false;
         let snapshot = hydrated.snapshot;
         const imported = mainMemoToVaultFiles(mainMemo?.payload);
         if (imported.length) snapshot = mergeVaultSnapshots(snapshot, { files: imported, updatedAt: mainMemo.payload.updatedAt });
@@ -172,23 +180,31 @@ export function createPkmApp({
                 }]
             });
         }
+        if (!sessionIsCurrent(session, user.uid)) return false;
         vault.replace(snapshot);
         createWorkspaceOnce().render();
         byId("schemaSummary").textContent = `자동 탐색: IndexedDB ${localSchemas.length}개 · Firestore 키 ${mainMemo?.keys?.length || 0}개`;
         if (imported.length && JSON.stringify(snapshot) !== JSON.stringify(hydrated.snapshot)) {
             await pkmSync.persist(user.uid, snapshot);
+            if (!sessionIsCurrent(session, user.uid)) return false;
         }
         await renderGraph();
+        if (!sessionIsCurrent(session, user.uid)) return false;
         setSyncStatus(hydrated.dirty ? "동기화 대기 중" : "동기화 완료");
         if (hydrated.dirty) void pkmSync.flush(user.uid).catch(() => setSyncStatus("동기화 재시도 대기", "error"));
+        return true;
     }
 
     vault.subscribe((snapshot, change) => {
         if (!currentUser || !["write", "remove", "merge"].includes(change.type)) return;
+        const session = authSession;
+        const userId = currentUser.uid;
         setSyncStatus("3분 유휴 동기화 대기", "saving");
-        void pkmSync.persist(currentUser.uid, snapshot).then(() => {
+        void pkmSync.persist(userId, snapshot).then(() => {
+            if (!sessionIsCurrent(session, userId)) return;
             byId("localSaveState").lastChild.textContent = "로컬에 저장됨";
         }).catch(error => {
+            if (!sessionIsCurrent(session, userId)) return;
             console.error("PKM 로컬 저장 실패", error);
             setSyncStatus("로컬 저장 실패", "error");
         });
@@ -244,29 +260,46 @@ export function createPkmApp({
     }
 
     onAuthStateChanged(auth, user => {
+        const session = ++authSession;
         unsubscribeRemote?.();
+        unsubscribeRemote = null;
+        pkmSync.cancel();
         currentUser = user;
-        byId("pkmApp").setAttribute("aria-busy", "false");
-        byId("authGate").classList.toggle("hidden", Boolean(user));
+        renderSequence += 1;
+        metadataCache.clear();
+        currentMetadata = [];
+        currentGraph = { nodes: [], edges: [] };
+        vault.replace({ files: [], updatedAt: 0 });
+        workspace?.reset();
+        graphView.render(currentGraph);
+        byId("pkmApp").setAttribute("aria-busy", "true");
+        byId("authGate").classList.remove("hidden");
         byId("pkmUser").textContent = user?.email || (user?.isAnonymous ? "게스트" : "");
         saveController.updateVisibility(user);
         if (!user) {
             setSyncStatus("로그인 필요", "error");
+            byId("pkmApp").setAttribute("aria-busy", "false");
             return;
         }
         saveController.maybeShowOnboarding(user);
-        void hydrate(user).then(() => {
+        void hydrate(user, session).then(hydrated => {
+            if (!hydrated || !sessionIsCurrent(session, user.uid)) return;
+            byId("pkmApp").setAttribute("aria-busy", "false");
+            byId("authGate").classList.add("hidden");
             unsubscribeRemote = pkmRemoteRepository.subscribe(user.uid, remote => {
-                if (!remote?.snapshot) return;
+                if (!sessionIsCurrent(session, user.uid) || !remote?.snapshot) return;
                 vault.replace(mergeVaultSnapshots(vault.snapshot(), remote.snapshot));
                 workspace?.render();
                 void renderGraph();
                 setSyncStatus("원격 변경 반영됨");
             }, error => {
+                if (!sessionIsCurrent(session, user.uid)) return;
                 console.error("PKM 실시간 동기화 실패", error);
                 setSyncStatus("동기화 재시도 대기", "error");
             });
         }).catch(error => {
+            if (!sessionIsCurrent(session, user.uid)) return;
+            byId("pkmApp").setAttribute("aria-busy", "false");
             console.error("PKM 초기화 실패", error);
             setSyncStatus("데이터를 불러오지 못함", "error");
         });

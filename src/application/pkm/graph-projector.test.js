@@ -25,4 +25,28 @@ describe("PKM graph projector", () => {
             expect.objectContaining({ source: "map.canvas::text", target: "map.canvas::file", label: "ref" })
         ]));
     });
+
+    it("caps the aggregate graph across multiple valid canvas files", () => {
+        const makeCanvas = (path, count) => ({
+            path,
+            type: "canvas",
+            content: JSON.stringify({
+                nodes: Array.from({ length: count }, (_, index) => ({
+                    id: `${path}-${index}`,
+                    type: "text",
+                    x: index,
+                    y: 0,
+                    width: 10,
+                    height: 10,
+                    text: "n"
+                })),
+                edges: []
+            })
+        });
+        const graph = projectVaultGraph([
+            makeCanvas("a.canvas", 6_000),
+            makeCanvas("b.canvas", 6_000)
+        ], []);
+        expect(graph.nodes).toHaveLength(10_000);
+    });
 });
