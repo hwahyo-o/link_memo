@@ -82,3 +82,19 @@ src/main.js와 PKM 시작 모듈은 환경 설정과 SDK 의존성을 준비하�
 - 브라우저에는 Drive refresh token을 저장하지 않습니다. 토큰은 Worker의 암호화 저장 경계를 유지합니다.
 - Drive 파일은 사용자 전용 비공개 폴더와 최소 권한 범위를 유지합니다.
 - 장애 로그에는 오류 코드와 단계만 남기고 토큰, 요청 본문, 사용자 데이터는 남기지 않습니다.
+
+
+## 게스트 로컬 전용 세션과 로그아웃
+
+신규 게스트에게 Firestore 문서와 IndexedDB snapshot이 모두 없을 때 dataLoadState가 missing으로 남으면 writeLocalMemo가 실행되지 않는다. 그 상태에서 로그아웃 검증이 로컬 payload를 찾지 못해 MEMO_LOCAL_PERSIST_INCOMPLETE가 발생하고, 이전 기본 오류 문구는 이를 클라우드 실패로 잘못 안내했다.
+
+게스트 세션은 다음 규칙을 사용한다.
+
+1. 로그인 시 IndexedDB snapshot을 복구하고, 없으면 기본 메모를 dataLoadState ready인 로컬 세션으로 초기화한다.
+2. 편집은 메모리 화면 상태와 IndexedDB에만 반영한다.
+3. Firestore 구독·예약 동기화·온라인 복귀 동기화, Google Drive, Cloudflare 백업은 실행하지 않는다.
+4. 로그아웃은 이미지 로컬 작업 → IndexedDB 쓰기 → IndexedDB payload 재확인 순서로 실행한다.
+5. 로컬 payload가 확인된 경우 Firebase 로그아웃을 진행한다.
+6. 실제 IndexedDB 실패는 클라우드 오류가 아닌 로컬 저장 공간 오류로 안내하며, 등록 계정의 원격 영속성 규칙에는 영향을 주지 않는다.
+
+게스트 로그아웃 뒤 새 익명 로그인은 새 UID이므로 이전 게스트 데이터를 자동 복구하지 않는다. 데이터를 계속 사용하려면 로그아웃 전에 계정 연동을 완료해야 한다. 계정 연동으로 익명 상태가 등록 상태로 전환되면 같은 UID의 IndexedDB payload를 Firestore에 최초 저장하고 이후 등록 사용자 동기화 경로를 활성화한다.
