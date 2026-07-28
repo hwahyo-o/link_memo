@@ -2,6 +2,7 @@
 export function createLifecycleSyncService({
     getSession,
     waitForUploads,
+    ensureRemoteImages = async () => {},
     persistLatest,
     flushFirebase,
     loadDurable,
@@ -56,14 +57,23 @@ export function createLifecycleSyncService({
         const session = getSession();
         if (!session?.user) throw new Error("UNAUTHENTICATED");
         await runStage("image-uploads", () => waitForUploads());
-        await runStage("local-persist", () => persistLatest());
-        await runStage("firebase", () => flushFirebase({ throwOnError: true }));
-        const durable = await runStage("local-verify", () => loadDurable(session.user.uid));
-        if (!durable?.payload || durable.dirty) throw new Error("MEMO_SYNC_INCOMPLETE");
         if (!session.user.isAnonymous) {
-            await runStage("cloudflare-checkpoint", () => saveCheckpoint(session.user, durable.payload, Date.now()));
+            await runStage("drive-images", () => ensureRemoteImages());
         }
-        return durable;
+        await runStage("local-persist", () => persistLatest());
+
+        // Guest data intentionally stays on this device, so remote dirty state must not block logout.
+        if (session.user.isAnonymous) {
+            const local = await runStage("local-verify", () => loadDurable(session.user.uid));
+            if (!local?.payload) throw new Error("MEMO_LOCAL_PERSIST_INCOMPLETE");
+            return local;
+        }
+
+        await runStage("firebase", () => flushFirebase({ throwOnError: true }));
+        const synchronized = await runStage("local-verify", () => loadDurable(session.user.uid));
+        if (!synchronized?.payload || synchronized.dirty) throw new Error("MEMO_SYNC_INCOMPLETE");
+        await runStage("cloudflare-checkpoint", () => saveCheckpoint(session.user, synchronized.payload, Date.now()));
+        return synchronized;
     }
 
     function saveNow() {

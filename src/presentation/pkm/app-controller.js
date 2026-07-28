@@ -2,7 +2,7 @@ import { classifyGraphMatches } from "../../domain/pkm/graph-highlight-rules.js"
 import { searchMetadata } from "../../domain/pkm/search-engine.js";
 import { mergeVaultSnapshots } from "../../domain/pkm/vault-policy.js";
 import { isNonPcDevice } from "../../domain/sync/device-policy.js";
-import { readBrowserDeviceProfile } from "../../infrastructure/browser/device-profile.js";
+import { readViewportProfile, subscribeNonPcViewport } from "../../infrastructure/browser/viewport-profile.js";
 import { mainMemoToVaultFiles } from "../../infrastructure/pkm/schema-discovery.js";
 import { projectVaultGraph } from "../../application/pkm/graph-projector.js";
 import { createGraphView } from "./graph-view.js";
@@ -10,7 +10,7 @@ import { createWorkspace } from "./workspace.js";
 import { createMobileSaveController } from "../sync/mobile-save-controller.js";
 
 const byId = id => document.getElementById(id);
-const deviceIsNonPc = () => isNonPcDevice(readBrowserDeviceProfile());
+const deviceIsNonPc = () => isNonPcDevice(readViewportProfile());
 
 function enablePaneResizers(workspace) {
     document.querySelectorAll("[data-pane-resizer]").forEach(handle => {
@@ -83,6 +83,8 @@ export function createPkmApp({
         alert: message => globalThis.alert(message),
         isNonPc: deviceIsNonPc
     });
+
+    const unsubscribeViewport = subscribeNonPcViewport(() => saveController.updateVisibility());
 
     function setSyncStatus(label, state = "idle") {
         const status = byId("syncStatus");
@@ -256,7 +258,7 @@ export function createPkmApp({
         byId("authGate").querySelector("p").textContent = "배포 환경의 Firebase 설정이 준비되면 Link Memo 로그인 세션을 그대로 이어서 사용합니다.";
         setSyncStatus("Firebase 설정 필요", "error");
         saveController.updateVisibility(null);
-        return { destroy: () => { graphView.destroy(); graphWorker.terminate(); } };
+        return { destroy: () => { unsubscribeViewport(); graphView.destroy(); graphWorker.terminate(); } };
     }
 
     onAuthStateChanged(auth, user => {
@@ -305,5 +307,5 @@ export function createPkmApp({
         });
     });
 
-    return { destroy: () => { unsubscribeRemote?.(); graphView.destroy(); graphWorker.terminate(); } };
+    return { destroy: () => { unsubscribeViewport(); unsubscribeRemote?.(); graphView.destroy(); graphWorker.terminate(); } };
 }

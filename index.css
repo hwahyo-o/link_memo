@@ -1,3 +1,48 @@
+.main-header-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.main-header-content,
+.main-header-actions {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.main-header-content {
+    justify-content: space-between;
+}
+
+@media (max-width: 640px) {
+    .main-header-grid {
+        align-items: start;
+    }
+
+    .main-header-content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .main-header-actions {
+        justify-content: flex-end;
+    }
+
+    .main-header-user {
+        width: 100%;
+        min-width: 0;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .main-header-user span {
+        min-width: 0;
+    }
+}
+
 @import url('./styles/tabs.css');
 @import url('./styles/memos.css');
 @import url('./styles/theme-features.css');

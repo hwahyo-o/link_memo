@@ -11,7 +11,7 @@ function createService({ localImages = {}, verification = [] } = {}) {
         download: vi.fn(),
         prefetch: vi.fn(),
         remove: vi.fn(),
-        restoreSession: vi.fn()
+        restoreSession: vi.fn(async () => ({ active: true }))
     };
     return {
         service: createDriveImageService({ localImageRepository, driveImageRepository, driveCodeProvider: {} }),
@@ -82,5 +82,36 @@ describe("Drive image repair", () => {
 
         expect(result.error?.message).toBe("DRIVE_NOT_CONNECTED");
         expect(result.failed).toBe(1);
+    });
+});
+
+
+describe("Drive image durable-save guarantee", () => {
+    it("uploads missing references and verifies completion", async () => {
+        const { service, driveImageRepository } = createService({
+            localImages: { local: { name: "local.png" } }
+        });
+        const links = { 개인: [{ links: [{ id: "local", imageId: "local" }] }] };
+        const result = await service.ensureImagesBackedUp(links, { permissionGranted: true });
+        expect(driveImageRepository.restoreSession).toHaveBeenCalledWith({ warm: true });
+        expect(result.uploaded).toBe(1);
+        expect(links.개인[0].links[0].driveImage.fileId).toBe("new-local.png");
+    });
+
+    it("rejects a save when the Drive session is no longer active", async () => {
+        const { service, driveImageRepository } = createService({
+            localImages: { local: { name: "local.png" } }
+        });
+        driveImageRepository.restoreSession.mockResolvedValueOnce({ active: false });
+        const links = { 개인: [{ links: [{ id: "local", imageId: "local" }] }] };
+        await expect(service.ensureImagesBackedUp(links, { permissionGranted: true }))
+            .rejects.toThrow("DRIVE_SESSION_INACTIVE");
+    });
+
+    it("rejects a save when any local original cannot be backed up", async () => {
+        const { service } = createService();
+        const links = { 개인: [{ links: [{ id: "lost", imageId: "lost" }] }] };
+        await expect(service.ensureImagesBackedUp(links, { permissionGranted: true }))
+            .rejects.toMatchObject({ message: "DRIVE_IMAGES_INCOMPLETE" });
     });
 });
