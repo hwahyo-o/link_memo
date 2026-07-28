@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const rootStyles = readFileSync(new URL("../index.css", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../styles/memos.css", import.meta.url), "utf8");
 const controller = readFileSync(new URL("../src/presentation/app-controller.js", import.meta.url), "utf8");
 
@@ -20,6 +21,10 @@ describe("content preview contract", () => {
         expect(controller).toContain("previewTextStage.classList.toggle('hidden', !hasText)");
         expect(controller).toContain("previewContent.scrollTop = 0");
         expect(controller).not.toContain("setPreviewMode");
+    });
+
+    it("loads preview styles before regular CSS rules", () => {
+        expect(rootStyles.trimStart()).toMatch(/^@import url\('\.\/styles\/memos\.css'\);/);
     });
 
     it("keeps the modal vertically scrollable and wraps long comments", () => {
