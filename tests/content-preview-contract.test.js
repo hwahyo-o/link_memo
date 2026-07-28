@@ -33,4 +33,9 @@ describe("content preview contract", () => {
         expect(styles).toMatch(/\.preview-text-content\s*\{[^}]*white-space:\s*pre-wrap/s);
         expect(styles).toMatch(/\.preview-text-content\s*\{[^}]*overflow-wrap:\s*anywhere/s);
     });
+
+    it("uses a keyboard-accessible button for long comment accordions", () => {
+        expect(controller).toContain("document.createElement(accordionComment || !item.url ? 'button' : 'a')");
+        expect(controller).toContain("openLink.href = item.url");
+    });
 });
