@@ -14,6 +14,7 @@ import { createImageAttachmentQueue } from "../application/memos/image-attachmen
 import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-repository.js";
 import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
 import { getLinkImages, hasLinkImages, normalizeLinkImages, validateImageSelection } from "../domain/memos/image-attachment-policy.js";
+import { removeImageAttachment } from "../domain/drive/image-reconciliation-policy.js";
 import { relocateLink } from "../application/memos/link-relocation-service.js";
 import { createModalController } from "./components/modal.js";
 import { createHoldActions } from "./interactions/hold-actions.js";
@@ -21,6 +22,7 @@ import { createDefaultDriveConnection, canUseDrive, normalizeDriveConnection } f
 import { createGoogleDriveCodeProvider } from "../infrastructure/google/google-drive-code-provider.js";
 import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-worker-image-repository.js";
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
+import { createDriveReconciliationService } from "../application/drive/drive-reconciliation-service.js";
 import { createCloudflareBackupRepository } from "../infrastructure/http/cloudflare-backup-repository.js";
 import { createBackupService } from "../application/backups/backup-service.js";
 import { createManualBackupSyncService } from "../application/backups/manual-backup-sync-service.js";
@@ -54,6 +56,7 @@ const driveImageService = createDriveImageService({
     driveImageRepository,
     driveCodeProvider
 });
+const driveReconciliationService = createDriveReconciliationService({ repository: driveImageRepository });
 const backupTokenProvider = createFirebaseTokenProvider({ getUser: () => currentUser });
 const cloudBackupRepository = createCloudflareBackupRepository({ tokenProvider: backupTokenProvider });
 const backupService = createBackupService({ cloudRepository: cloudBackupRepository });
@@ -145,6 +148,7 @@ const carouselNextButton = document.getElementById('carouselNextButton');
 const carouselCounter = document.getElementById('carouselCounter');
 const carouselControls = document.getElementById('carouselControls');
 const carouselLoading = document.getElementById('carouselLoading');
+const previewImageDeleteButton = document.getElementById('previewImageDeleteButton');
 const settingsModal = document.getElementById('settingsModal');
 const darkModeToggle = document.getElementById('darkModeToggle');
 const categoryFolderGrid = document.getElementById('categoryFolderGrid');
@@ -217,6 +221,7 @@ let longPressTimer = null;
 let deleteReauthMode = 'none';
 let driveConnection = createDefaultDriveConnection();
 let drivePromptRequested = false;
+let driveReconciliationAttemptedUser = null;
 let pendingLoginMethod = null;
 const repairingDriveImageIds = new Set();
 const mobileSaveController = createMobileSaveController({
@@ -607,6 +612,7 @@ if (auth) {
     onAuthStateChanged(auth, user => {
         if (user) {
             currentUser = user;
+            driveReconciliationAttemptedUser = null;
             backupTokenProvider.updateUser(user);
             backupAuthReady = false;
             backupCatalogLoaded = false;
@@ -639,6 +645,7 @@ if (auth) {
             return;
         }
         currentUser = null;
+        driveReconciliationAttemptedUser = null;
         pendingLoginMethod = null;
         homeRenderSignature = null;
         backupTokenProvider.updateUser(null);
@@ -750,6 +757,44 @@ function describeDriveSync(result) {
     };
 }
 
+async function runMonthlyDriveReconciliation({ confirmResetCleanup = false } = {}) {
+    const result = await driveReconciliationService.reconcile(linkData, { confirmResetCleanup });
+    if (result.resetDecisionRequired) {
+        customConfirm(
+            '초기화 전에 보관된 Google Drive 이미지가 있습니다. 백업을 먼저 복원하려면 취소를 눌러 설정의 백업 복원을 이용해주세요. 복원 없이 계속하면 현재 사이트에 없는 이미지가 Drive에서 영구 삭제됩니다.',
+            async () => {
+                try {
+                    const confirmed = await runMonthlyDriveReconciliation({ confirmResetCleanup: true });
+                    setDriveSyncStatus(`이번 달 Drive 이미지 대조 완료: ${confirmed.deleted || 0}개 정리`);
+                } catch (error) {
+                    console.error('Drive 월별 이미지 대조 실패:', error);
+                    setDriveSyncStatus('Drive 월별 이미지 대조에 실패했습니다. 다음 로그인에서 다시 시도합니다.');
+                }
+            }
+        );
+        return result;
+    }
+    if (result.completed && !result.skipped) {
+        setDriveSyncStatus(`이번 달 Drive 이미지 대조 완료: ${result.deleted || 0}개 정리`);
+    }
+    return result;
+}
+
+async function maybeReconcileDriveImages() {
+    if (!currentUser || currentUser.isAnonymous || dataLoadState !== 'ready' || !canUseDrive(driveConnection)) return null;
+    if (driveReconciliationAttemptedUser === currentUser.uid) return null;
+    driveReconciliationAttemptedUser = currentUser.uid;
+    try {
+        const status = await driveReconciliationService.status();
+        if (!status.connected || !status.due) return status;
+        return await runMonthlyDriveReconciliation();
+    } catch (error) {
+        console.error('Drive 월별 이미지 대조 실패:', error);
+        setDriveSyncStatus('Drive 월별 이미지 대조에 실패했습니다. 다음 로그인에서 다시 시도합니다.');
+        return null;
+    }
+}
+
 async function syncDriveImages({ announce = true } = {}) {
     if (!canUseDrive(driveConnection)) {
         customAlert('먼저 Google Drive를 연결해주세요.');
@@ -799,6 +844,8 @@ async function connectGoogleDrive({ migrate = true } = {}) {
         await saveData();
         if (migrate) await syncDriveImages({ announce: true });
         else customAlert('Google Drive 연결이 완료되었습니다.');
+        driveReconciliationAttemptedUser = null;
+        await maybeReconcileDriveImages();
         return true;
     } catch (error) {
         console.error('Google Drive 연결 실패:', error);
@@ -1134,9 +1181,10 @@ function loadDataFromFirestore() {
         activeTab = categories.includes(uiPreferences.lastViewedTab) ? uiPreferences.lastViewedTab : categories[0];
         applyPreferences();
         if (canUseDrive(driveConnection) && dataLoadState === 'ready') {
-            void driveImageService.restoreSession(driveConnection).then(active => {
-                if (active && hasPendingDriveImages()) return syncDriveImages({ announce: false });
-                return null;
+            void driveImageService.restoreSession(driveConnection).then(async active => {
+                if (!active) return null;
+                if (hasPendingDriveImages()) await syncDriveImages({ announce: false });
+                return maybeReconcileDriveImages();
             });
         }
 
@@ -1932,6 +1980,7 @@ function clearPreviewTimers() {
 function updateCarouselControls() {
     const multiple = previewAttachments.length > 1;
     carouselControls.classList.toggle('hidden', !multiple);
+    previewImageDeleteButton?.classList.toggle('hidden', previewAttachments.length === 0);
     carouselCounter.textContent = previewAttachments.length ? `${previewImageIndex + 1} / ${previewAttachments.length}` : '';
 }
 
@@ -1964,6 +2013,45 @@ function moveCarousel(delta) {
     if (previewAttachments.length < 2) return;
     const next = (previewImageIndex + delta + previewAttachments.length) % previewAttachments.length;
     void loadPreviewImage(next);
+}
+
+async function deleteCurrentPreviewImage() {
+    const attachment = previewAttachments[previewImageIndex];
+    if (!previewItem || !attachment) return;
+    if (previewAttachments.length === 1 && !previewItem.url && !previewItem.comment?.trim()) {
+        customAlert('링크나 코멘트가 없는 이미지 전용 항목에서는 마지막 이미지를 제거할 수 없습니다.');
+        return;
+    }
+    customConfirm('현재 이미지만 삭제하시겠습니까? Google Drive에 저장된 해당 이미지도 함께 삭제됩니다.', async () => {
+        const previousImages = getLinkImages(previewItem);
+        const removal = removeImageAttachment(previewItem, attachment.id || attachment.imageId);
+        if (!removal.changed) return;
+        try {
+            previewItem.images = removal.images;
+            previewItem.updatedAt = Date.now();
+            await saveData({ throwOnError: true });
+            try {
+                await driveImageService.removeDriveImage(removal.removed.driveImage, { strict: true });
+            } catch (error) {
+                previewItem.images = previousImages;
+                previewItem.updatedAt = Date.now();
+                await saveData({ throwOnError: true });
+                throw error;
+            }
+            await memoService.deleteImage(removal.removed.imageId);
+            previewAttachments = removal.images;
+            renderLinks();
+            if (!previewAttachments.length) {
+                hideImagePreview();
+                return;
+            }
+            previewImageIndex = Math.min(previewImageIndex, previewAttachments.length - 1);
+            await loadPreviewImage(previewImageIndex);
+        } catch (error) {
+            console.error('개별 이미지 삭제 실패:', error);
+            customAlert('이미지를 삭제하지 못했습니다. 사이트와 Google Drive 상태를 유지했으니 다시 시도해주세요.');
+        }
+    });
 }
 
 async function showContentPreview(item) {
@@ -2027,13 +2115,22 @@ function hideImagePreview() {
     carouselControls.classList.add('hidden');
     carouselCounter.textContent = '';
     carouselLoading.classList.add('hidden');
+    previewImageDeleteButton?.classList.remove('is-touch-visible');
     if (modalObjectUrl) URL.revokeObjectURL(modalObjectUrl);
     modalObjectUrl = null;
 }
 window.hideImagePreview = hideImagePreview;
 carouselPreviousButton.onclick = () => moveCarousel(-1);
 carouselNextButton.onclick = () => moveCarousel(1);
-previewImageStage.addEventListener('pointerdown', event => { carouselPointerStartX = event.clientX; });
+previewImageDeleteButton?.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    void deleteCurrentPreviewImage();
+});
+previewImageStage.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'mouse') previewImageDeleteButton?.classList.add('is-touch-visible');
+    carouselPointerStartX = event.clientX;
+});
 previewImageStage.addEventListener('pointerup', event => {
     if (carouselPointerStartX === null) return;
     const distance = event.clientX - carouselPointerStartX;
@@ -2325,7 +2422,10 @@ function renderBackupSettings() {
 }
 async function applyBackupPayload(payload) {
     categories=Array.isArray(payload.categories)?payload.categories:[...DEFAULT_CATEGORIES]; linkData=payload.linkData&&typeof payload.linkData==='object'?payload.linkData:createDefaultLinkData(categories); uiPreferences=payload.uiPreferences||createDefaultPreferences(categories[0]); driveConnection=normalizeDriveConnection(payload.driveConnection);
-    const state=backupState; backupInfo=payload.backupInfo||backupInfo; backupState=state; migrateDataFormat(); await saveDataInBackground(); await flushMemoSync({throwOnError:true}); applyPreferences(); showHome(); renderBackupSettings();
+    const state=backupState; backupInfo=payload.backupInfo||backupInfo; backupState=state; migrateDataFormat(); await saveDataInBackground(); await flushMemoSync({throwOnError:true});
+    if (canUseDrive(driveConnection)) await driveReconciliationService.clearResetHold();
+    driveReconciliationAttemptedUser = null;
+    applyPreferences(); showHome(); renderBackupSettings();
 }
 window.requestCloudBackup=async()=>{
     if(currentUser?.isAnonymous) return customAlert('게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.');
@@ -2385,8 +2485,10 @@ window.requestAppReset = () => {
             uiPreferences = createDefaultPreferences(activeTab);
             applyPreferences();
             await saveData();
+            if (canUseDrive(driveConnection)) await driveReconciliationService.deferAfterReset();
+            driveReconciliationAttemptedUser = currentUser?.uid || null;
             showHome();
-            customAlert('전체 데이터가 초기화되었습니다.');
+            customAlert('전체 데이터가 초기화되었습니다. Drive 이미지는 다음 달 첫 대조 전까지 백업 복원을 위해 보존됩니다.');
         } catch (error) {
             customAlert('초기화 중 오류가 발생했습니다.');
         }
@@ -2445,9 +2547,17 @@ window.confirmAccountDeletion = async () => {
         }
 
         isDeletingAccount = true;
-        accountDeleteStatus.textContent = '계정과 데이터를 삭제하는 중입니다.';
         if (unsubscribeSnapshot) unsubscribeSnapshot();
         unsubscribeSnapshot = null;
+        if (canUseDrive(driveConnection)) {
+            accountDeleteStatus.textContent = 'Google Drive 이미지 폴더를 삭제하는 중입니다.';
+            await driveReconciliationService.deleteDriveAccount();
+        }
+        if (backupService.configured()) {
+            accountDeleteStatus.textContent = 'Cloudflare 백업을 삭제하는 중입니다.';
+            await backupService.removeAll({ user });
+        }
+        accountDeleteStatus.textContent = '계정과 데이터를 삭제하는 중입니다.';
         await memoRepository.delete(user.uid, { archiveIds: getBackupList(backupState).map(backup => backup.id) });
         dataDeleted = true;
         await memoService.clearImages(user.uid);
