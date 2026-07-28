@@ -51,6 +51,23 @@ describe("lifecycle sync service", () => {
         expect(saveCheckpoint).not.toHaveBeenCalled();
     });
 
+    it("labels a missing guest payload as a local verification failure", async () => {
+        const service = createLifecycleSyncService({
+            getSession: () => ({ user: { uid: "guest", isAnonymous: true }, payload: {} }),
+            waitForUploads: vi.fn(async () => {}),
+            persistLatest: vi.fn(async () => {}),
+            flushFirebase: vi.fn(),
+            loadDurable: vi.fn(async () => null),
+            saveCheckpoint: vi.fn(),
+            saveCheckpointKeepalive: vi.fn()
+        });
+
+        await expect(service.flushBeforeLogout()).rejects.toMatchObject({
+            message: "MEMO_LOCAL_PERSIST_INCOMPLETE",
+            syncStage: "local-verify"
+        });
+    });
+
     it("shares one durable write between manual save and logout", async () => {
         let releaseUploads;
         const waitForUploads = vi.fn(() => new Promise(resolve => { releaseUploads = resolve; }));

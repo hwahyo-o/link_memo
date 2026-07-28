@@ -71,3 +71,8 @@ Firestore, R2 또는 Drive 중 하나가 일시 실패해도 로컬 snapshot/out
 - 익명 사용자의 수동 저장과 로그아웃은 이미지 큐와 IndexedDB 기록을 검증한 뒤 완료하며 원격 동기화 상태를 요구하지 않습니다.
 - 등록 사용자는 이미지 큐 → Google Drive 이미지 보장(연결된 Google 계정만) → IndexedDB → Firestore → Cloudflare 체크포인트 순서를 지킵니다.
 - Drive 보장 단계는 기존 파일 ID를 검증하고 누락된 원본을 현재 기기의 IndexedDB에서 link-memo-img 폴더로 업로드합니다. 하나라도 보장하지 못하면 저장 성공으로 처리하지 않습니다.
+
+
+## 게스트 세션 경계
+
+게스트는 인증만 Firebase Auth를 사용하고 메모 저장은 IndexedDB로 제한한다. 앱 시작 시 로컬 snapshot이 없으면 즉시 ready 상태의 기본 메모를 생성하며 Firestore 구독을 시작하지 않는다. 편집 후 원격 예약·재개 동기화도 실행하지 않는다. 로그아웃은 이미지 로컬 작업과 IndexedDB payload 확인까지만 요구하고, 등록 계정은 기존 Drive → IndexedDB → Firestore → Cloudflare 검증을 유지한다.

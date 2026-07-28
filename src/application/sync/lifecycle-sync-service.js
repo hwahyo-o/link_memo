@@ -1,3 +1,5 @@
+import { isGuestSession, usesRemotePersistence } from "../../domain/auth/session-policy.js";
+
 // Processing layer: coordinates durable exit/logout writes without depending on DOM or Firebase SDK details.
 export function createLifecycleSyncService({
     getSession,
@@ -13,7 +15,7 @@ export function createLifecycleSyncService({
     let durableFlush = null;
 
     function canSync(session, userId = session?.user?.uid) {
-        return Boolean(session?.user && !session.user.isAnonymous && !session.disabled && session.user.uid === userId);
+        return Boolean(usesRemotePersistence(session?.user) && !session.disabled && session.user.uid === userId);
     }
 
     async function persistForExit() {
@@ -53,27 +55,31 @@ export function createLifecycleSyncService({
         }
     }
 
-    async function performDurableFlush() {
-        const session = getSession();
-        if (!session?.user) throw new Error("UNAUTHENTICATED");
+    async function flushGuestLocal(session) {
         await runStage("image-uploads", () => waitForUploads());
-        if (!session.user.isAnonymous) {
-            await runStage("drive-images", () => ensureRemoteImages());
-        }
         await runStage("local-persist", () => persistLatest());
+        const local = await runStage("local-verify", () => loadDurable(session.user.uid));
+        if (!local?.payload) throw new Error("MEMO_LOCAL_PERSIST_INCOMPLETE");
+        return local;
+    }
 
-        // Guest data intentionally stays on this device, so remote dirty state must not block logout.
-        if (session.user.isAnonymous) {
-            const local = await runStage("local-verify", () => loadDurable(session.user.uid));
-            if (!local?.payload) throw new Error("MEMO_LOCAL_PERSIST_INCOMPLETE");
-            return local;
-        }
-
+    async function flushRegisteredDurable(session) {
+        await runStage("image-uploads", () => waitForUploads());
+        await runStage("drive-images", () => ensureRemoteImages());
+        await runStage("local-persist", () => persistLatest());
         await runStage("firebase", () => flushFirebase({ throwOnError: true }));
         const synchronized = await runStage("local-verify", () => loadDurable(session.user.uid));
         if (!synchronized?.payload || synchronized.dirty) throw new Error("MEMO_SYNC_INCOMPLETE");
         await runStage("cloudflare-checkpoint", () => saveCheckpoint(session.user, synchronized.payload, Date.now()));
         return synchronized;
+    }
+
+    async function performDurableFlush() {
+        const session = getSession();
+        if (!session?.user) throw new Error("UNAUTHENTICATED");
+        return isGuestSession(session.user)
+            ? flushGuestLocal(session)
+            : flushRegisteredDurable(session);
     }
 
     function saveNow() {

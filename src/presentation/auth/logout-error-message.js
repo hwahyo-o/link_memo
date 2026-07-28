@@ -11,6 +11,12 @@ export function getLogoutErrorMessage(error) {
         }
         return "Firestore 저장은 완료됐지만 Cloudflare 종료 체크포인트 저장에 실패해 로그아웃을 중단했습니다. 잠시 후 다시 시도해주세요.";
     }
+    if (error?.message === "IMAGE_LOCAL_SAVE_INCOMPLETE" || error?.syncStage === "image-uploads") {
+        return "첨부 이미지를 이 기기에 저장하지 못해 로그아웃을 중단했습니다. 브라우저 저장 공간을 확인한 뒤 다시 시도해주세요.";
+    }
+    if (error?.message === "MEMO_LOCAL_PERSIST_INCOMPLETE" || ["local-persist", "local-verify"].includes(error?.syncStage)) {
+        return "이 기기의 로컬 저장 공간에 편집 내용을 저장하지 못해 로그아웃을 중단했습니다. 브라우저 저장 공간을 확인한 뒤 다시 시도해주세요.";
+    }
     if (error?.message === "MEMO_SYNC_INCOMPLETE") {
         return "이 기기의 최신 변경 내용을 안전하게 확인하지 못해 로그아웃을 중단했습니다. 동기화가 끝난 뒤 다시 시도해주세요.";
     }

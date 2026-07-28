@@ -33,6 +33,7 @@ import { getLogoutErrorMessage } from "./auth/logout-error-message.js";
 import { createMobileSaveController } from "./sync/mobile-save-controller.js";
 import { isNonPcDevice } from "../domain/sync/device-policy.js";
 import { readViewportProfile, subscribeNonPcViewport } from "../infrastructure/browser/viewport-profile.js";
+import { isGuestSession, usesRemotePersistence } from "../domain/auth/session-policy.js";
 import { createPkmSyncService } from "../application/pkm/pkm-sync-service.js";
 import { createIndexedDbVaultRepository } from "../infrastructure/pkm/indexeddb-vault-repository.js";
 import { createFirestoreVaultRepository } from "../infrastructure/pkm/firestore-vault-repository.js";
@@ -566,6 +567,24 @@ function renderHomeLanding() {
     homeRenderSignature = renderSignature;
 }
 
+function initializeGuestMemoSession() {
+    categories = [...DEFAULT_CATEGORIES];
+    activeTab = categories[0];
+    linkData = createDefaultLinkData(categories);
+    uiPreferences = createDefaultPreferences(activeTab);
+    driveConnection = createDefaultDriveConnection();
+    backupInfo = null;
+    backupState = createBackupState();
+    syncMeta = null;
+    memoRevision = 0;
+    localMemoDirty = false;
+    dataLoadState = "ready";
+    memoSyncService.setRevision(0);
+    latestCheckpointPayload = cloneMemoPayload(buildMemoPayload());
+    homeRenderSignature = null;
+    applyPreferences();
+}
+
 function consumePendingLoginNotice(user) {
     const method = pendingLoginMethod;
     pendingLoginMethod = null;
@@ -576,9 +595,14 @@ function consumePendingLoginNotice(user) {
 if (auth) {
     onIdTokenChanged(auth, user => {
         if (user && currentUser?.uid === user.uid) {
+            const linkedFromGuest = isGuestSession(currentUser) && usesRemotePersistence(user);
             currentUser = user;
             backupTokenProvider.updateUser(user);
-            if (!backupAuthReady) void refreshBackupAuthentication();
+            if (linkedFromGuest) {
+                void activateLinkedAccount(user);
+            } else if (!backupAuthReady) {
+                void refreshBackupAuthentication();
+            }
         }
     });
     onAuthStateChanged(auth, user => {
@@ -597,6 +621,13 @@ if (auth) {
             }
             void (async () => {
                 const restoredLocal = await restoreLocalMemo(user.uid);
+                if (isGuestSession(user)) {
+                    if (!restoredLocal) initializeGuestMemoSession();
+                    isFirstLoad = false;
+                    showHome();
+                    return;
+                }
+
                 await refreshBackupAuthentication();
                 const restoredCheckpoint = await restoreCloudCheckpoint(user.uid);
                 if (restoredLocal || restoredCheckpoint) {
@@ -642,6 +673,18 @@ if (auth) {
         closeAccountDeleteModal();
         showLogin();
     });
+}
+
+async function activateLinkedAccount(user) {
+    try {
+        await writeLocalMemo();
+        await flushMemoSync({ allowCreate: true, throwOnError: true });
+        await refreshBackupAuthentication({ forceRefresh: true });
+        loadDataFromFirestore();
+    } catch (error) {
+        console.error("계정 연동 후 원격 저장 활성화 실패:", error);
+        customAlert("계정 연동은 완료됐지만 로컬 데이터를 원격에 저장하지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.");
+    }
 }
 
 window.handleEmailLogin = async () => {
@@ -1059,7 +1102,7 @@ async function restoreCloudCheckpoint(userId) {
 }
 
 function loadDataFromFirestore() {
-    if (!currentUser) return;
+    if (!usesRemotePersistence(currentUser)) return;
     if (unsubscribeSnapshot) unsubscribeSnapshot();
     dataLoadState = 'loading';
     memoRevision = null;
@@ -1312,11 +1355,12 @@ async function writeLocalMemo() {
 }
 
 function scheduleMemoSync(options = {}) {
+    if (!usesRemotePersistence(currentUser)) return;
     memoSyncScheduler.schedule(() => saveData({ ...options, localWritten: true }));
 }
 
 async function resumePendingMemoSync() {
-    if (!currentUser || isDeletingAccount) return;
+    if (!usesRemotePersistence(currentUser) || isDeletingAccount) return;
     const local = await localMemoRepository.load(currentUser.uid);
     localMemoDirty = Boolean(local?.dirty);
     if (!localMemoDirty) return;
@@ -1327,7 +1371,7 @@ async function resumePendingMemoSync() {
 }
 
 async function persistData({ allowCreate = false } = {}) {
-    if (!currentUser || isDeletingAccount || (dataLoadState !== "ready" && !allowCreate && !localMemoDirty)) return false;
+    if (!usesRemotePersistence(currentUser) || isDeletingAccount || (dataLoadState !== "ready" && !allowCreate && !localMemoDirty)) return false;
     const result = await memoSyncService.flush(currentUser.uid, { allowCreate });
     memoRevision = result.revision ?? memoRevision;
     localMemoDirty = Boolean((await localMemoRepository.load(currentUser.uid))?.dirty);
