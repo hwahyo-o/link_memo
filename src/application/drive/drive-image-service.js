@@ -162,10 +162,13 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
         return result;
     }
 
-    async function removeDriveImage(reference) {
+    async function removeDriveImage(reference, { strict = false } = {}) {
         if (!reference?.fileId) return;
         try { await driveImageRepository.remove(reference.fileId); }
-        catch (error) { console.warn("Drive 이미지 삭제 실패", error); }
+        catch (error) {
+            if (strict) throw error;
+            console.warn("Drive 이미지 삭제 실패", error);
+        }
     }
 
     return { connect, restoreSession, upload, loadImage, prefetchImage, repairImage, repairDriveImages, ensureImagesBackedUp, removeDriveImage };
