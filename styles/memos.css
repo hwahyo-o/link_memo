@@ -4,6 +4,27 @@
     overflow-wrap: anywhere;
 }
 
+.memo-comment-inline {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.comment-accordion-link {
+    display: inline-flex;
+    margin-top: 0.75rem;
+    color: #2563eb;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+}
+
+.comment-accordion-link:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
 .comment-accordion-shell {
     border-bottom-left-radius: 0.5rem;
     border-bottom-right-radius: 0.5rem;
