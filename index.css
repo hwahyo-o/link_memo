@@ -1,3 +1,5 @@
+@import url('./styles/memos.css');
+
 .main-header-grid {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -54,7 +56,6 @@
 }
 
 @import url('./styles/tabs.css');
-@import url('./styles/memos.css');
 @import url('./styles/theme-features.css');
 
 /* Drag states */

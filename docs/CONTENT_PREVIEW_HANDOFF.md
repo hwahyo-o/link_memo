@@ -16,6 +16,7 @@
 
 - `index.html`: `previewContent` 안에서 `previewImageStage`를 `previewTextStage`보다 먼저 배치합니다.
 - `styles/memos.css`: 모달 높이, 세로 스크롤, 코멘트 줄바꿈 및 다크 모드 표현을 담당합니다.
+- `index.css`는 `styles/memos.css`를 일반 CSS 규칙보다 먼저 import해야 합니다. CSS `@import`를 규칙 뒤로 옮기면 운영 번들에서 미리보기 스타일이 누락됩니다.
 - `index.css`: 이미지 캐러셀의 크기, 버튼, 카운터와 모바일 크기를 담당합니다.
 
 ### 처리 계층
