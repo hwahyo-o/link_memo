@@ -111,7 +111,7 @@ GitHub Pages 빌드는 Drive 기능이 빠진 번들을 성공으로 배포하�
 - `VITE_GOOGLE_OAUTH_CLIENT_ID`
 - `VITE_DRIVE_WORKER_URL`
 
-그 다음 Drive Worker의 `/v1/health`를 호출해 API 버전, 필수 Worker 설정, D1 접근 가능 여부가 준비됐는지 확인합니다. 응답은 서비스 이름, API 버전, 준비 상태만 포함하며 Secret, URL, 계정 또는 데이터베이스 식별자를 반환하지 않습니다.
+그 다음 Drive Worker의 `/v1/health`를 호출해 API 버전, 필수 Worker 설정, D1 접근 가능 여부가 준비됐는지 확인합니다. 응답은 서비스 이름, API 버전, 준비 상태와 `configuration` 또는 `storage` 같은 비민감 장애 분류만 포함하며 Secret, URL, 계정 또는 데이터베이스 식별자를 반환하지 않습니다.
 
 이미지는 IndexedDB에 저장되지만 Drive 업로드와 연결 해제가 함께 실패하는 경우 다음 순서로 확인합니다.
 
