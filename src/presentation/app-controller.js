@@ -30,6 +30,7 @@ import { getLatestKstBackupSlot, getNextKstBackupSlot, getKstSlotKey } from "../
 import { isSameMemoPayload, mergeMemoPayloads, prepareLocalMemoPayload } from "../domain/sync/memo-merge-policy.js";
 import { createLifecycleSyncService } from "../application/sync/lifecycle-sync-service.js";
 import { getLogoutErrorMessage } from "./auth/logout-error-message.js";
+import { getDriveErrorMessage } from "./drive/drive-error-message.js";
 import { createMobileSaveController } from "./sync/mobile-save-controller.js";
 import { isNonPcDevice } from "../domain/sync/device-policy.js";
 import { readViewportProfile, subscribeNonPcViewport } from "../infrastructure/browser/viewport-profile.js";
@@ -733,35 +734,6 @@ function isGoogleAccount(user = currentUser) {
     return Boolean(user?.providerData?.some(provider => provider.providerId === 'google.com'));
 }
 
-function describeDriveError(error) {
-    const messages = {
-        DRIVE_OAUTH_CLIENT_ID_MISSING: 'Google Drive 연결 설정이 아직 완료되지 않았습니다. 배포 환경의 OAuth Client ID를 확인해주세요.',
-        DRIVE_WORKER_URL_MISSING: 'Google Drive 보안 연결 주소가 설정되지 않았습니다.',
-        DRIVE_ACCOUNT_MISMATCH: 'Drive 권한은 현재 링크 메모에 로그인한 Google 계정으로만 연결할 수 있습니다.',
-        DRIVE_OFFLINE_ACCESS_REQUIRED: 'Google에서 장기 Drive 연결 정보를 받지 못했습니다. 설정에서 Drive 연결 해제를 누른 뒤 다시 연결해주세요.',
-        DRIVE_REAUTH_REQUIRED: '기존 Google Drive 권한을 사이트에서 초기화했습니다. Drive 연결 버튼을 한 번 더 눌러 새 권한을 승인해주세요.',
-        GOOGLE_TOKEN_EXCHANGE_FAILED: 'Google 권한 코드를 교환하지 못했습니다. OAuth Client ID와 Secret 설정을 확인해주세요.',
-        TOKEN_ENCRYPTION_KEY_INVALID: 'Drive 보안 저장소 암호화 설정이 올바르지 않습니다.',
-        DRIVE_NOT_CONNECTED: 'Drive 연결 정보가 없습니다. Drive 연결을 다시 시도해주세요.',
-        DRIVE_TOKEN_REFRESH_FAILED: 'Drive 연결이 만료되었습니다. Drive 연결을 다시 시도해주세요.',
-        TOKEN_ENCRYPTION_KEY_INVALID: 'Cloudflare 암호화 키 설정 오류입니다. Worker의 TOKEN_ENCRYPTION_KEY Secret에 32자 이상 임의의 비밀 문구를 입력해주세요.',
-        DRIVE_CREDENTIALS_CORRUPTED: '저장된 Drive 연결 정보가 손상되었습니다. 설정에서 Drive 연결 해제를 누른 뒤 다시 연결해주세요.',
-        DRIVE_CREDENTIALS_RECOVERY_REQUIRED: '기존 Drive 연결 정보를 읽을 수 없습니다. 설정에서 Drive 연결 해제를 누른 뒤 다시 연결해주세요.',
-        DRIVE_NOT_CONNECTED: 'Drive 연결이 저장되지 않았습니다. 설정에서 Drive 연결을 다시 완료해주세요.'
-    };
-    if (messages[error?.message]) return messages[error.message];
-    if (error?.code === 'popup_closed_by_user' || error?.message === 'popup_closed_by_user' || error?.message === 'popup_closed') {
-        return 'Google Drive 권한 승인이 취소되었습니다.';
-    }
-    if (error?.message === 'popup_failed_to_open') {
-        return 'Google 권한 창을 열지 못했습니다. 브라우저의 팝업 차단을 해제해주세요.';
-    }
-    if (error?.message === 'unknown') {
-        return 'Google 권한 창에서 오류가 발생했습니다. OAuth Client ID, 허용된 JavaScript 원본, 테스트 사용자 설정을 확인해주세요.';
-    }
-    return 'Google Drive 연결에 실패했습니다. 잠시 후 다시 시도해주세요.';
-}
-
 function setDriveSyncStatus(message = '') {
     if (driveSyncStatus) driveSyncStatus.textContent = message;
 }
@@ -809,7 +781,7 @@ async function syncDriveImages({ announce = true } = {}) {
     } catch (error) {
         console.error('Drive 이미지 동기화 실패:', error);
         setDriveSyncStatus('Drive 이미지 동기화에 실패했습니다.');
-        if (announce) customAlert(describeDriveError(error));
+        if (announce) customAlert(getDriveErrorMessage(error));
         return null;
     } finally {
         if (driveRepairButton) {
@@ -832,7 +804,7 @@ async function connectGoogleDrive({ migrate = true } = {}) {
         return true;
     } catch (error) {
         console.error('Google Drive 연결 실패:', error);
-        customAlert(describeDriveError(error));
+        customAlert(getDriveErrorMessage(error));
         return false;
     }
 }
@@ -869,7 +841,7 @@ window.disconnectGoogleDrive = () => {
                 customAlert('Google Drive 연결과 권한을 해제했습니다. 필요할 때 Drive 연결 버튼으로 다시 승인해주세요.');
             } catch (error) {
                 console.error('Google Drive 연결 해제 실패:', error);
-                customAlert(describeDriveError(error));
+                customAlert(getDriveErrorMessage(error));
             }
         }
     );
