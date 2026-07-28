@@ -76,3 +76,12 @@ Firestore, R2 또는 Drive 중 하나가 일시 실패해도 로컬 snapshot/out
 ## 게스트 세션 경계
 
 게스트는 인증만 Firebase Auth를 사용하고 메모 저장은 IndexedDB로 제한한다. 앱 시작 시 로컬 snapshot이 없으면 즉시 ready 상태의 기본 메모를 생성하며 Firestore 구독을 시작하지 않는다. 편집 후 원격 예약·재개 동기화도 실행하지 않는다. 로그아웃은 이미지 로컬 작업과 IndexedDB payload 확인까지만 요구하고, 등록 계정은 기존 Drive → IndexedDB → Firestore → Cloudflare 검증을 유지한다.
+
+
+## 로그인 기반 Drive 이미지 정리
+
+등록 사용자는 인증 세션과 최종 메모 병합이 준비된 뒤 KST 월별 1회 `link-memo-img` 폴더를 현재 사이트의 Drive 파일 참조와 대조합니다. 완료 월과 작업 lease는 D1에 저장하며, 일부 실패는 완료로 기록하지 않습니다. 초기화는 다음 KST 월 첫 대조 전까지 Drive 이미지를 보존하고, 복원은 보존 상태를 해제한 뒤 복원된 참조를 유지합니다.
+
+캐러셀 개별 삭제는 UI가 대상을 선택하고 Processing 계층이 사이트 메타데이터, Drive 파일, IndexedDB 원본을 조율합니다. 회원 탈퇴는 Drive 폴더와 R2 백업을 Firebase Auth보다 먼저 삭제합니다. 연결 해제 흐름은 이 계약과 별도이며 기존 동작을 유지합니다.
+
+세부 API, 장애 복구와 검증은 [로그인 기반 Drive 이미지 정리 인수인계](docs/MONTHLY_DRIVE_RECONCILIATION_HANDOFF.md)를 따릅니다.

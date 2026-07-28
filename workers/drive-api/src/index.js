@@ -280,8 +280,179 @@ async function image(fileId, user, env) {
 
 async function remove(fileId, user, env) {
   const accessToken = await driveAccessToken(user.uid, env);
-  await driveFetch(accessToken, `/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+  await deleteDriveFile(accessToken, fileId);
   return new Response(null, { status: 204 });
+}
+
+
+function getKstMonthKey(value = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit"
+  }).formatToParts(new Date(value));
+  return `${parts.find(part => part.type === "year")?.value}-${parts.find(part => part.type === "month")?.value}`;
+}
+
+function getNextKstMonthKey(value = Date.now()) {
+  const [year, month] = getKstMonthKey(value).split("-").map(Number);
+  const next = new Date(Date.UTC(year, month, 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+async function reconciliationRecord(uid, env) {
+  return env.DRIVE_CREDENTIALS.prepare(
+    "SELECT last_completed_month, reset_cleanup_month, status, running_month, running_job, lease_until, next_page_token FROM drive_reconciliation_state WHERE uid = ?"
+  ).bind(uid).first();
+}
+
+async function reconciliationStatus(user, env) {
+  const [credential, state] = await Promise.all([
+    env.DRIVE_CREDENTIALS.prepare("SELECT folder_id FROM drive_credentials WHERE uid = ?").bind(user.uid).first(),
+    reconciliationRecord(user.uid, env)
+  ]);
+  const currentMonth = getKstMonthKey();
+  const resetCleanupMonth = state?.reset_cleanup_month || null;
+  const completed = state?.last_completed_month === currentMonth;
+  const deferred = Boolean(resetCleanupMonth && resetCleanupMonth > currentMonth);
+  return json({
+    connected: Boolean(credential?.folder_id),
+    currentMonth,
+    lastCompletedMonth: state?.last_completed_month || null,
+    due: Boolean(credential?.folder_id) && !completed && !deferred,
+    resetDecisionRequired: Boolean(resetCleanupMonth && resetCleanupMonth <= currentMonth && !completed),
+    deferred
+  });
+}
+
+async function listFolderImages(accessToken, folderId, pageToken = null) {
+  const query = encodeURIComponent(`'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`);
+  const token = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
+  const fields = encodeURIComponent("nextPageToken,files(id)");
+  return (await driveFetch(accessToken, `?q=${query}&pageSize=40&fields=${fields}${token}`)).json();
+}
+
+async function deleteDriveFile(accessToken, fileId) {
+  try {
+    await driveFetch(accessToken, `/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+    return true;
+  } catch (error) {
+    if (error?.status === 404) return false;
+    throw error;
+  }
+}
+
+async function reconcileImages(request, user, env) {
+  const body = await request.json();
+  const activeFileIds = [...new Set((body?.activeFileIds || []).filter(
+    value => typeof value === "string" && value.length > 0 && value.length <= 200
+  ))];
+  if (activeFileIds.length > 5000) throw Object.assign(new Error("IMAGE_MANIFEST_TOO_LARGE"), { status: 413 });
+
+  const credential = await env.DRIVE_CREDENTIALS.prepare(
+    "SELECT folder_id FROM drive_credentials WHERE uid = ?"
+  ).bind(user.uid).first();
+  if (!credential?.folder_id) throw Object.assign(new Error("DRIVE_NOT_CONNECTED"), { status: 403 });
+
+  const currentMonth = getKstMonthKey();
+  let state = await reconciliationRecord(user.uid, env);
+  if (state?.last_completed_month === currentMonth) return json({ completed: true, skipped: true, currentMonth });
+  if (state?.reset_cleanup_month && state.reset_cleanup_month > currentMonth) {
+    return json({ completed: false, deferred: true, currentMonth, cleanupNotBeforeMonth: state.reset_cleanup_month });
+  }
+  if (state?.reset_cleanup_month && state.reset_cleanup_month <= currentMonth && body.confirmResetCleanup !== true) {
+    return json({ completed: false, resetDecisionRequired: true, currentMonth });
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  let jobId = typeof body.jobId === "string" ? body.jobId : null;
+  if (!jobId) {
+    if (state?.status === "in_progress" && Number(state.lease_until || 0) > now) {
+      throw Object.assign(new Error("RECONCILIATION_BUSY"), { status: 409 });
+    }
+    jobId = crypto.randomUUID();
+    await env.DRIVE_CREDENTIALS.prepare(
+      `INSERT INTO drive_reconciliation_state
+       (uid, last_completed_month, reset_cleanup_month, status, running_month, running_job, lease_until, next_page_token, updated_at)
+       VALUES (?, ?, ?, 'in_progress', ?, ?, ?, NULL, unixepoch())
+       ON CONFLICT(uid) DO UPDATE SET status = 'in_progress', running_month = excluded.running_month,
+       running_job = excluded.running_job, lease_until = excluded.lease_until, next_page_token = NULL, updated_at = unixepoch()`
+    ).bind(user.uid, state?.last_completed_month || null, state?.reset_cleanup_month || null, currentMonth, jobId, now + 300).run();
+    state = await reconciliationRecord(user.uid, env);
+  } else if (
+    state?.status !== "in_progress"
+    || state.running_month !== currentMonth
+    || state.running_job !== jobId
+    || Number(state.lease_until || 0) <= now
+  ) {
+    throw Object.assign(new Error("RECONCILIATION_JOB_EXPIRED"), { status: 409 });
+  }
+
+  const requestedPageToken = typeof body.pageToken === "string" && body.pageToken ? body.pageToken : null;
+  const expectedPageToken = state?.next_page_token || null;
+  if (requestedPageToken !== expectedPageToken) throw Object.assign(new Error("RECONCILIATION_CURSOR_MISMATCH"), { status: 409 });
+
+  try {
+    const accessToken = await driveAccessToken(user.uid, env);
+    const page = await listFolderImages(accessToken, credential.folder_id, requestedPageToken);
+    const active = new Set(activeFileIds);
+    const orphans = (page.files || []).filter(file => file?.id && !active.has(file.id));
+    await Promise.all(orphans.map(file => deleteDriveFile(accessToken, file.id)));
+    const nextPageToken = page.nextPageToken || null;
+    if (nextPageToken) {
+      await env.DRIVE_CREDENTIALS.prepare(
+        "UPDATE drive_reconciliation_state SET lease_until = ?, next_page_token = ?, updated_at = unixepoch() WHERE uid = ? AND running_job = ?"
+      ).bind(now + 300, nextPageToken, user.uid, jobId).run();
+      return json({ completed: false, jobId, nextPageToken, scanned: (page.files || []).length, deleted: orphans.length });
+    }
+    await env.DRIVE_CREDENTIALS.prepare(
+      `UPDATE drive_reconciliation_state SET last_completed_month = ?, reset_cleanup_month = NULL,
+       status = 'completed', running_month = NULL, running_job = NULL, lease_until = NULL,
+       next_page_token = NULL, updated_at = unixepoch() WHERE uid = ? AND running_job = ?`
+    ).bind(currentMonth, user.uid, jobId).run();
+    return json({ completed: true, jobId, currentMonth, scanned: (page.files || []).length, deleted: orphans.length });
+  } catch (error) {
+    await env.DRIVE_CREDENTIALS.prepare(
+      "UPDATE drive_reconciliation_state SET status = 'failed', lease_until = NULL, updated_at = unixepoch() WHERE uid = ? AND running_job = ?"
+    ).bind(user.uid, jobId).run();
+    throw error;
+  }
+}
+
+async function deferReconciliationAfterReset(user, env) {
+  const currentMonth = getKstMonthKey();
+  const cleanupMonth = getNextKstMonthKey();
+  await env.DRIVE_CREDENTIALS.prepare(
+    `INSERT INTO drive_reconciliation_state
+     (uid, last_completed_month, reset_cleanup_month, status, updated_at)
+     VALUES (?, ?, ?, 'completed', unixepoch())
+     ON CONFLICT(uid) DO UPDATE SET last_completed_month = excluded.last_completed_month,
+     reset_cleanup_month = excluded.reset_cleanup_month, status = 'completed',
+     running_month = NULL, running_job = NULL, lease_until = NULL, next_page_token = NULL, updated_at = unixepoch()`
+  ).bind(user.uid, currentMonth, cleanupMonth).run();
+  return json({ deferred: true, cleanupNotBeforeMonth: cleanupMonth });
+}
+
+async function clearReconciliationResetHold(user, env) {
+  await env.DRIVE_CREDENTIALS.prepare(
+    "UPDATE drive_reconciliation_state SET reset_cleanup_month = NULL, updated_at = unixepoch() WHERE uid = ?"
+  ).bind(user.uid).run();
+  return json({ cleared: true });
+}
+
+async function deleteAccountData(user, env) {
+  const credential = await env.DRIVE_CREDENTIALS.prepare(
+    "SELECT folder_id FROM drive_credentials WHERE uid = ?"
+  ).bind(user.uid).first();
+  if (!credential) return json({ deleted: false, notConnected: true });
+  const accessToken = await driveAccessToken(user.uid, env);
+  if (credential.folder_id) await deleteDriveFile(accessToken, credential.folder_id);
+  await env.DRIVE_CREDENTIALS.batch([
+    env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_reconciliation_state WHERE uid = ?").bind(user.uid),
+    env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_credentials WHERE uid = ?").bind(user.uid)
+  ]);
+  accessTokenCache.delete(user.uid);
+  return json({ deleted: true });
 }
 
 async function disconnect(user, env) {
@@ -325,6 +496,11 @@ export default {
         if (record && new URL(request.url).searchParams.get("warm") === "1") await driveAccessToken(user.uid, env);
         response = json({ active: Boolean(record), folderId: record?.folder_id || null });
       } else if (request.method === "POST" && path === "images/verify") response = await verifyImages(request, user, env);
+      else if (request.method === "GET" && path === "images/reconcile") response = await reconciliationStatus(user, env);
+      else if (request.method === "POST" && path === "images/reconcile") response = await reconcileImages(request, user, env);
+      else if (request.method === "POST" && path === "images/reconcile/defer") response = await deferReconciliationAfterReset(user, env);
+      else if (request.method === "POST" && path === "images/reconcile/restore") response = await clearReconciliationResetHold(user, env);
+      else if (request.method === "DELETE" && path === "account") response = await deleteAccountData(user, env);
       else if (request.method === "POST" && path === "upload") response = await upload(request, user, env);
       else if (request.method === "GET" && path.startsWith("image/")) response = await image(path.slice(6), user, env);
       else if (request.method === "DELETE" && path.startsWith("image/")) response = await remove(path.slice(6), user, env);

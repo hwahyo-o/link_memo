@@ -26,6 +26,7 @@ Link Memo는 텍스트·URL·이미지·설정을 기기 간 동기화하는 Van
 5. [cloudflare-backup-worker/README.md](cloudflare-backup-worker/README.md) — R2 백업 Worker의 경계와 API
 6. [PKM_ARCHITECTURE.md](PKM_ARCHITECTURE.md) — PKM Vault, 검색, 그래프 Worker, 동기화와 확장 규칙
 7. [docs/RESPONSIVE_SAVE_AND_DRIVE_HANDOFF.md](docs/RESPONSIVE_SAVE_AND_DRIVE_HANDOFF.md) — 반응형 저장 UI, Drive 이미지 보장, 게스트 로그아웃 인수인계
+8. [docs/MONTHLY_DRIVE_RECONCILIATION_HANDOFF.md](docs/MONTHLY_DRIVE_RECONCILIATION_HANDOFF.md) — 로그인 기반 월별 Drive 대조, 초기화 보존, 개별 삭제와 탈퇴 정리
 
 문서와 코드가 다르면 코드를 먼저 확인하고, 같은 변경에서 문서를 함께 수정합니다. 실제 프로젝트 ID, 계정 ID, 데이터베이스 ID, Worker URL, 토큰, 키 값은 Markdown·소스·예제 로그에 기록하지 않습니다.
 

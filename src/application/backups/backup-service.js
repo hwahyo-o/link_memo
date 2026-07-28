@@ -86,6 +86,10 @@ export function createBackupService({ cloudRepository }) {
       return cloudRepository.remove(user, backupId);
     },
 
+    removeAll({ user }) {
+      return cloudRepository.removeAll(user);
+    },
+
     async list({ user }) {
       const result = await cloudRepository.list(user);
       return Array.isArray(result.backups) ? result.backups : [];

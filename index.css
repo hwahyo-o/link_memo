@@ -328,6 +328,38 @@ body.is-subcategory-dragging .subcategory-panel {
     font-weight: 700;
 }
 
+
+.image-carousel-delete {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 3;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 9999px;
+    color: #fff;
+    background: rgba(185, 28, 28, 0.88);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.3);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.image-carousel-viewport:hover .image-carousel-delete,
+.image-carousel-viewport:focus-within .image-carousel-delete,
+.image-carousel-delete.is-touch-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.image-carousel-delete:hover,
+.image-carousel-delete:focus-visible {
+    background: rgba(220, 38, 38, 0.98);
+    transform: scale(1.05);
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
 .image-carousel-loading {
     position: absolute;
     left: 50%;
@@ -349,9 +381,15 @@ body.is-subcategory-dragging .subcategory-panel {
         padding: 0 0.4rem;
     }
 
-    .image-carousel-button {
+    .image-carousel-button,
+    .image-carousel-delete {
         width: 2.4rem;
         height: 2.4rem;
+    }
+
+    .image-carousel-delete {
+        opacity: 1;
+        pointer-events: auto;
     }
 }
 

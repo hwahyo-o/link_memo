@@ -110,6 +110,15 @@ async function enforceRetention(env, uid) {
   await Promise.all(staleIds.map(id => env.BACKUPS.delete(objectKey(uid, id))));
   return backups.filter(item => !staleIds.includes(item.id));
 }
+async function deleteUserObjects(env, uid) {
+  for (const prefix of [`users/${uid}/`, `checkpoints/${uid}/`]) {
+    while (true) {
+      const listed = await env.BACKUPS.list({ prefix, limit: 1000 });
+      if (!listed.objects.length) break;
+      await env.BACKUPS.delete(listed.objects.map(object => object.key));
+    }
+  }
+}
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("origin") || "";
@@ -147,6 +156,10 @@ export default {
           return json({ saved: true, updatedAt: Number(body.updatedAt) }, 200, origin, env);
         }
         return json({ code: "METHOD_NOT_ALLOWED" }, 405, origin, env);
+      }
+      if (request.method === "DELETE" && url.pathname === "/v1/account") {
+        await deleteUserObjects(env, uid);
+        return json({ deleted: true }, 200, origin, env);
       }
       if (request.method === "GET" && url.pathname === "/v1/backups") {
         return json({ backups: await listUserBackups(env, uid) }, 200, origin, env);

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node --check workers/drive-api/src/index.js && node --check cloudflare-backup-worker/src/index.js && vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
