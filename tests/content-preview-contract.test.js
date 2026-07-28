@@ -15,9 +15,10 @@ describe("content preview contract", () => {
         expect(html).not.toContain('id="previewImageTab"');
     });
 
-    it("shows image and text stages independently for combined previews", () => {
+    it("shows image and text stages independently and starts from the image", () => {
         expect(controller).toContain("previewImageStage.classList.toggle('hidden', !hasImage)");
         expect(controller).toContain("previewTextStage.classList.toggle('hidden', !hasText)");
+        expect(controller).toContain("previewContent.scrollTop = 0");
         expect(controller).not.toContain("setPreviewMode");
     });
 
