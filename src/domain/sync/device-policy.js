@@ -1,16 +1,8 @@
-const MOBILE_PLATFORM_PATTERN = /Android|iPhone|iPad|iPod|Mobile|Silk|webOS/i;
-const DESKTOP_PLATFORM_PATTERN = /Windows|Win32|Win64|Linux|CrOS|Chrome OS/i;
+export const NON_PC_MAX_VIEWPORT_WIDTH = 1024;
+export const NON_PC_MEDIA_QUERY = `(max-width: ${NON_PC_MAX_VIEWPORT_WIDTH}px)`;
 
-export function isNonPcDevice({
-    mobileHint = false,
-    platform = "",
-    userAgent = "",
-    maxTouchPoints = 0
-} = {}) {
-    if (mobileHint) return true;
-    if (/Android|iPhone|iPad|iPod|Silk|webOS/i.test(userAgent)) return true;
-    if (/iPhone|iPad|iPod/i.test(platform)) return true;
-    if (/Mac/i.test(platform) && maxTouchPoints > 1) return true;
-    if (DESKTOP_PLATFORM_PATTERN.test(platform) || /Mac/i.test(platform)) return false;
-    return MOBILE_PLATFORM_PATTERN.test(userAgent);
+// Core rule: device labels and user-agent strings do not affect the save control.
+export function isNonPcDevice({ viewportWidth } = {}) {
+    const width = Number(viewportWidth);
+    return Number.isFinite(width) && width > 0 && width <= NON_PC_MAX_VIEWPORT_WIDTH;
 }

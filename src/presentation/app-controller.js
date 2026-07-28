@@ -32,7 +32,7 @@ import { createLifecycleSyncService } from "../application/sync/lifecycle-sync-s
 import { getLogoutErrorMessage } from "./auth/logout-error-message.js";
 import { createMobileSaveController } from "./sync/mobile-save-controller.js";
 import { isNonPcDevice } from "../domain/sync/device-policy.js";
-import { readBrowserDeviceProfile } from "../infrastructure/browser/device-profile.js";
+import { readViewportProfile, subscribeNonPcViewport } from "../infrastructure/browser/viewport-profile.js";
 import { createPkmSyncService } from "../application/pkm/pkm-sync-service.js";
 import { createIndexedDbVaultRepository } from "../infrastructure/pkm/indexeddb-vault-repository.js";
 import { createFirestoreVaultRepository } from "../infrastructure/pkm/firestore-vault-repository.js";
@@ -74,7 +74,8 @@ const lifecycleSyncService = createLifecycleSyncService({
         disabled: isDeletingAccount,
         payload: latestCheckpointPayload || cloneMemoPayload(buildMemoPayload())
     }),
-    waitForUploads: () => Promise.allSettled([...pendingImageTasks]),
+    waitForUploads: waitForPendingImageTasks,
+    ensureRemoteImages: ensureDriveImagesForDurableSave,
     persistLatest: () => saveDataInBackground(),
     flushFirebase: options => flushMemoSync(options),
     loadDurable: userId => localMemoRepository.load(userId),
@@ -216,6 +217,7 @@ let longPressTimer = null;
 let deleteReauthMode = 'none';
 let driveConnection = createDefaultDriveConnection();
 let drivePromptRequested = false;
+let pendingLoginMethod = null;
 const repairingDriveImageIds = new Set();
 const mobileSaveController = createMobileSaveController({
     button: mobileSaveButton,
@@ -227,8 +229,9 @@ const mobileSaveController = createMobileSaveController({
         currentUser ? backgroundPkmSync.flush(currentUser.uid) : Promise.resolve()
     ]),
     alert: customAlert,
-    isNonPc: () => isNonPcDevice(readBrowserDeviceProfile())
+    isNonPc: () => isNonPcDevice(readViewportProfile())
 });
+subscribeNonPcViewport(() => mobileSaveController.updateVisibility());
 window.handleMobileSave = () => { void mobileSaveController.save(); };
 
 function createId(prefix) {
@@ -443,6 +446,19 @@ function cloneMemoPayload(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+async function waitForPendingImageTasks() {
+    const results = await Promise.all([...pendingImageTasks]);
+    if (results.some(result => result.failed > 0)) throw new Error("IMAGE_LOCAL_SAVE_INCOMPLETE");
+    return results;
+}
+
+async function ensureDriveImagesForDurableSave() {
+    if (!isGoogleAccount() || !canUseDrive(driveConnection)) return null;
+    const result = await driveImageService.ensureImagesBackedUp(linkData, driveConnection);
+    driveConnection = result.connection;
+    return result;
+}
+
 async function savePreferences() {
     return saveData();
 }
@@ -550,6 +566,13 @@ function renderHomeLanding() {
     homeRenderSignature = renderSignature;
 }
 
+function consumePendingLoginNotice(user) {
+    const method = pendingLoginMethod;
+    pendingLoginMethod = null;
+    if (method !== "password" || user.isAnonymous || !isNonPcDevice(readViewportProfile())) return;
+    setTimeout(() => customAlert("이미지 및 데이터 등의 더 원활한 데이터 관리를 원하실 경우 구글 계정 연동을 진행해주세요."), 450);
+}
+
 if (auth) {
     onIdTokenChanged(auth, user => {
         if (user && currentUser?.uid === user.uid) {
@@ -567,6 +590,7 @@ if (auth) {
             backupSessionStartedAt = Date.now();
             automaticBackupRuntime = null;
             updateHeaderUI(user);
+            consumePendingLoginNotice(user);
             if (user.isAnonymous && !guestBackupNoticeShown) {
                 guestBackupNoticeShown = true;
                 setTimeout(() => customAlert('게스트 계정은 백업 및 복구의 이용이 불가합니다. 더 원활한 데이터 관리를 원하실 경우 구글 계정 연동을 진행해주세요.'), 350);
@@ -585,6 +609,7 @@ if (auth) {
             return;
         }
         currentUser = null;
+        pendingLoginMethod = null;
         homeRenderSignature = null;
         backupTokenProvider.updateUser(null);
         backupAuthReady = false;
@@ -624,9 +649,11 @@ window.handleEmailLogin = async () => {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     if (!email || !password) return customAlert('이메일과 비밀번호를 모두 입력해주세요.');
+    pendingLoginMethod = 'password';
     try {
         await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
+        pendingLoginMethod = null;
         customAlert('로그인 실패: 이메일 또는 비밀번호를 확인해주세요.');
     }
 };
@@ -636,19 +663,23 @@ window.handleEmailRegister = async () => {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     if (!email || !password) return customAlert('이메일과 비밀번호를 모두 입력해주세요.');
+    pendingLoginMethod = 'password';
     try {
         await createUserWithEmailAndPassword(auth, email, password);
         customAlert('회원가입이 완료되었습니다.');
     } catch (error) {
+        pendingLoginMethod = null;
         customAlert('회원가입에 실패했습니다. 이메일과 비밀번호 조건을 확인해주세요.');
     }
 };
 
 window.handleGoogleLogin = async () => {
     if (!auth) return;
+    pendingLoginMethod = 'google';
     try {
         await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (error) {
+        pendingLoginMethod = null;
         if (error.code !== 'auth/popup-closed-by-user') customAlert('Google 로그인에 실패했습니다. 승인된 도메인과 로그인 제공업체 설정을 확인해주세요.');
     }
 };

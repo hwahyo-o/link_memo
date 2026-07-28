@@ -146,11 +146,27 @@ export function createDriveImageService({ localImageRepository, driveImageReposi
         return result;
     }
 
+    async function ensureImagesBackedUp(linkData, connection) {
+        const imageCount = getImages(linkData).length;
+        const normalizedConnection = normalizeDriveConnection(connection);
+        if (!imageCount) return { connection: normalizedConnection, total: 0, available: 0, uploaded: 0, repaired: 0, unrecoverable: 0, failed: 0 };
+        if (!canUseDrive(connection) || !await restoreSession(connection)) throw new Error("DRIVE_SESSION_INACTIVE");
+        const result = await repairDriveImages(linkData, connection);
+        if (result.error) throw result.error;
+        const missingReferences = getImages(linkData).filter(image => !image?.driveImage?.fileId).length;
+        if (result.failed || result.unrecoverable || missingReferences) {
+            const error = new Error("DRIVE_IMAGES_INCOMPLETE");
+            error.result = { ...result, missingReferences };
+            throw error;
+        }
+        return result;
+    }
+
     async function removeDriveImage(reference) {
         if (!reference?.fileId) return;
         try { await driveImageRepository.remove(reference.fileId); }
         catch (error) { console.warn("Drive 이미지 삭제 실패", error); }
     }
 
-    return { connect, restoreSession, upload, loadImage, prefetchImage, repairImage, repairDriveImages, removeDriveImage };
+    return { connect, restoreSession, upload, loadImage, prefetchImage, repairImage, repairDriveImages, ensureImagesBackedUp, removeDriveImage };
 }
