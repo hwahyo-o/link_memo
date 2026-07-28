@@ -112,12 +112,11 @@ async function enforceRetention(env, uid) {
 }
 async function deleteUserObjects(env, uid) {
   for (const prefix of [`users/${uid}/`, `checkpoints/${uid}/`]) {
-    let cursor;
-    do {
-      const listed = await env.BACKUPS.list({ prefix, cursor });
-      if (listed.objects.length) await env.BACKUPS.delete(listed.objects.map(object => object.key));
-      cursor = listed.truncated ? listed.cursor : undefined;
-    } while (cursor);
+    while (true) {
+      const listed = await env.BACKUPS.list({ prefix, limit: 1000 });
+      if (!listed.objects.length) break;
+      await env.BACKUPS.delete(listed.objects.map(object => object.key));
+    }
   }
 }
 export default {
