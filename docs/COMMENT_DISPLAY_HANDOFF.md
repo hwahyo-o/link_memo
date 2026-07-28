@@ -74,7 +74,7 @@
 
 ## 테스트
 
-`src/domain/memos/memo-policy.test.js`에서 다음 경계를 검증합니다.
+`tests/memo-model.test.js`에서 다음 경계를 검증합니다.
 
 - LF, CRLF, 빈 줄 정규화
 - 1줄과 2줄의 인라인 표시
