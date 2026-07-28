@@ -31,15 +31,28 @@ export function isCommentOnlyMemo(item) {
     return Boolean(item?.comment?.trim()) && !item?.url && !hasLinkImages(item);
 }
 
-export const LONG_COMMENT_BREAK_THRESHOLD = 10;
-export const countLineBreaks = value => (String(value ?? "").match(/\n/g) || []).length;
-export const hasLongComment = (value, threshold = LONG_COMMENT_BREAK_THRESHOLD) => countLineBreaks(value) >= threshold;
+export const COLLAPSED_COMMENT_LINE_THRESHOLD = 3;
+
+export function countCommentLines(value) {
+    const normalized = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+    return normalized ? normalized.split("\n").length : 0;
+}
+
+export const LONG_COMMENT_BREAK_THRESHOLD = COLLAPSED_COMMENT_LINE_THRESHOLD - 1;
+export const countLineBreaks = value => Math.max(0, countCommentLines(value) - 1);
+export const hasLongComment = value => countCommentLines(value) >= COLLAPSED_COMMENT_LINE_THRESHOLD;
+
+export function getCommentDisplayMode(item) {
+    if (!item?.comment?.trim()) return "none";
+    if (!hasLongComment(item.comment)) return "inline";
+    return hasLinkImages(item) ? "modal-only" : "accordion";
+}
 
 export function getMemoPreviewKind(item) {
     const hasImage = hasLinkImages(item);
-    const hasText = hasLongComment(item?.comment);
-    if (hasImage && hasText) return "combined";
-    if (hasText) return "text";
+    const hasComment = Boolean(item?.comment?.trim());
+    if (hasImage && hasComment) return "combined";
+    if (hasLongComment(item?.comment)) return "text";
     if (hasImage) return "image";
     return "none";
 }
