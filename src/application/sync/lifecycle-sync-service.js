@@ -58,9 +58,11 @@ export function createLifecycleSyncService({
     async function flushGuestLocal(session) {
         await runStage("image-uploads", () => waitForUploads());
         await runStage("local-persist", () => persistLatest());
-        const local = await runStage("local-verify", () => loadDurable(session.user.uid));
-        if (!local?.payload) throw new Error("MEMO_LOCAL_PERSIST_INCOMPLETE");
-        return local;
+        return runStage("local-verify", async () => {
+            const local = await loadDurable(session.user.uid);
+            if (!local?.payload) throw new Error("MEMO_LOCAL_PERSIST_INCOMPLETE");
+            return local;
+        });
     }
 
     async function flushRegisteredDurable(session) {
