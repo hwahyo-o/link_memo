@@ -1866,7 +1866,7 @@ function createLinkCard(item, subIndex, linkIndex) {
     const accordionComment = commentDisplayMode === 'accordion';
     const previewKind = getMemoPreviewKind(item);
     box.className = `relative bg-white border border-gray-200 group-hover:border-blue-300 rounded-lg shadow-sm group-hover:shadow-md overflow-hidden flex items-stretch min-h-[3.5rem] w-full ${hasLinkImages(item) ? 'link-has-image' : ''} ${accordionComment ? 'comment-accordion-shell' : ''}`;
-    const primary = document.createElement(item.url ? 'a' : 'button');
+    const primary = document.createElement(accordionComment || !item.url ? 'button' : 'a');
     primary.className = 'link-primary flex-1 flex items-center justify-center p-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors w-full overflow-hidden cursor-pointer';
     primary.draggable = false;
 
