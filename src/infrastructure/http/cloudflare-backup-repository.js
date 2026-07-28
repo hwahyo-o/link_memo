@@ -28,6 +28,7 @@ export function createCloudflareBackupRepository({ tokenProvider = null } = {}) 
     upload(user, envelope) { return request("/v1/backups", { method:"POST", user, tokenProvider, body:envelope }); },
     download(user, backupId) { return request(`/v1/backups/${encodeURIComponent(backupId)}`, { user, tokenProvider }); },
     remove(user, backupId) { return request(`/v1/backups/${encodeURIComponent(backupId)}`, { method:"DELETE", user, tokenProvider }); },
+    removeAll(user) { return request("/v1/account", { method: "DELETE", user, tokenProvider }); },
     list(user) { return request("/v1/backups", { user, tokenProvider }); },
     loadCheckpoint(user) { return request(checkpointPath, { user, tokenProvider }); },
     saveCheckpoint(user, envelope) { return request(checkpointPath, { method: "POST", user, tokenProvider, body: envelope }); },
