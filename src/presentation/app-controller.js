@@ -136,6 +136,7 @@ const imagePreviewName = document.getElementById('imagePreviewName');
 const imagePreviewModal = document.getElementById('imagePreviewModal');
 const imagePreviewModalImg = document.getElementById('imagePreviewModalImg');
 const imagePreviewModalTitle = document.getElementById('imagePreviewModalTitle');
+const previewContent = document.getElementById('previewContent');
 const previewTextStage = document.getElementById('previewTextStage');
 const previewImageStage = document.getElementById('previewImageStage');
 const previewTextContent = document.getElementById('previewTextContent');
@@ -1978,6 +1979,7 @@ async function showContentPreview(item) {
     if (!hasText && !hasImage) return;
 
     imagePreviewModalTitle.textContent = item.text || '미리보기';
+    previewContent.scrollTop = 0;
     previewTextContent.textContent = hasText ? item.comment : '';
     previewImageStage.classList.toggle('hidden', !hasImage);
     previewTextStage.classList.toggle('hidden', !hasText);
