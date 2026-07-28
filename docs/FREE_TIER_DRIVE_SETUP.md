@@ -37,6 +37,8 @@
    | Secret | `GOOGLE_CLIENT_SECRET` | 1단계에서 만든 Client secret |
    | Secret | `TOKEN_ENCRYPTION_KEY` | base64 형식의 정확히 32바이트 난수 |
 
+   `workers/drive-api/wrangler.jsonc`의 `keep_vars: true`는 Wrangler 자동 배포 시 대시보드에서 관리하는 일반 변수가 삭제되지 않도록 유지합니다. Secret은 계속 Cloudflare 대시보드에서만 관리하며 저장소나 배포 로그에 실제 값을 기록하지 않습니다.
+
    난수는 로컬에서 아래 명령으로 생성할 수 있습니다. 출력값은 복사 후 안전하게 보관하고 소스 코드에는 넣지 않습니다.
 
    ```bash
@@ -102,7 +104,6 @@ match /driveCredentials/{uid} {
 - Worker는 Firebase ID Token과 Google OAuth ID Token의 이메일 일치를 확인합니다.
 - Worker는 Cloudflare 환경변수 `ALLOWED_ORIGIN`에 등록한 운영 Origin만 허용합니다.
 - D1 데이터베이스와 Worker Secret에는 브라우저·GitHub Actions·Firestore에서 직접 접근할 수 없습니다.
-
 
 ## 운영 배포 사전 검증과 장애 대응
 
