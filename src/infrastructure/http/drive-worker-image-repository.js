@@ -122,6 +122,31 @@ export function createDriveWorkerImageRepository({ auth, baseUrl = import.meta.e
             if (!fileId) return;
             await authorizedFetch(`/image/${encodeURIComponent(fileId)}`, { method: "DELETE" });
         },
+        async getReconciliationStatus() {
+            const response = await authorizedFetch("/images/reconcile");
+            return response.json();
+        },
+        async reconcileImages(payload) {
+            const response = await authorizedFetch("/images/reconcile", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            return response.json();
+        },
+        async deferReconciliationAfterReset() {
+            const response = await authorizedFetch("/images/reconcile/defer", { method: "POST" });
+            return response.json();
+        },
+        async clearReconciliationResetHold() {
+            const response = await authorizedFetch("/images/reconcile/restore", { method: "POST" });
+            return response.json();
+        },
+        async deleteAccountData() {
+            const response = await authorizedFetch("/account", { method: "DELETE" });
+            cache.clear();
+            return response.json();
+        },
         async disconnect() {
             await authorizedFetch("/disconnect", { method: "POST" });
             cache.clear();
