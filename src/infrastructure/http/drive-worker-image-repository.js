@@ -45,15 +45,24 @@ function createLruBlobCache({ maxEntries = 24, maxBytes = 30 * 1024 * 1024 } = {
 export function createDriveWorkerImageRepository({ auth, baseUrl = import.meta.env.VITE_DRIVE_WORKER_URL } = {}) {
     const cache = createLruBlobCache();
 
-    async function authorizedFetch(path, options = {}) {
-        if (!baseUrl) throw new Error("DRIVE_WORKER_URL_MISSING");
+    async function request(path, options, forceRefresh = false) {
         const user = auth?.currentUser;
         if (!user) throw new Error("DRIVE_WORKER_AUTH_REQUIRED");
-        const idToken = await user.getIdToken();
-        const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
-            ...options,
-            headers: { Authorization: `Bearer ${idToken}`, ...(options.headers || {}) }
-        });
+        const idToken = await user.getIdToken(forceRefresh);
+        try {
+            return await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
+                ...options,
+                headers: { Authorization: `Bearer ${idToken}`, ...(options.headers || {}) }
+            });
+        } catch (cause) {
+            throw Object.assign(new Error("DRIVE_WORKER_UNREACHABLE"), { cause });
+        }
+    }
+
+    async function authorizedFetch(path, options = {}) {
+        if (!baseUrl) throw new Error("DRIVE_WORKER_URL_MISSING");
+        let response = await request(path, options);
+        if (response.status === 401) response = await request(path, options, true);
         if (!response.ok) {
             let body = null;
             try { body = await response.json(); } catch { /* response body may be empty */ }

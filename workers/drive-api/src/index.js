@@ -24,6 +24,25 @@ function corsHeaders(origin, env) {
   };
 }
 
+async function health(env) {
+  const required = [
+    "FIREBASE_PROJECT_ID",
+    "ALLOWED_ORIGIN",
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "TOKEN_ENCRYPTION_KEY"
+  ];
+  const configured = required.every(key => typeof env[key] === "string" && env[key].trim()) && env.DRIVE_CREDENTIALS;
+  if (!configured) return json({ service: "link-memo-drive", apiVersion: 1, ready: false }, 503);
+  try {
+    await env.DRIVE_CREDENTIALS.prepare("SELECT 1 AS ready").first();
+    return json({ service: "link-memo-drive", apiVersion: 1, ready: true });
+  } catch {
+    return json({ service: "link-memo-drive", apiVersion: 1, ready: false }, 503);
+  }
+}
+
 function base64(bytes) {
   let text = "";
   for (const byte of bytes) text += String.fromCharCode(byte);
@@ -291,13 +310,14 @@ async function disconnect(user, env) {
 
 export default {
   async fetch(request, env) {
+    const path = new URL(request.url).pathname.replace(/^\/+/, "");
+    if (request.method === "GET" && path === "v1/health") return health(env);
     const origin = request.headers.get("Origin") || "";
     if (origin !== env.ALLOWED_ORIGIN) return json({ error: "ORIGIN_NOT_ALLOWED" }, 403);
     const headers = corsHeaders(origin, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     try {
       const user = await requireFirebaseUser(request, env);
-      const path = new URL(request.url).pathname.replace(/^\/+/, "");
       let response;
       if (request.method === "POST" && path === "connect") response = await connect(request, user, env);
       else if (request.method === "GET" && path === "session") {
