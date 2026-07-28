@@ -18,7 +18,9 @@ describe("Drive deployment contract", () => {
 
     it("exposes only a non-sensitive readiness response", () => {
         expect(worker).toContain('path === "v1/health"');
-        expect(worker).toContain('{ service: "link-memo-drive", apiVersion: 1, ready: true }');
+        expect(worker).toContain('{ service: "link-memo-drive", apiVersion: 1, ready: true, status: "ready" }');
+        expect(worker).toContain('ready: false, status: "configuration"');
+        expect(worker).toContain('ready: false, status: "storage"');
         expect(worker).not.toMatch(/v1\/health[\s\S]{0,500}(GOOGLE_CLIENT_SECRET|TOKEN_ENCRYPTION_KEY).*json\(/);
     });
 });
