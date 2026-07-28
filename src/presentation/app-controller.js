@@ -136,9 +136,7 @@ const imagePreviewName = document.getElementById('imagePreviewName');
 const imagePreviewModal = document.getElementById('imagePreviewModal');
 const imagePreviewModalImg = document.getElementById('imagePreviewModalImg');
 const imagePreviewModalTitle = document.getElementById('imagePreviewModalTitle');
-const previewTabs = document.getElementById('previewTabs');
-const previewTextTab = document.getElementById('previewTextTab');
-const previewImageTab = document.getElementById('previewImageTab');
+const previewContent = document.getElementById('previewContent');
 const previewTextStage = document.getElementById('previewTextStage');
 const previewImageStage = document.getElementById('previewImageStage');
 const previewTextContent = document.getElementById('previewTextContent');
@@ -1897,14 +1895,6 @@ function createRoundActionButton(icon, title, onClick, baseClass = 'bg-gray-100 
     return button;
 }
 
-function setPreviewMode(mode) {
-    const showText = mode === 'text';
-    previewTextTab.setAttribute('aria-selected', String(showText));
-    previewImageTab.setAttribute('aria-selected', String(!showText));
-    previewTextStage.classList.toggle('hidden', !showText);
-    previewImageStage.classList.toggle('hidden', showText);
-}
-
 function attachPreviewHandlers(target, item) {
     let suppressNextClick = false;
     target.addEventListener('mouseenter', () => {
@@ -1989,10 +1979,10 @@ async function showContentPreview(item) {
     if (!hasText && !hasImage) return;
 
     imagePreviewModalTitle.textContent = item.text || '미리보기';
+    previewContent.scrollTop = 0;
     previewTextContent.textContent = hasText ? item.comment : '';
-    previewTextTab.classList.toggle('hidden', !hasText);
-    previewImageTab.classList.toggle('hidden', !hasImage);
-    previewTabs.classList.toggle('hidden', !(hasText && hasImage));
+    previewImageStage.classList.toggle('hidden', !hasImage);
+    previewTextStage.classList.toggle('hidden', !hasText);
     updateCarouselControls();
     if (hasImage) {
         imagePreviewModalImg.removeAttribute('src');
@@ -2000,7 +1990,6 @@ async function showContentPreview(item) {
     } else {
         imagePreviewModalImg.removeAttribute('src');
     }
-    setPreviewMode(hasText ? 'text' : 'image');
     imagePreviewModal.classList.remove('hidden');
 }
 
@@ -2042,8 +2031,6 @@ function hideImagePreview() {
     modalObjectUrl = null;
 }
 window.hideImagePreview = hideImagePreview;
-previewTextTab.onclick = () => setPreviewMode('text');
-previewImageTab.onclick = () => setPreviewMode('image');
 carouselPreviousButton.onclick = () => moveCarousel(-1);
 carouselNextButton.onclick = () => moveCarousel(1);
 previewImageStage.addEventListener('pointerdown', event => { carouselPointerStartX = event.clientX; });

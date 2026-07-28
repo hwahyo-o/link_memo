@@ -167,23 +167,22 @@
                 <h3 id="imagePreviewModalTitle" class="app-heading font-bold text-gray-800 truncate">미리보기</h3>
                 <button onclick="window.hideImagePreview()" class="icon-command w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center" title="닫기" aria-label="미리보기 닫기"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
             </div>
-            <div id="previewTabs" class="preview-tabs hidden px-4 pt-3 gap-2" role="tablist" aria-label="미리보기 유형">
-                <button id="previewTextTab" type="button" class="preview-tab" role="tab">텍스트</button>
-                <button id="previewImageTab" type="button" class="preview-tab" role="tab">이미지</button>
-            </div>
-            <div id="previewTextStage" class="preview-text-stage hidden bg-gray-50 p-4 overflow-auto" role="tabpanel">
-                <pre id="previewTextContent" class="preview-text-content"></pre>
-            </div>
-            <div id="previewImageStage" class="image-preview-stage image-carousel hidden bg-gray-50" role="tabpanel" aria-label="첨부 이미지 캐러셀">
-                <div class="image-carousel-viewport">
-                    <img id="imagePreviewModalImg" alt="첨부 이미지 미리보기">
-                    <span id="carouselLoading" class="hidden image-carousel-loading" role="status">이미지를 불러오는 중입니다.</span>
+            <div id="previewContent" class="image-preview-content">
+                <div id="previewImageStage" class="image-preview-stage image-carousel hidden bg-gray-50" aria-label="첨부 이미지 캐러셀">
+                    <div class="image-carousel-viewport">
+                        <img id="imagePreviewModalImg" alt="첨부 이미지 미리보기">
+                        <span id="carouselLoading" class="hidden image-carousel-loading" role="status">이미지를 불러오는 중입니다.</span>
+                    </div>
+                    <div id="carouselControls" class="hidden image-carousel-controls">
+                        <button id="carouselPreviousButton" type="button" class="image-carousel-button" aria-label="이전 이미지"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                        <span id="carouselCounter" class="image-carousel-counter" aria-live="polite"></span>
+                        <button id="carouselNextButton" type="button" class="image-carousel-button" aria-label="다음 이미지"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                    </div>
                 </div>
-                <div id="carouselControls" class="hidden image-carousel-controls">
-                    <button id="carouselPreviousButton" type="button" class="image-carousel-button" aria-label="이전 이미지"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
-                    <span id="carouselCounter" class="image-carousel-counter" aria-live="polite"></span>
-                    <button id="carouselNextButton" type="button" class="image-carousel-button" aria-label="다음 이미지"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
-                </div>
+                <section id="previewTextStage" class="preview-text-stage hidden bg-gray-50 p-4" aria-labelledby="previewTextHeading">
+                    <h4 id="previewTextHeading" class="preview-text-heading">코멘트</h4>
+                    <pre id="previewTextContent" class="preview-text-content"></pre>
+                </section>
             </div>
         </div>
     </div>
