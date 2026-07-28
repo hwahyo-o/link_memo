@@ -105,15 +105,17 @@ jobs:
         shell: bash
         run: |
           health_url="${VITE_DRIVE_WORKER_URL%/}/v1/health"
+          response=""
           for attempt in {1..12}; do
-            response="$(curl --silent --show-error --fail "$health_url" || true)"
+            response="$(curl --silent --show-error "$health_url" || true)"
             if node -e 'try { const value=JSON.parse(process.argv[1]); process.exit(value.service === "link-memo-drive" && value.apiVersion === 1 && value.ready === true ? 0 : 1); } catch { process.exit(1); }' "$response"; then
               exit 0
             fi
             echo "Drive Worker compatibility check $attempt/12 failed; retrying..."
             sleep 5
           done
-          echo "Drive Worker is unavailable or incompatible."
+          status="$(node -e 'try { const value=JSON.parse(process.argv[1]); const allowed=new Set(["configuration","storage"]); process.stdout.write(allowed.has(value.status) ? value.status : "unreachable"); } catch { process.stdout.write("unreachable"); }' "$response")"
+          echo "Drive Worker health status: $status"
           exit 1
 
       - name: Build
