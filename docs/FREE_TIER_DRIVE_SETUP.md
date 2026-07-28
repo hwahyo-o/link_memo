@@ -102,3 +102,23 @@ match /driveCredentials/{uid} {
 - Worker는 Firebase ID Token과 Google OAuth ID Token의 이메일 일치를 확인합니다.
 - Worker는 Cloudflare 환경변수 `ALLOWED_ORIGIN`에 등록한 운영 Origin만 허용합니다.
 - D1 데이터베이스와 Worker Secret에는 브라우저·GitHub Actions·Firestore에서 직접 접근할 수 없습니다.
+
+
+## 운영 배포 사전 검증과 장애 대응
+
+GitHub Pages 빌드는 Drive 기능이 빠진 번들을 성공으로 배포하지 않도록 다음 두 프런트엔드 설정의 존재 여부를 먼저 검사합니다. 실제 값은 출력하지 않습니다.
+
+- `VITE_GOOGLE_OAUTH_CLIENT_ID`
+- `VITE_DRIVE_WORKER_URL`
+
+그 다음 Drive Worker의 `/v1/health`를 호출해 API 버전, 필수 Worker 설정, D1 접근 가능 여부가 준비됐는지 확인합니다. 응답은 서비스 이름, API 버전, 준비 상태만 포함하며 Secret, URL, 계정 또는 데이터베이스 식별자를 반환하지 않습니다.
+
+이미지는 IndexedDB에 저장되지만 Drive 업로드와 연결 해제가 함께 실패하는 경우 다음 순서로 확인합니다.
+
+1. 운영 번들이 위 두 프런트엔드 설정을 포함한 이후 다시 배포됐는지 확인합니다.
+2. Drive Worker 배포가 D1 스키마 적용과 Worker 배포 단계까지 실제 실행됐는지 확인합니다.
+3. Worker 환경의 허용 Origin과 OAuth redirect URI가 운영 사이트 Origin과 일치하는지 확인합니다.
+4. Worker health가 준비 상태를 반환하는지 확인합니다.
+5. 설정 복구 후 연결 해제와 재연결을 수행하고 새 이미지 업로드를 확인합니다.
+
+연결 해제는 원격 권한과 D1 행 정리가 성공한 뒤에만 화면의 연결 상태를 초기화합니다. 실패를 로컬 성공으로 처리하지 않습니다.
