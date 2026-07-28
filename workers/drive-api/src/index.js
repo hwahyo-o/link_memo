@@ -34,12 +34,12 @@ async function health(env) {
     "TOKEN_ENCRYPTION_KEY"
   ];
   const configured = required.every(key => typeof env[key] === "string" && env[key].trim()) && env.DRIVE_CREDENTIALS;
-  if (!configured) return json({ service: "link-memo-drive", apiVersion: 1, ready: false }, 503);
+  if (!configured) return json({ service: "link-memo-drive", apiVersion: 1, ready: false, status: "configuration" }, 503);
   try {
     await env.DRIVE_CREDENTIALS.prepare("SELECT 1 AS ready").first();
-    return json({ service: "link-memo-drive", apiVersion: 1, ready: true });
+    return json({ service: "link-memo-drive", apiVersion: 1, ready: true, status: "ready" });
   } catch {
-    return json({ service: "link-memo-drive", apiVersion: 1, ready: false }, 503);
+    return json({ service: "link-memo-drive", apiVersion: 1, ready: false, status: "storage" }, 503);
   }
 }
 
