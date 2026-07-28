@@ -2426,6 +2426,7 @@ async function applyBackupPayload(payload) {
     if (canUseDrive(driveConnection)) await driveReconciliationService.clearResetHold();
     driveReconciliationAttemptedUser = null;
     applyPreferences(); showHome(); renderBackupSettings();
+    if (canUseDrive(driveConnection)) await maybeReconcileDriveImages();
 }
 window.requestCloudBackup=async()=>{
     if(currentUser?.isAnonymous) return customAlert('게스트 계정은 백업 및 복원을 이용할 수 없습니다. Google 계정을 연동해주세요.');
