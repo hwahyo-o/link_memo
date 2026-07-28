@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countLineBreaks, getMemoPreviewKind, hasLongComment, isCommentOnlyMemo, normalizeMemoInput } from '../src/domain/memos/memo-policy.js';
+import { countCommentLines, countLineBreaks, getCommentDisplayMode, getMemoPreviewKind, hasLongComment, isCommentOnlyMemo, normalizeMemoInput } from '../src/domain/memos/memo-policy.js';
 
 describe('normalizeMemoInput', () => {
     it('requires a title', () => {
@@ -41,21 +41,34 @@ describe('isCommentOnlyMemo', () => {
     });
 });
 
-describe('long comment previews', () => {
-    it('requires at least ten line breaks', () => {
-        expect(hasLongComment(Array(10).fill('line').join('\n'))).toBe(false);
-        expect(hasLongComment(Array(11).fill('line').join('\n'))).toBe(true);
+describe('comment display and preview policy', () => {
+    it('uses three logical lines as the collapsed threshold', () => {
+        expect(hasLongComment('first\nsecond')).toBe(false);
+        expect(hasLongComment('first\nsecond\nthird')).toBe(true);
     });
 
-    it('counts LF and CRLF as one break each', () => {
+    it('normalizes LF, CRLF and explicit blank lines', () => {
         expect(countLineBreaks('a\nb\r\nc')).toBe(2);
-        expect(hasLongComment(Array(11).fill('line').join('\r\n'))).toBe(true);
+        expect(countCommentLines('a\r\n\r\nc')).toBe(3);
+        expect(hasLongComment('a\r\nb\r\nc')).toBe(true);
     });
 
     it.each([
-        [{ comment: Array(11).fill('line').join('\n') }, 'text'],
+        [{ comment: 'one line' }, 'inline'],
+        [{ comment: 'first\nsecond', url: 'https://example.com' }, 'inline'],
+        [{ comment: 'first\nsecond\nthird', url: 'https://example.com' }, 'accordion'],
+        [{ imageId: 'image_1', comment: 'first\nsecond\nthird' }, 'modal-only'],
+        [{ imageId: 'image_1', comment: 'one line' }, 'inline'],
+        [{ comment: '' }, 'none']
+    ])('classifies card comment display', (item, expected) => {
+        expect(getCommentDisplayMode(item)).toBe(expected);
+    });
+
+    it.each([
+        [{ comment: 'first\nsecond\nthird' }, 'text'],
         [{ imageId: 'image_1' }, 'image'],
-        [{ imageId: 'image_1', comment: Array(11).fill('line').join('\n') }, 'combined'],
+        [{ imageId: 'image_1', comment: 'one line' }, 'combined'],
+        [{ imageId: 'image_1', comment: 'first\nsecond\nthird' }, 'combined'],
         [{ comment: 'short' }, 'none']
     ])('classifies preview content', (item, expected) => {
         expect(getMemoPreviewKind(item)).toBe(expected);

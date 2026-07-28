@@ -12,7 +12,7 @@ import { createMemoSyncService } from "../application/memos/memo-sync-service.js
 import { createIdleSyncScheduler } from "../application/memos/idle-sync-scheduler.js";
 import { createImageAttachmentQueue } from "../application/memos/image-attachment-queue.js";
 import { createFirestoreMemoRepository } from "../infrastructure/firestore/memo-repository.js";
-import { getMemoPreviewKind, isCommentOnlyMemo, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
+import { getCommentDisplayMode, getMemoPreviewKind, normalizeHttpUrl, normalizeMemoInput } from "../domain/memos/memo-policy.js";
 import { getLinkImages, hasLinkImages, normalizeLinkImages, validateImageSelection } from "../domain/memos/image-attachment-policy.js";
 import { removeImageAttachment } from "../domain/drive/image-reconciliation-policy.js";
 import { relocateLink } from "../application/memos/link-relocation-service.js";
@@ -1862,15 +1862,16 @@ function createLinkCard(item, subIndex, linkIndex) {
     });
 
     const box = document.createElement('div');
-    const commentOnly = isCommentOnlyMemo(item);
+    const commentDisplayMode = getCommentDisplayMode(item);
+    const accordionComment = commentDisplayMode === 'accordion';
     const previewKind = getMemoPreviewKind(item);
-    box.className = `relative bg-white border border-gray-200 group-hover:border-blue-300 rounded-lg shadow-sm group-hover:shadow-md overflow-hidden flex items-stretch min-h-[3.5rem] w-full ${item.imageId ? 'link-has-image' : ''} ${commentOnly ? 'comment-accordion-shell' : ''}`;
+    box.className = `relative bg-white border border-gray-200 group-hover:border-blue-300 rounded-lg shadow-sm group-hover:shadow-md overflow-hidden flex items-stretch min-h-[3.5rem] w-full ${hasLinkImages(item) ? 'link-has-image' : ''} ${accordionComment ? 'comment-accordion-shell' : ''}`;
     const primary = document.createElement(item.url ? 'a' : 'button');
     primary.className = 'link-primary flex-1 flex items-center justify-center p-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors w-full overflow-hidden cursor-pointer';
     primary.draggable = false;
 
     let commentPanel = null;
-    if (commentOnly) {
+    if (accordionComment) {
         primary.type = 'button';
         primary.classList.add('comment-accordion-trigger');
         primary.setAttribute('aria-expanded', 'false');
@@ -1883,7 +1884,18 @@ function createLinkCard(item, subIndex, linkIndex) {
         primary.append(chevron, title);
         commentPanel = document.createElement('div');
         commentPanel.className = 'comment-accordion-content hidden';
-        commentPanel.textContent = item.comment;
+        const commentText = document.createElement('div');
+        commentText.textContent = item.comment;
+        commentPanel.appendChild(commentText);
+        if (item.url) {
+            const openLink = document.createElement('a');
+            openLink.className = 'comment-accordion-link';
+            openLink.href = item.url;
+            openLink.target = '_blank';
+            openLink.rel = 'noopener noreferrer';
+            openLink.textContent = '링크 열기';
+            commentPanel.appendChild(openLink);
+        }
         primary.onclick = () => {
             const opening = primary.getAttribute('aria-expanded') !== 'true';
             primary.setAttribute('aria-expanded', String(opening));
@@ -1904,7 +1916,7 @@ function createLinkCard(item, subIndex, linkIndex) {
             primary.onclick = () => showContentPreview(item);
         }
     }
-    if (previewKind !== 'none') attachPreviewHandlers(primary, item);
+    if (previewKind !== 'none' && !accordionComment) attachPreviewHandlers(primary, item);
 
     const actions = document.createElement('div');
     actions.className = 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 transition-opacity';
@@ -1925,9 +1937,9 @@ function createLinkCard(item, subIndex, linkIndex) {
     box.append(primary, actions);
     card.appendChild(box);
     if (commentPanel) card.appendChild(commentPanel);
-    if (!commentOnly && item.comment) {
+    if (commentDisplayMode === 'inline') {
         const comment = document.createElement('div');
-        comment.className = 'memo-comment text-xs text-gray-500 px-1.5 pb-1 break-words text-center leading-snug w-full';
+        comment.className = 'memo-comment memo-comment-inline text-xs text-gray-500 px-1.5 pb-1 break-words text-center leading-snug w-full';
         comment.textContent = item.comment;
         card.appendChild(comment);
     }
