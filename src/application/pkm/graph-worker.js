@@ -1,3 +1,5 @@
+import { layoutIterationsFor, MAX_GRAPH_EDGES, MAX_GRAPH_NODES } from "../../domain/pkm/graph-limits.js";
+
 function normalizePath(path) {
     return String(path || "").replaceAll("\\", "/").replace(/^\/+/, "");
 }
@@ -29,10 +31,10 @@ export function parseMetadata(file) {
     };
 }
 
-export function layoutGraph(nodes, edges, iterations = 36) {
-    nodes = nodes.slice(0, 10_000);
+export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
+    nodes = nodes.slice(0, MAX_GRAPH_NODES);
     const nodeIds = new Set(nodes.map(node => node.id));
-    edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, 50_000);
+    edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, MAX_GRAPH_EDGES);
     const count = nodes.length;
     const side = Math.max(1, Math.ceil(Math.sqrt(count)));
     const positions = new Map(nodes.map((node, index) => [node.id, {
@@ -41,7 +43,20 @@ export function layoutGraph(nodes, edges, iterations = 36) {
         vx: 0,
         vy: 0
     }]));
-    const edgePairs = edges.map(edge => [positions.get(edge.source), positions.get(edge.target)]).filter(pair => pair[0] && pair[1]);
+    const edgePairs = edges.map(edge => {
+        const profiles = {
+            "category-membership": { distance: 170, strength: 0.0045 },
+            "subcategory-membership": { distance: 105, strength: 0.0052 },
+            "same-link-type": { distance: 145, strength: 0.0025 },
+            "same-image-type": { distance: 145, strength: 0.0025 },
+            "keyword-related": { distance: 210, strength: 0.0016 }
+        };
+        return {
+            source: positions.get(edge.source),
+            target: positions.get(edge.target),
+            ...(profiles[edge.kind] || { distance: 130, strength: 0.0028 })
+        };
+    }).filter(pair => pair.source && pair.target);
     const cellSize = 160;
 
     for (let iteration = 0; iteration < iterations; iteration += 1) {
@@ -68,11 +83,11 @@ export function layoutGraph(nodes, edges, iterations = 36) {
                 }
             }
         }
-        for (const [source, target] of edgePairs) {
+        for (const { source, target, distance: desiredDistance, strength } of edgePairs) {
             const dx = target.x - source.x;
             const dy = target.y - source.y;
             const distance = Math.max(1, Math.hypot(dx, dy));
-            const force = (distance - 130) * 0.0028;
+            const force = (distance - desiredDistance) * strength;
             source.vx += dx * force;
             source.vy += dy * force;
             target.vx -= dx * force;
