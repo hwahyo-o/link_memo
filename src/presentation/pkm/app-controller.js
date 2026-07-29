@@ -5,6 +5,7 @@ import { isNonPcDevice } from "../../domain/sync/device-policy.js";
 import { readViewportProfile, subscribeNonPcViewport } from "../../infrastructure/browser/viewport-profile.js";
 import { mainMemoToVaultFiles } from "../../infrastructure/pkm/schema-discovery.js";
 import { projectVaultGraph } from "../../application/pkm/graph-projector.js";
+import { isLinkMemoGraphIndexPath, reconcileLinkMemoProjection } from "../../application/pkm/link-memo-vault-projector.js";
 import { createGraphView } from "./graph-view.js";
 import { createMarkdownEditor } from "./markdown-editor.js";
 import { createWorkspace } from "./workspace.js";
@@ -67,7 +68,8 @@ export function createPkmApp({
     const graphView = createGraphView({
         container: byId("graphCanvas"),
         worker: graphWorker,
-        onOpen: path => workspace?.open(path)
+        onOpen: path => workspace?.open(path),
+        tooltip: byId("graphTooltip")
     });
     graphView.setNonPcTypography(deviceIsNonPc());
     const saveController = createMobileSaveController({
@@ -133,7 +135,7 @@ export function createPkmApp({
     async function renderGraph() {
         const sequence = ++renderSequence;
         const files = vault.list();
-        const metadata = await metadataCache.index(files);
+        const metadata = await metadataCache.index(files.filter(file => !isLinkMemoGraphIndexPath(file.path)));
         if (sequence !== renderSequence) return;
         currentMetadata = metadata;
         currentGraph = projectVaultGraph(files, metadata);
@@ -196,7 +198,8 @@ export function createPkmApp({
         if (!sessionIsCurrent(session, user.uid)) return false;
         let snapshot = hydrated.snapshot;
         const imported = mainMemoToVaultFiles(mainMemo?.payload);
-        if (imported.length) snapshot = mergeVaultSnapshots(snapshot, { files: imported, updatedAt: mainMemo.payload.updatedAt });
+        const projection = reconcileLinkMemoProjection(snapshot, imported);
+        if (projection.files.length) snapshot = mergeVaultSnapshots(snapshot, { files: projection.files, updatedAt: mainMemo.payload.updatedAt });
         if (!snapshot.files.length) {
             snapshot = mergeVaultSnapshots(snapshot, {
                 files: [{
@@ -211,7 +214,7 @@ export function createPkmApp({
         if (!sessionIsCurrent(session, user.uid)) return false;
         vault.replace(snapshot);
         createWorkspaceOnce().render();
-        byId("schemaSummary").textContent = `자동 탐색: IndexedDB ${localSchemas.length}개 · Firestore 키 ${mainMemo?.keys?.length || 0}개`;
+        byId("schemaSummary").textContent = `자동 탐색: IndexedDB ${localSchemas.length}개 · Firestore 키 ${mainMemo?.keys?.length || 0}개 · 보호된 편집 ${projection.conflicts.length}개`;
         if (imported.length && JSON.stringify(snapshot) !== JSON.stringify(hydrated.snapshot)) {
             await pkmSync.persist(user.uid, snapshot);
             if (!sessionIsCurrent(session, user.uid)) return false;

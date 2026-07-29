@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseJsonCanvas } from "./json-canvas-parser.js";
+import { MAX_CANVAS_NODES, parseJsonCanvas } from "./json-canvas-parser.js";
 
 describe("JSON Canvas parser", () => {
     it("parses all node types and edge arrow defaults", () => {
@@ -23,17 +23,9 @@ describe("JSON Canvas parser", () => {
         })).toThrow("CANVAS_EDGE_NODE_MISSING");
     });
 
-    it("rejects canvases beyond the supported 10,000-node graph budget", () => {
+    it("rejects canvases beyond the shared graph node budget", () => {
         expect(() => parseJsonCanvas({
-            nodes: Array.from({ length: 10_001 }, (_, index) => ({
-                id: `n${index}`,
-                type: "text",
-                x: 0,
-                y: 0,
-                width: 10,
-                height: 10,
-                text: "n"
-            })),
+            nodes: Array.from({ length: MAX_CANVAS_NODES + 1 }),
             edges: []
         })).toThrow("CANVAS_NODE_LIMIT_EXCEEDED");
     });
