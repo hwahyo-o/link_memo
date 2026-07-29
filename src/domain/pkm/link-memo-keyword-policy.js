@@ -8,7 +8,7 @@ const KIND_COLORS = Object.freeze({
     text: "#CBEFFF",
     link: "#F8D374",
     image: "#FF9797",
-    "link-image": "#FFA374",
+    "link-image": "#DE6863",
     "link-text": "#82CFFD",
     "image-text": "#8ED2CD",
     "link-image-text": "#DE6863"
