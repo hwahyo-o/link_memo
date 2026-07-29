@@ -1,6 +1,6 @@
 import { parseJsonCanvas } from "../../domain/pkm/json-canvas-parser.js";
 import { MAX_GRAPH_EDGES, MAX_GRAPH_NODES } from "../../domain/pkm/graph-limits.js";
-import { readLinkMemoGraphItems, GRAPH_INDEX_MANIFEST_PATH, GRAPH_INDEX_SHARD_PREFIX } from "./link-memo-vault-projector.js";
+import { readLinkMemoGraphItems, isLinkMemoGraphIndexPath } from "./link-memo-vault-projector.js";
 
 export { MAX_GRAPH_EDGES, MAX_GRAPH_NODES };
 
@@ -8,12 +8,11 @@ function titleFor(path) {
     return path.split("/").pop().replace(/\.(md|json|canvas)$/i, "");
 }
 
-const isGraphIndex = path => path === GRAPH_INDEX_MANIFEST_PATH || path.startsWith(GRAPH_INDEX_SHARD_PREFIX);
 const buttonLabel = item => [item.title, item.keywords.slice(0, 3).map(keyword => `#${keyword}`).join(" ")].filter(Boolean).join("\n");
 
 export function projectVaultGraph(files, metadataEntries) {
     const visibleFiles = files.filter(file => !file.deleted);
-    const graphFiles = visibleFiles.filter(file => !isGraphIndex(file.path));
+    const graphFiles = visibleFiles.filter(file => !isLinkMemoGraphIndexPath(file.path));
     const fileByPath = new Map(graphFiles.map(file => [file.path, file]));
     const indexedItems = readLinkMemoGraphItems(visibleFiles).filter(item => fileByPath.has(item.path));
     const itemByPath = new Map(indexedItems.map(item => [item.path, item]));
