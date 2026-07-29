@@ -66,12 +66,13 @@ function parseIndexFiles(files) {
 }
 
 export function projectMainMemoToVaultFiles(payload) {
+    if (!payload?.linkData || typeof payload.linkData !== "object") return [];
     const files = [];
     const items = [];
     const usedPaths = new Set();
     let newest = Number(payload?.updatedAt || 0);
 
-    for (const [categoryName, subcategories] of Object.entries(payload?.linkData || {})) {
+    for (const [categoryName, subcategories] of Object.entries(payload.linkData)) {
         const category = singleLine(categoryName) || "미분류";
         const categoryId = `category:${stableId(category)}`;
         for (const subcategoryValue of subcategories || []) {
@@ -146,6 +147,7 @@ export function reconcileLinkMemoProjection(snapshot, projectedFiles, now = Date
     const nextItems = parseIndexFiles(projectedFiles);
     const previousByPath = new Map(previousItems.map(item => [item.path, item]));
     const nextPaths = new Set(nextItems.map(item => item.path));
+    const projectedPaths = new Set(projectedFiles.map(file => file.path));
     const conflicts = [];
     const files = [];
 
@@ -171,16 +173,14 @@ export function reconcileLinkMemoProjection(snapshot, projectedFiles, now = Date
         });
     }
     for (const current of currentFiles) {
-        if (!current.path?.startsWith(GRAPH_INDEX_SHARD_PREFIX) || current.deleted) continue;
-        if (!projectedFiles.some(file => file.path === current.path)) {
-            files.push({
-                ...current,
-                content: "",
-                deleted: true,
-                updatedAt: Math.max(now, Number(current.updatedAt || 0) + 1),
-                mutationId: `link-memo-index-delete:${now}:${hashText(current.path)}`
-            });
-        }
+        if (!current.path?.startsWith(GRAPH_INDEX_SHARD_PREFIX) || current.deleted || projectedPaths.has(current.path)) continue;
+        files.push({
+            ...current,
+            content: "",
+            deleted: true,
+            updatedAt: Math.max(now, Number(current.updatedAt || 0) + 1),
+            mutationId: `link-memo-index-delete:${now}:${hashText(current.path)}`
+        });
     }
     return { files, conflicts };
 }
