@@ -82,6 +82,7 @@ describe("Link Memo hierarchical PKM graph", () => {
         const reconciled = reconcileLinkMemoProjection({ files: current }, projectMainMemoToVaultFiles(nextPayload), 200);
         expect(reconciled.files.some(file => file.path === editedPath && file.deleted)).toBe(false);
         expect(reconciled.files.some(file => file.path === stalePath && file.deleted)).toBe(true);
+        expect(reconciled.conflicts).toContain(editedPath);
     });
 
     it("supports desktop hover and one-tap non-PC summary tooltips without Playwright", () => {
