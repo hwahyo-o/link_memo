@@ -67,6 +67,7 @@ export function createPkmApp({
         worker: graphWorker,
         onOpen: path => workspace?.open(path)
     });
+    graphView.setNonPcTypography(deviceIsNonPc());
     const saveController = createMobileSaveController({
         button: byId("pkmSaveButton"),
         icon: byId("pkmSaveIcon"),
@@ -104,6 +105,7 @@ export function createPkmApp({
 
     const unsubscribeViewport = subscribeNonPcViewport(() => {
         saveController.updateVisibility();
+        graphView.setNonPcTypography(deviceIsNonPc());
         setFileDrawerOpen(false);
     });
 

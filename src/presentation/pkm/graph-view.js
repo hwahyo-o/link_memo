@@ -150,6 +150,12 @@ export function createGraphView({ container, worker, onOpen }) {
     }
 
     return {
+        setNonPcTypography(nonPc) {
+            const style = cy.style();
+            style.selector("node").style("font-size", nonPc ? 20 : 9);
+            style.selector("node.is-direct-match").style("font-size", nonPc ? 22 : 10);
+            style.update();
+        },
         render,
         applyHighlights,
         clearHighlights() {
