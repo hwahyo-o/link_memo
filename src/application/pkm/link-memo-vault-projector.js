@@ -7,6 +7,7 @@ import {
     summarizeContent,
     toHashtag
 } from "../../domain/pkm/link-memo-keyword-policy.js";
+import { MAX_GRAPH_NODES } from "../../domain/pkm/graph-limits.js";
 
 export const GRAPH_INDEX_MANIFEST_PATH = "Link Memo/.graph-index.json";
 export const GRAPH_INDEX_SHARD_PREFIX = "Link Memo/.graph-index/";
@@ -19,7 +20,7 @@ const safeSegment = value => String(value || "메모")
     .replace(/^\.+$/, "_")
     .trim()
     .slice(0, 100) || "메모";
-const singleLine = value => String(value || "").replace(/\s+/g, " ").trim();
+const singleLine = (value, maxLength = 200) => String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
 const stableId = (...parts) => hashText(parts.map(part => String(part || "")).join("\u001f"));
 
 function imageLines(item, title) {
@@ -52,13 +53,14 @@ function markdownFor({ item, title, summary, category, subcategory, keywords }) 
     return lines.filter((line, index, values) => line || values[index - 1]).join("\n").trimEnd();
 }
 
-function parseIndexFiles(files) {
+function parseIndexFiles(files, limit = MAX_GRAPH_NODES) {
     const items = [];
     for (const file of files || []) {
+        if (items.length >= limit) break;
         if (!file.path?.startsWith(GRAPH_INDEX_SHARD_PREFIX) || file.deleted) continue;
         try {
             const parsed = JSON.parse(file.content);
-            if (parsed?.schemaVersion === 2 && Array.isArray(parsed.items)) items.push(...parsed.items);
+            if (parsed?.schemaVersion === 2 && Array.isArray(parsed.items)) items.push(...parsed.items.slice(0, limit - items.length));
         } catch {
             // Invalid generated metadata is ignored; source Markdown remains available.
         }
@@ -73,13 +75,14 @@ export function projectMainMemoToVaultFiles(payload) {
     const usedPaths = new Set();
     let newest = Number(payload?.updatedAt || 0);
 
-    for (const [categoryName, subcategories] of Object.entries(payload.linkData)) {
+    categoryLoop: for (const [categoryName, subcategories] of Object.entries(payload.linkData)) {
         const category = singleLine(categoryName) || "미분류";
         const categoryId = `category:${stableId(category)}`;
         for (const subcategoryValue of subcategories || []) {
             const subcategory = singleLine(subcategoryValue?.title || subcategoryValue?.id) || "메모";
             const subcategoryId = `subcategory:${stableId(categoryId, subcategoryValue?.id || subcategory)}`;
             for (const [index, item] of (subcategoryValue?.links || []).entries()) {
+                if (items.length >= MAX_GRAPH_NODES) break categoryLoop;
                 const title = singleLine(item?.text || item?.title) || `메모 ${index + 1}`;
                 const sourceId = String(item?.id || item?.uuid || item?.createdAt || stableId(subcategoryId, title, item?.url, item?.comment));
                 const kind = classifyContentKind(item);
@@ -149,14 +152,21 @@ export function reconcileLinkMemoProjection(snapshot, projectedFiles, now = Date
     const previousByPath = new Map(previousItems.map(item => [item.path, item]));
     const nextPaths = new Set(nextItems.map(item => item.path));
     const projectedPaths = new Set(projectedFiles.map(file => file.path));
-    const conflicts = [];
+    const conflictSet = new Set(nextItems.filter(item => {
+        const current = currentByPath.get(item.path);
+        const previous = previousByPath.get(item.path);
+        return current && !current.deleted && (!previous || hashText(current.content) !== previous.generatedContentHash);
+    }).map(item => item.path));
+    const conflicts = [...conflictSet];
     const files = [];
 
     for (const file of projectedFiles) {
-        const current = currentByPath.get(file.path);
-        const previous = previousByPath.get(file.path);
-        if (file.type === "md" && current && previous && hashText(current.content) !== previous.generatedContentHash) {
-            conflicts.push(file.path);
+        if (file.type === "md" && conflictSet.has(file.path)) continue;
+        if (file.path.startsWith(GRAPH_INDEX_SHARD_PREFIX) && conflictSet.size) {
+            const parsed = JSON.parse(file.content);
+            parsed.items = parsed.items.map(item => conflictSet.has(item.path) && previousByPath.has(item.path) ? previousByPath.get(item.path) : item);
+            const content = JSON.stringify(parsed);
+            files.push({ ...file, content, mutationId: `link-memo-index:${hashText(content)}` });
             continue;
         }
         files.push(file);
@@ -164,7 +174,11 @@ export function reconcileLinkMemoProjection(snapshot, projectedFiles, now = Date
     for (const previous of previousItems) {
         if (nextPaths.has(previous.path)) continue;
         const current = currentByPath.get(previous.path);
-        if (!current || current.deleted || hashText(current.content) !== previous.generatedContentHash) continue;
+        if (!current || current.deleted) continue;
+        if (hashText(current.content) !== previous.generatedContentHash) {
+            conflicts.push(previous.path);
+            continue;
+        }
         files.push({
             ...current,
             content: "",
