@@ -1,8 +1,10 @@
+import { MAX_GRAPH_EDGES, MAX_GRAPH_NODES } from "./graph-limits.js";
+
 const NODE_TYPES = new Set(["text", "file", "link", "group"]);
 const SIDES = new Set(["top", "right", "bottom", "left"]);
 const ENDS = new Set(["none", "arrow"]);
-export const MAX_CANVAS_NODES = 10_000;
-export const MAX_CANVAS_EDGES = 50_000;
+export const MAX_CANVAS_NODES = MAX_GRAPH_NODES;
+export const MAX_CANVAS_EDGES = MAX_GRAPH_EDGES;
 
 function requiredString(value, field) {
     if (typeof value !== "string" || !value) throw new Error(`INVALID_CANVAS_${field.toUpperCase()}`);
