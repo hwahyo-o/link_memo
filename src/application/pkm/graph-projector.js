@@ -8,13 +8,13 @@ function titleFor(path) {
     return path.split("/").pop().replace(/\.(md|json|canvas)$/i, "");
 }
 
-const buttonLabel = item => [item.title, item.keywords.slice(0, 3).map(keyword => `#${keyword}`).join(" ")].filter(Boolean).join("\n");
+const buttonLabel = item => [item.title, (item.keywords || []).slice(0, 3).map(keyword => `#${keyword}`).join(" ")].filter(Boolean).join("\n");
 
 export function projectVaultGraph(files, metadataEntries) {
     const visibleFiles = files.filter(file => !file.deleted);
     const graphFiles = visibleFiles.filter(file => !isLinkMemoGraphIndexPath(file.path));
     const fileByPath = new Map(graphFiles.map(file => [file.path, file]));
-    const indexedItems = readLinkMemoGraphItems(visibleFiles).filter(item => fileByPath.has(item.path));
+    const indexedItems = readLinkMemoGraphItems(visibleFiles).filter(item => item?.path && item?.category?.id && item?.subcategory?.id && fileByPath.has(item.path));
     const itemByPath = new Map(indexedItems.map(item => [item.path, item]));
     const nodes = [];
     const edges = [];
@@ -141,7 +141,7 @@ export function projectVaultGraph(files, metadataEntries) {
             if (!typeGroups.has(key)) typeGroups.set(key, { ids: [], kind: "same-image-type", label: "이미지 유형" });
             typeGroups.get(key).ids.push(item.path);
         }
-        item.keywordKeys.forEach((keyword, index) => {
+        (item.keywordKeys || []).forEach((keyword, index) => {
             if (!keyword) return;
             if (!keywordGroups.has(keyword)) keywordGroups.set(keyword, { ids: [], label: item.keywords[index] || keyword });
             keywordGroups.get(keyword).ids.push(item.path);
