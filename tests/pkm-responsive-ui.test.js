@@ -13,17 +13,17 @@ describe("PKM responsive search and file drawer", () => {
         expect(controller).not.toContain('byId("clearSearch")');
     });
 
-    it("prevents flex shrink with a responsive 42px to 63px minimum", () => {
+    it("prevents flex shrink with a responsive 42px to 52px minimum", () => {
         expect(styles).toContain("--search-field-min-size: 42px");
-        expect(styles).toContain("clamp(42px, calc(72.55px - 2.983vw), 63px)");
+        expect(styles).toContain("clamp(42px, calc(56.545px - 1.4205vw), 52px)");
         expect(styles).toMatch(/\.search-field\s*\{[^}]*min-block-size:\s*var\(--search-field-min-size\)/);
         expect(styles).not.toMatch(/\.search-field\s*\{[^}]*height:/);
     });
 
-    it("scales non-PC text without changing the title or icon sizes", () => {
-        expect(styles).toContain("font-size: 20px");
-        expect(styles).toContain("font-size: 22px");
-        expect(styles).toContain("font-size: 24px");
+    it("applies the exact shared typography without changing title or icon sizes", () => {
+        expect(styles).toContain(".file-row[aria-current=\"page\"] { font-size: 20px; font-weight: 400; }");
+        expect(styles).toContain("#schemaSummary { font-size: 18px; font-weight: 700; }");
+        expect(styles).toContain(".editor-toolbar .small-button { font-size: 16px; font-weight: 400; }");
         expect(styles).toContain(".brand h1 { font-size: 16px; }");
         expect(graphView).toContain("setNonPcTypography(nonPc)");
         expect(graphView).toContain('nonPc ? 20 : 9');
