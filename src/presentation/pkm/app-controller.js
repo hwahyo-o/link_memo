@@ -5,7 +5,7 @@ import { isNonPcDevice } from "../../domain/sync/device-policy.js";
 import { readViewportProfile, subscribeNonPcViewport } from "../../infrastructure/browser/viewport-profile.js";
 import { mainMemoToVaultFiles } from "../../infrastructure/pkm/schema-discovery.js";
 import { projectVaultGraph } from "../../application/pkm/graph-projector.js";
-import { reconcileLinkMemoProjection } from "../../application/pkm/link-memo-vault-projector.js";
+import { isLinkMemoGraphIndexPath, reconcileLinkMemoProjection } from "../../application/pkm/link-memo-vault-projector.js";
 import { createGraphView } from "./graph-view.js";
 import { createMarkdownEditor } from "./markdown-editor.js";
 import { createWorkspace } from "./workspace.js";
@@ -135,7 +135,7 @@ export function createPkmApp({
     async function renderGraph() {
         const sequence = ++renderSequence;
         const files = vault.list();
-        const metadata = await metadataCache.index(files);
+        const metadata = await metadataCache.index(files.filter(file => !isLinkMemoGraphIndexPath(file.path)));
         if (sequence !== renderSequence) return;
         currentMetadata = metadata;
         currentGraph = projectVaultGraph(files, metadata);
