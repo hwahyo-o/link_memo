@@ -20,6 +20,13 @@ describe("PKM responsive search and file drawer", () => {
         expect(styles).not.toMatch(/\.search-field\s*\{[^}]*height:/);
     });
 
+    it("reserves header action width without covering search modes", () => {
+        expect(styles).toContain("grid-template-columns: auto auto minmax(360px, 760px) max-content");
+        expect(styles).toMatch(/\.search-field\s*\{[^}]*min-width:\s*0/);
+        expect(styles).toMatch(/\.header-actions\s*\{[^}]*min-width:\s*max-content/);
+        expect(styles).toContain("@media (max-width: 1024px)");
+    });
+
     it("applies the exact shared typography without changing title or icon sizes", () => {
         expect(styles).toContain(".file-row[aria-current=\"page\"] { font-size: 20px; font-weight: 400; }");
         expect(styles).toContain("#schemaSummary { font-size: 18px; font-weight: 700; }");
