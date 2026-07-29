@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MAX_GRAPH_EDGES, MAX_GRAPH_NODES, layoutIterationsFor } from "../src/domain/pkm/graph-limits.js";
+import { colorForContentKind } from "../src/domain/pkm/link-memo-keyword-policy.js";
 import { projectVaultGraph } from "../src/application/pkm/graph-projector.js";
 import {
     projectMainMemoToVaultFiles,
@@ -39,6 +40,7 @@ describe("Link Memo hierarchical PKM graph", () => {
         expect(MAX_GRAPH_EDGES).toBe(500_000);
         expect(layoutIterationsFor(100_000)).toBe(2);
         expect(layoutIterationsFor(25_000)).toBe(4);
+        expect(colorForContentKind("link-image")).toBe("#DE6863");
     });
 
     it("creates one Markdown file per button with sharded graph metadata", () => {
