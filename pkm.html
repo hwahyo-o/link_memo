@@ -14,6 +14,9 @@
             <a class="icon-button back-button" href="./index.html" aria-label="Link Memo로 돌아가기" title="Link Memo로 돌아가기">
                 <span aria-hidden="true">←</span>
             </a>
+            <button id="toggleFileDrawer" class="icon-button file-drawer-toggle" type="button" aria-controls="filePanel" aria-expanded="false" aria-label="파일 드로어 열기" title="파일 드로어 열기">
+                <span aria-hidden="true">☰</span>
+            </button>
             <div class="brand">
                 <span class="brand-mark" aria-hidden="true">⌘</span>
                 <h1>PKM 그래프</h1>
@@ -22,7 +25,6 @@
                 <label class="search-field" for="graphSearch">
                     <span aria-hidden="true">⌕</span>
                     <input id="graphSearch" type="search" placeholder="제목, 본문, 태그, 댓글 검색" autocomplete="off">
-                    <button id="clearSearch" class="clear-search" type="button" aria-label="검색 초기화">×</button>
                 </label>
                 <div class="search-mode" role="group" aria-label="검색 조건">
                     <button type="button" data-search-mode="AND" aria-pressed="true">키워드 모두 포함</button>
@@ -40,6 +42,7 @@
         </header>
 
         <main class="workspace">
+            <button id="filePanelBackdrop" class="file-panel-backdrop hidden" type="button" aria-label="파일 드로어 닫기"></button>
             <aside id="filePanel" class="file-panel">
                 <div class="panel-heading">
                     <div>
