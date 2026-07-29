@@ -6,6 +6,7 @@
     <title>PKM 그래프 | Link Memo</title>
     <link rel="shortcut icon" href="./img/favicon-96x96.png" type="image/png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" rel="stylesheet">
     <link rel="stylesheet" href="./styles/pkm.css">
 </head>
 <body>
@@ -96,7 +97,7 @@
                         </label>
                         <button id="finishEditing" class="small-button" type="button">편집 완료</button>
                     </div>
-                    <textarea id="markdownEditor" spellcheck="true" aria-label="Markdown 편집기"></textarea>
+                    <div id="markdownEditor" aria-label="Markdown 편집기"></div>
                 </div>
             </section>
         </main>
@@ -114,6 +115,7 @@
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.34.0/dist/cytoscape.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script type="module" src="./src/bootstrap/pkm-main.js"></script>
 </body>
 </html>

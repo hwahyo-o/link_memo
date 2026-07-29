@@ -102,10 +102,11 @@ export function createWorkspace({
         if (!file) return;
         activePath = path;
         if (!openPaths.includes(path)) openPaths.push(path);
-        editor.value = file.content;
+        editor.setValue(file.content);
         activeFilePath.textContent = path;
         editorSurface.classList.remove("hidden");
         editorEmpty.classList.add("hidden");
+        requestAnimationFrame(() => editor.refresh());
         if (matchMedia("(max-width: 700px)").matches) editorPanel.classList.add("mobile-fullscreen");
         renderTabs();
         renderTree();
@@ -133,11 +134,11 @@ export function createWorkspace({
     async function saveEditor() {
         if (!activePath) return;
         const savedPath = activePath;
-        await vault.write(savedPath, editor.value);
+        await vault.write(savedPath, editor.getValue());
         onChange(savedPath);
     }
 
-    editor.addEventListener("input", () => {
+    editor.onChange(() => {
         clearTimeout(editorTimer);
         editorTimer = setTimeout(() => void saveEditor(), 250);
     });
@@ -149,7 +150,7 @@ export function createWorkspace({
             clearTimeout(editorTimer);
             activePath = null;
             openPaths = [];
-            editor.value = "";
+            editor.setValue("");
             activeFilePath.textContent = "";
             editorSurface.classList.add("hidden");
             editorEmpty.classList.remove("hidden");
@@ -181,8 +182,7 @@ export function createWorkspace({
         async uploadImage(file) {
             if (!activePath || !file) return;
             const markdown = await onUploadImage(file);
-            const start = editor.selectionStart;
-            editor.setRangeText(`\n${markdown}\n`, start, editor.selectionEnd, "end");
+            editor.replaceSelection(`\n${markdown}\n`);
             await saveEditor();
         },
         activePath: () => activePath

@@ -6,6 +6,7 @@ import { readViewportProfile, subscribeNonPcViewport } from "../../infrastructur
 import { mainMemoToVaultFiles } from "../../infrastructure/pkm/schema-discovery.js";
 import { projectVaultGraph } from "../../application/pkm/graph-projector.js";
 import { createGraphView } from "./graph-view.js";
+import { createMarkdownEditor } from "./markdown-editor.js";
 import { createWorkspace } from "./workspace.js";
 import { createMobileSaveController } from "../sync/mobile-save-controller.js";
 
@@ -52,6 +53,7 @@ export function createPkmApp({
 }) {
     let currentUser = null;
     let workspace = null;
+    let markdownEditor = null;
     let unsubscribeRemote = null;
     let currentGraph = { nodes: [], edges: [] };
     let currentMetadata = [];
@@ -142,13 +144,14 @@ export function createPkmApp({
 
     function createWorkspaceOnce() {
         if (workspace) return workspace;
+        markdownEditor = createMarkdownEditor({ host: byId("markdownEditor") });
         workspace = createWorkspace({
             vault,
             fileTree: byId("fileTree"),
             fileCount: byId("fileCount"),
             fileFilter: byId("fileFilter"),
             tabs: byId("editorTabs"),
-            editor: byId("markdownEditor"),
+            editor: markdownEditor,
             editorSurface: byId("editorSurface"),
             editorEmpty: byId("editorEmpty"),
             activeFilePath: byId("activeFilePath"),
@@ -278,7 +281,7 @@ export function createPkmApp({
         byId("authGate").querySelector("p").textContent = "배포 환경의 Firebase 설정이 준비되면 Link Memo 로그인 세션을 그대로 이어서 사용합니다.";
         setSyncStatus("Firebase 설정 필요", "error");
         saveController.updateVisibility(null);
-        return { destroy: () => { unsubscribeViewport(); graphView.destroy(); graphWorker.terminate(); } };
+        return { destroy: () => { unsubscribeViewport(); markdownEditor?.destroy(); graphView.destroy(); graphWorker.terminate(); } };
     }
 
     onAuthStateChanged(auth, user => {
@@ -327,5 +330,5 @@ export function createPkmApp({
         });
     });
 
-    return { destroy: () => { unsubscribeViewport(); unsubscribeRemote?.(); graphView.destroy(); graphWorker.terminate(); } };
+    return { destroy: () => { unsubscribeViewport(); unsubscribeRemote?.(); markdownEditor?.destroy(); graphView.destroy(); graphWorker.terminate(); } };
 }
