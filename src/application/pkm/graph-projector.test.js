@@ -44,9 +44,9 @@ describe("PKM graph projector", () => {
             })
         });
         const graph = projectVaultGraph([
-            makeCanvas("a.canvas", 6_000),
-            makeCanvas("b.canvas", 6_000)
+            makeCanvas("a.canvas", 60_000),
+            makeCanvas("b.canvas", 60_000)
         ], []);
-        expect(graph.nodes).toHaveLength(10_000);
+        expect(graph.nodes).toHaveLength(100_000);
     });
 });
