@@ -9,6 +9,7 @@
 ### 검색
 
 - 검색 필드는 HTML 표준 `input[type="search"]`를 유지합니다.
+- 검색 필드의 높이는 기존 42px의 정확히 2배인 84px로 유지합니다.
 - 별도의 `#clearSearch` 버튼은 만들지 않습니다.
 - 브라우저 기본 초기화 버튼은 검색값이 있을 때만 표시되며, 누르면 브라우저가 발생시키는 `input` 이벤트를 통해 기존 검색 debounce와 그래프 강조 갱신이 실행됩니다.
 - `Escape`는 검색어와 그래프 강조를 초기화하는 기존 키보드 동작을 유지합니다.
@@ -36,6 +37,7 @@
 `tests/pkm-responsive-ui.test.js`가 다음을 고정합니다.
 
 - `graphSearch`가 search input인지
+- `.search-field` 높이가 84px인지
 - 커스텀 `#clearSearch`와 관련 핸들러가 없는지
 - 드로어 버튼·오버레이·열림 selector가 연결되는지
 - 이전 38px 부분 노출과 hover/focus 열기 규칙이 제거됐는지
