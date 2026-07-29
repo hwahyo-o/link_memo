@@ -12,6 +12,10 @@ describe("PKM responsive search and file drawer", () => {
         expect(controller).not.toContain('byId("clearSearch")');
     });
 
+    it("keeps the graph search field at twice its previous height", () => {
+        expect(styles).toMatch(/\.search-field\s*\{[^}]*height:\s*84px;/);
+    });
+
     it("uses the shared non-PC breakpoint for an explicit file drawer", () => {
         expect(html).toContain('id="toggleFileDrawer"');
         expect(html).toContain('aria-controls="filePanel"');
