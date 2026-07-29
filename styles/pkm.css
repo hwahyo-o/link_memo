@@ -116,7 +116,30 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .editor-toolbar > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
 .image-upload { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 700; }
 .image-upload:hover { color: var(--primary); border-color: #93b4ed; }
-#markdownEditor { flex: 1; width: 100%; min-height: 0; padding: 22px 25px; resize: none; border: 0; outline: 0; color: #1e293b; background: white; font: 14px/1.78 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 4; }
+#markdownEditor { flex: 1; width: 100%; min-height: 0; overflow: hidden; background: white; }
+#markdownEditor .CodeMirror { height: 100%; color: #1e293b; background: white; font: 400 18px/1.7 Inter, Pretendard, "Noto Sans KR", system-ui, sans-serif; }
+#markdownEditor .CodeMirror-scroll { min-height: 100%; }
+#markdownEditor .CodeMirror-lines { padding: 22px 25px; }
+#markdownEditor .CodeMirror pre.CodeMirror-line,
+#markdownEditor .CodeMirror pre.CodeMirror-line-like { padding-inline: 0; }
+#markdownEditor .CodeMirror-cursor { border-left: 2px solid var(--text); }
+#markdownEditor .CodeMirror-selected { background: #bfdbfe; }
+#markdownEditor .cm-heading-1 { font-size: 26px; font-weight: 700; }
+#markdownEditor .cm-heading-2 { font-size: 24px; font-weight: 400; }
+#markdownEditor .cm-heading-3 { font-size: 22px; font-weight: 400; }
+#markdownEditor .cm-mark-strong { font-size: 20px; font-weight: 700; }
+#markdownEditor .cm-mark-highlight { font-size: 20px; font-weight: 400; background: #f8d374; border-radius: 2px; }
+#markdownEditor .cm-mark-combined { font-size: 20px; font-weight: 700; background: #f8d374; border-radius: 2px; }
+#markdownEditor .cm-heading-1 .cm-mark-strong,
+#markdownEditor .cm-heading-1 .cm-mark-highlight,
+#markdownEditor .cm-heading-1 .cm-mark-combined,
+#markdownEditor .cm-heading-2 .cm-mark-strong,
+#markdownEditor .cm-heading-2 .cm-mark-highlight,
+#markdownEditor .cm-heading-2 .cm-mark-combined,
+#markdownEditor .cm-heading-3 .cm-mark-strong,
+#markdownEditor .cm-heading-3 .cm-mark-highlight,
+#markdownEditor .cm-heading-3 .cm-mark-combined { font-size: inherit; }
+#markdownEditor .cm-list-item { font-size: 18px; font-weight: 400; }
 
 .pkm-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-top: 1px solid var(--border); color: var(--muted); background: white; font-size: 10px; }
 #localSaveState i { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #22c55e; }
@@ -128,7 +151,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 1024px) {
     :root {
-        --search-field-min-size: clamp(42px, calc(72.55px - 2.983vw), 63px);
+        --search-field-min-size: clamp(42px, calc(56.545px - 1.4205vw), 52px);
         --search-mode-button-min-size: 56px;
     }
     .pkm-header { grid-template-columns: auto auto 1fr auto; gap: 8px; padding-inline: 10px; }
@@ -171,8 +194,34 @@ button, a { -webkit-tap-highlight-color: transparent; }
     .graph-tools { left: 13px; }
     .editor-panel { left: 0; right: 0; height: 56vh; }
     .editor-panel.mobile-fullscreen { top: 64px; height: auto; border-radius: 0; }
-    #markdownEditor { padding: 18px; }
+    #markdownEditor .CodeMirror-lines { padding: 18px; }
 }
+
+
+/* Shared typography contract: applies to PC and non-PC layouts. */
+.search-field input,
+.search-mode button,
+.search-mode button[aria-pressed="true"],
+.graph-legend { font-size: 18px; font-weight: 400; }
+
+.panel-heading,
+.panel-heading span { font-size: 18px; font-weight: 400; }
+.panel-heading strong,
+.panel-heading .small-button { font-size: 18px; font-weight: 700; }
+
+#fileFilter,
+.file-group-label { font-size: 18px; font-weight: 400; }
+.file-row,
+.file-row[aria-current="page"] { font-size: 20px; font-weight: 400; }
+#schemaSummary { font-size: 18px; font-weight: 700; }
+
+#editorTabs,
+#editorTabs .editor-tab,
+#editorTabs .close-tab,
+.editor-toolbar,
+.editor-toolbar > span,
+.editor-toolbar .image-upload,
+.editor-toolbar .small-button { font-size: 16px; font-weight: 400; }
 
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
