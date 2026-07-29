@@ -10,6 +10,7 @@ import {
 
 export const GRAPH_INDEX_MANIFEST_PATH = "Link Memo/.graph-index.json";
 export const GRAPH_INDEX_SHARD_PREFIX = "Link Memo/.graph-index/";
+export const isLinkMemoGraphIndexPath = path => path === GRAPH_INDEX_MANIFEST_PATH || String(path || "").startsWith(GRAPH_INDEX_SHARD_PREFIX);
 const ITEMS_PER_SHARD = 300;
 
 const safeSegment = value => String(value || "메모")
@@ -80,7 +81,7 @@ export function projectMainMemoToVaultFiles(payload) {
             const subcategoryId = `subcategory:${stableId(categoryId, subcategoryValue?.id || subcategory)}`;
             for (const [index, item] of (subcategoryValue?.links || []).entries()) {
                 const title = singleLine(item?.text || item?.title) || `메모 ${index + 1}`;
-                const sourceId = String(item?.id || item?.uuid || item?.createdAt || stableId(subcategoryId, title, item?.url, item?.comment, index));
+                const sourceId = String(item?.id || item?.uuid || item?.createdAt || stableId(subcategoryId, title, item?.url, item?.comment));
                 const kind = classifyContentKind(item);
                 const summary = summarizeContent(item);
                 const keywords = extractKeywords({ item, title, category, subcategory });
