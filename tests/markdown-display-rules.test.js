@@ -22,8 +22,8 @@ describe("markdown display rules", () => {
         ]);
         expect(analyzeMarkdownLine("**/강조 하이라이트/**").marks).toEqual([
             { from: 2, to: 3, type: "strong" },
-            { from: 3, to: 12, type: "combined" },
-            { from: 12, to: 13, type: "strong" }
+            { from: 3, to: 11, type: "combined" },
+            { from: 11, to: 12, type: "strong" }
         ]);
     });
 
