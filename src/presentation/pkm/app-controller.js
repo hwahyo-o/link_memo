@@ -84,7 +84,28 @@ export function createPkmApp({
         isNonPc: deviceIsNonPc
     });
 
-    const unsubscribeViewport = subscribeNonPcViewport(() => saveController.updateVisibility());
+
+    const filePanel = byId("filePanel");
+    const fileDrawerToggle = byId("toggleFileDrawer");
+    const filePanelBackdrop = byId("filePanelBackdrop");
+    const setFileDrawerOpen = open => {
+        const visible = Boolean(open && deviceIsNonPc());
+        filePanel.classList.toggle("is-open", visible);
+        fileDrawerToggle.setAttribute("aria-expanded", String(visible));
+        fileDrawerToggle.setAttribute("aria-label", visible ? "파일 드로어 닫기" : "파일 드로어 열기");
+        fileDrawerToggle.title = visible ? "파일 드로어 닫기" : "파일 드로어 열기";
+        filePanelBackdrop.classList.toggle("hidden", !visible);
+    };
+    fileDrawerToggle.addEventListener("click", () => setFileDrawerOpen(!filePanel.classList.contains("is-open")));
+    filePanelBackdrop.addEventListener("click", () => setFileDrawerOpen(false));
+    byId("fileTree").addEventListener("click", event => {
+        if (event.target.closest(".file-row")) setFileDrawerOpen(false);
+    });
+
+    const unsubscribeViewport = subscribeNonPcViewport(() => {
+        saveController.updateVisibility();
+        setFileDrawerOpen(false);
+    });
 
     function setSyncStatus(label, state = "idle") {
         const status = byId("syncStatus");
@@ -216,16 +237,13 @@ export function createPkmApp({
         clearTimeout(searchTimer);
         searchTimer = setTimeout(updateSearch, 300);
     });
-    byId("clearSearch").addEventListener("click", () => {
-        byId("graphSearch").value = "";
-        updateSearch();
-        byId("graphSearch").focus();
-    });
     document.addEventListener("keydown", event => {
-        if (event.key === "Escape" && byId("graphSearch").value) {
+        if (event.key !== "Escape") return;
+        if (byId("graphSearch").value) {
             byId("graphSearch").value = "";
             updateSearch();
         }
+        setFileDrawerOpen(false);
     });
     document.querySelectorAll("[data-search-mode]").forEach(button => button.addEventListener("click", () => {
         searchMode = button.dataset.searchMode;

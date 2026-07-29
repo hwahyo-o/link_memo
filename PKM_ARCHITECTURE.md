@@ -61,7 +61,7 @@ artifacts/{appId}/users/{uid}/memoData/pkm/vaultChunks/{revision}_{index}
 
 비PC의 수동 저장은 대기 중 Drive 이미지 작업을 기다린 뒤 PKM과 Link Memo를 함께 flush합니다. 등록 계정이면 기존 Cloudflare 최신 체크포인트도 갱신합니다. PC에서도 3분 유휴 저장은 동일하게 동작하지만 수동 버튼은 표시하지 않습니다.
 
-비PC 판별은 화면 폭이 아니라 브라우저 기기 정보를 사용합니다. Android 휴대전화·태블릿, iPhone, iPad, iPadOS 데스크톱 User-Agent는 비PC입니다. Windows/macOS/Linux/ChromeOS는 터치 화면이어도 PC로 유지합니다.
+비PC 판별은 User-Agent나 기기 이름이 아니라 CSS viewport가 1024px 이하인지로만 결정합니다. 저장 버튼, 파일 드로어와 pane resizer가 같은 기준을 공유하며 화면 폭 변경은 `matchMedia` 구독으로 즉시 반영합니다.
 
 ## 메타데이터와 검색
 
@@ -131,6 +131,13 @@ Cytoscape는 기존 앱의 외부 브라우저 의존성 사용 방식과 동일
 - Firestore 경로·chunk 변경: Rules, repository, 복원 테스트와 이 문서를 같은 변경에 갱신합니다.
 - UI는 SDK 오류 코드나 Firestore 경로를 직접 해석하지 않습니다.
 - 임시 fallback, 사용되지 않는 feature flag, 중복 lifecycle listener를 남기지 않습니다.
+
+## 비PC 파일 드로어와 검색 초기화
+
+- 1024px 이하에서는 파일 패널을 고정 열로 남기지 않고 명시적인 헤더 버튼으로 여는 드로어로 표시합니다.
+- 드로어는 오버레이 클릭, 파일 선택, `Escape` 또는 PC 폭 전환 시 닫힙니다. hover/focus 기반의 부분 노출 상태를 사용하지 않습니다.
+- 그래프 검색은 `input[type="search"]`의 브라우저 기본 초기화 버튼을 사용합니다. 별도 커스텀 X를 중복 생성하지 않으며, 기본 버튼이 발생시키는 `input` 이벤트가 기존 300ms 검색 갱신을 그대로 실행합니다.
+- 이 화면 상태는 메모나 Vault 데이터가 아니므로 IndexedDB, Firestore, Cloudflare 또는 Drive에 저장하지 않습니다.
 
 ## 변경 완료 체크리스트
 
