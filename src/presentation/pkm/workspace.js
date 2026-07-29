@@ -106,6 +106,7 @@ export function createWorkspace({
         activeFilePath.textContent = path;
         editorSurface.classList.remove("hidden");
         editorEmpty.classList.add("hidden");
+        requestAnimationFrame(() => editor.refresh());
         if (matchMedia("(max-width: 700px)").matches) editorPanel.classList.add("mobile-fullscreen");
         renderTabs();
         renderTree();
