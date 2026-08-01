@@ -4,7 +4,7 @@ import { mergeVaultSnapshots } from "../../domain/pkm/vault-policy.js";
 import { isNonPcDevice } from "../../domain/sync/device-policy.js";
 import { readViewportProfile, subscribeNonPcViewport } from "../../infrastructure/browser/viewport-profile.js";
 import { mainMemoToVaultFiles } from "../../infrastructure/pkm/schema-discovery.js";
-import { projectVaultGraph } from "../../application/pkm/graph-projector.js";
+import { classifyLegacyGraphFiles, projectVaultGraph } from "../../application/pkm/graph-projector.js";
 import { isLinkMemoGraphIndexPath, reconcileLinkMemoProjection } from "../../application/pkm/link-memo-vault-projector.js";
 import { createGraphView } from "./graph-view.js";
 import { createMarkdownEditor } from "./markdown-editor.js";
@@ -69,7 +69,8 @@ export function createPkmApp({
         container: byId("graphCanvas"),
         worker: graphWorker,
         onOpen: path => workspace?.open(path),
-        tooltip: byId("graphTooltip")
+        tooltip: byId("graphTooltip"),
+        dimLayer: byId("graphDimLayer")
     });
     graphView.setNonPcTypography(deviceIsNonPc());
     const saveController = createMobileSaveController({
@@ -162,7 +163,8 @@ export function createPkmApp({
                 byId("localSaveState").lastChild.textContent = "로컬에 저장됨";
                 void renderGraph();
             },
-            onFinish: path => graphView.center(path),
+            onOpen: path => graphView.center(path),
+            onFinish: () => {},
             onUploadImage: async file => {
                 const task = uploadImage(file);
                 pendingUploads.add(task);
@@ -197,9 +199,24 @@ export function createPkmApp({
         ]);
         if (!sessionIsCurrent(session, user.uid)) return false;
         let snapshot = hydrated.snapshot;
+        const hydratedJson = JSON.stringify(snapshot);
         const imported = mainMemoToVaultFiles(mainMemo?.payload);
         const projection = reconcileLinkMemoProjection(snapshot, imported);
         if (projection.files.length) snapshot = mergeVaultSnapshots(snapshot, { files: projection.files, updatedAt: mainMemo.payload.updatedAt });
+        const legacy = classifyLegacyGraphFiles(snapshot.files || []);
+        if (legacy.safeToDelete.length) {
+            const now = Date.now();
+            snapshot = mergeVaultSnapshots(snapshot, {
+                updatedAt: now,
+                files: legacy.safeToDelete.map(file => ({
+                    ...file,
+                    content: "",
+                    deleted: true,
+                    updatedAt: now,
+                    mutationId: `pkm-pr42-cleanup:${file.mutationId}`
+                }))
+            });
+        }
         if (!snapshot.files.length) {
             snapshot = mergeVaultSnapshots(snapshot, {
                 files: [{
@@ -214,8 +231,8 @@ export function createPkmApp({
         if (!sessionIsCurrent(session, user.uid)) return false;
         vault.replace(snapshot);
         createWorkspaceOnce().render();
-        byId("schemaSummary").textContent = `자동 탐색: IndexedDB ${localSchemas.length}개 · Firestore 키 ${mainMemo?.keys?.length || 0}개 · 보호된 편집 ${projection.conflicts.length}개`;
-        if (imported.length && JSON.stringify(snapshot) !== JSON.stringify(hydrated.snapshot)) {
+        byId("schemaSummary").textContent = `자동 탐색: IndexedDB ${localSchemas.length}개 · Firestore 키 ${mainMemo?.keys?.length || 0}개 · 보호된 편집 ${projection.conflicts.length + legacy.preserveHidden.length}개 · 구형 자동 파일 정리 ${legacy.safeToDelete.length}개`;
+        if (JSON.stringify(snapshot) !== hydratedJson) {
             await pkmSync.persist(user.uid, snapshot);
             if (!sessionIsCurrent(session, user.uid)) return false;
         }
@@ -268,6 +285,29 @@ export function createPkmApp({
         const enabled = event.currentTarget.getAttribute("aria-pressed") !== "true";
         event.currentTarget.setAttribute("aria-pressed", String(enabled));
         graphView.setPanEnabled(enabled);
+    });
+
+    const legendButton = byId("toggleNodeLegend");
+    const nodeLegend = byId("nodeTypeLegend");
+    const setLegendOpen = open => {
+        nodeLegend.classList.toggle("hidden", !open);
+        legendButton.setAttribute("aria-expanded", String(open));
+    };
+    legendButton.addEventListener("click", () => {
+        if (deviceIsNonPc()) setLegendOpen(nodeLegend.classList.contains("hidden"));
+    });
+    legendButton.addEventListener("pointerenter", () => {
+        if (!deviceIsNonPc()) setLegendOpen(true);
+    });
+    legendButton.addEventListener("pointerleave", event => {
+        if (!deviceIsNonPc() && !nodeLegend.contains(event.relatedTarget)) setLegendOpen(false);
+    });
+    legendButton.addEventListener("focus", () => setLegendOpen(true));
+    legendButton.addEventListener("blur", event => {
+        if (!nodeLegend.contains(event.relatedTarget)) setLegendOpen(false);
+    });
+    nodeLegend.addEventListener("pointerleave", event => {
+        if (!deviceIsNonPc() && event.relatedTarget !== legendButton) setLegendOpen(false);
     });
 
     document.addEventListener("visibilitychange", () => {

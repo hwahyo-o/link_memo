@@ -15,12 +15,31 @@ describe("PKM graph worker algorithms", () => {
     });
 
     it("lays out 10,000 nodes without invalid positions", () => {
-        const nodes = Array.from({ length: 10_000 }, (_, index) => ({ id: `n${index}` }));
+        const nodes = Array.from({ length: 10_000 }, (_, index) => ({ id: `n${index}`, width: 188, height: 68 }));
         const edges = nodes.slice(1).map((node, index) => ({ source: `n${index}`, target: node.id }));
         const positions = layoutGraph(nodes, edges, 1);
         expect(positions).toHaveLength(10_000);
         expect(positions.every(position => Number.isFinite(position.x) && Number.isFinite(position.y))).toBe(true);
     }, 10_000);
+
+    it("packs real node rectangles without overlap", () => {
+        const nodes = Array.from({ length: 400 }, (_, index) => ({
+            id: `n${index}`,
+            width: index % 3 === 0 ? 196 : 188,
+            height: index % 3 === 0 ? 72 : 68
+        }));
+        const positions = layoutGraph(nodes, [], 2);
+        const placed = positions.map((position, index) => ({ ...position, ...nodes[index] }));
+        for (let left = 0; left < placed.length; left += 1) {
+            for (let right = left + 1; right < placed.length; right += 1) {
+                const a = placed[left];
+                const b = placed[right];
+                const overlaps = Math.abs(a.x - b.x) < (a.width + b.width) / 2
+                    && Math.abs(a.y - b.y) < (a.height + b.height) / 2;
+                expect(overlaps).toBe(false);
+            }
+        }
+    });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
         const nodes = Array.from({ length: 100_100 }, (_, index) => ({ id: `n${index}` }));

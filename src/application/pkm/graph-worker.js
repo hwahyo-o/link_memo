@@ -37,9 +37,13 @@ export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes
     edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, MAX_GRAPH_EDGES);
     const count = nodes.length;
     const side = Math.max(1, Math.ceil(Math.sqrt(count)));
+    const maxWidth = Math.max(50, ...nodes.map(node => Number(node.width) || 50));
+    const maxHeight = Math.max(50, ...nodes.map(node => Number(node.height) || 50));
+    const horizontalStep = maxWidth + 30;
+    const verticalStep = maxHeight + 30;
     const positions = new Map(nodes.map((node, index) => [node.id, {
-        x: (index % side) * 110 + (index % 7) * 9,
-        y: Math.floor(index / side) * 86 + (index % 11) * 7,
+        x: (index % side) * horizontalStep,
+        y: Math.floor(index / side) * verticalStep,
         vx: 0,
         vy: 0
     }]));
@@ -57,7 +61,7 @@ export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes
             ...(profiles[edge.kind] || { distance: 130, strength: 0.0028 })
         };
     }).filter(pair => pair.source && pair.target);
-    const cellSize = 160;
+    const cellSize = Math.max(horizontalStep, verticalStep);
 
     for (let iteration = 0; iteration < iterations; iteration += 1) {
         const buckets = new Map();
@@ -100,7 +104,18 @@ export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes
             position.y += Math.max(-18, Math.min(18, position.vy));
         }
     }
-    return nodes.map(node => ({ id: node.id, x: positions.get(node.id).x, y: positions.get(node.id).y }));
+    // Snap the force-ordered result into geometry-sized slots. This final deterministic
+    // packing pass is what makes overlap impossible even for unusually long labels.
+    const ordered = [...nodes].sort((left, right) => {
+        const a = positions.get(left.id);
+        const b = positions.get(right.id);
+        return a.y - b.y || a.x - b.x || left.id.localeCompare(right.id);
+    });
+    const packed = new Map(ordered.map((node, index) => [node.id, {
+        x: (index % side) * horizontalStep,
+        y: Math.floor(index / side) * verticalStep
+    }]));
+    return nodes.map(node => ({ id: node.id, ...packed.get(node.id) }));
 }
 
 if (typeof self !== "undefined") {

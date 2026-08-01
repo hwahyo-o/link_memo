@@ -1,18 +1,10 @@
 import synonymGroups from "./keyword-synonyms.json";
+import { CONTENT_KIND_COLORS } from "./graph-node-policy.js";
 
 const STOP_WORDS = new Set([
     "그리고", "그러나", "하지만", "또는", "대한", "위한", "위해", "하는", "있는", "없는",
     "내용", "관련", "버튼", "참고", "보기", "this", "that", "with", "from", "into", "http", "https", "www"
 ]);
-const KIND_COLORS = Object.freeze({
-    text: "#CBEFFF",
-    link: "#F8D374",
-    image: "#FF9797",
-    "link-image": "#DE6863",
-    "link-text": "#82CFFD",
-    "image-text": "#8ED2CD",
-    "link-image-text": "#DE6863"
-});
 const KIND_LABELS = Object.freeze({
     text: "텍스트",
     link: "링크",
@@ -80,7 +72,7 @@ export function classifyContentKind(item) {
     return "text";
 }
 
-export const colorForContentKind = kind => KIND_COLORS[kind] || KIND_COLORS.text;
+export const colorForContentKind = kind => CONTENT_KIND_COLORS[kind] || CONTENT_KIND_COLORS.text;
 
 function tokenize(value) {
     return String(value || "").normalize("NFKC").match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu) || [];

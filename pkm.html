@@ -63,30 +63,27 @@
 
             <section class="graph-panel" aria-label="지식 그래프">
                 <div id="graphCanvas" class="graph-canvas"></div>
-                <div class="graph-legend" aria-hidden="true">
-                    <span><i class="dot direct"></i>직접 일치</span>
-                    <span><i class="dot context"></i>1-hop 문맥</span>
-                    <span><i class="dot dimmed"></i>미일치</span>
-                </div>
-                <div class="graph-type-legend" aria-label="노드 유형 색상">
-                    <span><i style="--node-color:#F6E7FF"></i>대분류</span>
-                    <span><i style="--node-color:#B9BFFF"></i>소분류</span>
-                    <span><i style="--node-color:#CBEFFF"></i>텍스트</span>
-                    <span><i style="--node-color:#F8D374"></i>링크</span>
-                    <span><i style="--node-color:#FF9797"></i>이미지</span>
-                    <span><i style="--node-color:#DE6863"></i>링크+이미지</span>
-                    <span><i style="--node-color:#82CFFD"></i>링크+텍스트</span>
-                    <span><i style="--node-color:#8ED2CD"></i>이미지+텍스트</span>
-                    <span><i style="--node-color:#DE6863"></i>링크+이미지+텍스트</span>
-                </div>
+                <div id="graphDimLayer" class="graph-dim-layer" aria-hidden="true"></div>
                 <div class="graph-tools" aria-label="그래프 화면 제어">
                     <button id="zoomIn" type="button" aria-label="확대">＋</button>
                     <button id="zoomOut" type="button" aria-label="축소">−</button>
                     <button id="fitGraph" type="button" aria-label="전체 그래프 맞춤">⌗</button>
                     <button id="togglePan" type="button" aria-label="터치 이동 전환" aria-pressed="true">☝</button>
+                    <button id="toggleNodeLegend" class="node-legend-button" type="button" aria-label="노드 유형 범례" aria-controls="nodeTypeLegend" aria-expanded="false">◉</button>
+                    <div id="nodeTypeLegend" class="graph-type-legend hidden" role="tooltip">
+                        <span><i style="--node-color:#F6E7FF"></i>대분류</span>
+                        <span><i style="--node-color:#B9BFFF"></i>소분류</span>
+                        <span><i style="--node-color:#CBEFFF"></i>텍스트</span>
+                        <span><i style="--node-color:#F8D374"></i>링크</span>
+                        <span><i style="--node-color:#FF9797"></i>이미지</span>
+                        <span><i style="--node-color:#FFA374"></i>링크+이미지</span>
+                        <span><i style="--node-color:#82CFFD"></i>링크+텍스트</span>
+                        <span><i style="--node-color:#8ED2CD"></i>이미지+텍스트</span>
+                        <span><i style="--node-color:#DE6863"></i>링크+이미지+텍스트</span>
+                    </div>
                 </div>
                 <button id="fitSearchResults" class="fit-results hidden" type="button">검색 결과 노드 모아보기</button>
-                <div id="graphTooltip" class="graph-tooltip hidden" role="tooltip"></div>
+                <button id="graphTooltip" class="graph-tooltip hidden" type="button" aria-label="핵심 내용을 열어 파일 보기"></button>
                 <div id="graphEmpty" class="empty-state hidden">
                     <strong>그래프로 표시할 메모가 없습니다.</strong>
                     <span>새 메모를 만들거나 Link Memo 데이터를 불러오세요.</span>

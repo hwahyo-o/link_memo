@@ -40,7 +40,9 @@ describe("Link Memo hierarchical PKM graph", () => {
         expect(MAX_GRAPH_EDGES).toBe(500_000);
         expect(layoutIterationsFor(100_000)).toBe(2);
         expect(layoutIterationsFor(25_000)).toBe(4);
-        expect(colorForContentKind("link-image")).toBe("#DE6863");
+        expect(colorForContentKind("image")).toBe("#FF9797");
+        expect(colorForContentKind("link-image")).toBe("#FFA374");
+        expect(colorForContentKind("link-image-text")).toBe("#DE6863");
     });
 
     it("creates one Markdown file per button with sharded graph metadata", () => {
@@ -64,8 +66,9 @@ describe("Link Memo hierarchical PKM graph", () => {
         const graph = projectVaultGraph(files, metadataFor(files));
         const item = graph.nodes.find(node => node.kind === "item" && node.summary?.includes("머신러닝"));
         expect(item.label).toContain("AI 개념");
-        expect(item.label).toContain("#");
+        expect(item.keywordsLabel).toContain("#");
         expect(item.label).not.toContain(item.summary);
+        expect(item.openPath).toBe(item.id);
         expect(graph.nodes.some(node => node.kind === "category" && node.color === "#F6E7FF")).toBe(true);
         expect(graph.nodes.some(node => node.kind === "subcategory" && node.color === "#B9BFFF")).toBe(true);
         expect(graph.edges.some(edge => edge.kind === "category-membership")).toBe(true);
@@ -94,8 +97,9 @@ describe("Link Memo hierarchical PKM graph", () => {
         expect(html).toContain('id="graphTooltip"');
         expect(html).toContain("#DE6863");
         expect(css).toContain(".graph-tooltip");
-        expect(graphView).toContain('cy.on("mouseover", \'node[kind = "item"]\'');
-        expect(graphView).toContain("if (nonPcMode && !doubleTap) showTooltip(node)");
+        expect(graphView).toContain('cy.on("mouseover", "node"');
+        expect(graphView).toContain("if (doubleTap)");
+        expect(graphView).toContain('node?.data?.("openPath")');
         expect(graphView).toContain('tooltip.textContent = summary');
     });
 });

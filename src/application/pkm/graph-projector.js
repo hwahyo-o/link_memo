@@ -1,21 +1,29 @@
-import { parseJsonCanvas } from "../../domain/pkm/json-canvas-parser.js";
 import { MAX_GRAPH_EDGES, MAX_GRAPH_NODES } from "../../domain/pkm/graph-limits.js";
+import { nodeGeometry } from "../../domain/pkm/graph-node-policy.js";
 import { readLinkMemoGraphItems, isLinkMemoGraphIndexPath } from "./link-memo-vault-projector.js";
 
 export { MAX_GRAPH_EDGES, MAX_GRAPH_NODES };
 
-function titleFor(path) {
-    return path.split("/").pop().replace(/\.(md|json|canvas)$/i, "");
+const keywordsLabel = item => (item.keywords || []).slice(0, 3).map(keyword => `#${keyword}`).join(" ");
+
+function graphNode(node) {
+    return { ...nodeGeometry(node.kind), ...node };
 }
 
-const buttonLabel = item => [item.title, (item.keywords || []).slice(0, 3).map(keyword => `#${keyword}`).join(" ")].filter(Boolean).join("\n");
+export function classifyLegacyGraphFiles(files) {
+    const currentPaths = new Set(readLinkMemoGraphItems(files).map(item => item?.path).filter(Boolean));
+    const candidates = files.filter(file => !file.deleted && !isLinkMemoGraphIndexPath(file.path) && !currentPaths.has(file.path));
+    return {
+        safeToDelete: candidates.filter(file => file.mutationId === "link-memo-import" && /^Link Memo\/.+\.md$/i.test(file.path)),
+        preserveHidden: candidates.filter(file => !(file.mutationId === "link-memo-import" && /^Link Memo\/.+\.md$/i.test(file.path)))
+    };
+}
 
 export function projectVaultGraph(files, metadataEntries) {
     const visibleFiles = files.filter(file => !file.deleted);
     const graphFiles = visibleFiles.filter(file => !isLinkMemoGraphIndexPath(file.path));
     const fileByPath = new Map(graphFiles.map(file => [file.path, file]));
     const indexedItems = readLinkMemoGraphItems(visibleFiles).filter(item => item?.path && item?.category?.id && item?.subcategory?.id && fileByPath.has(item.path));
-    const itemByPath = new Map(indexedItems.map(item => [item.path, item]));
     const nodes = [];
     const edges = [];
     const nodeIds = new Set();
@@ -44,15 +52,17 @@ export function projectVaultGraph(files, metadataEntries) {
         const category = item.category;
         const subcategory = item.subcategory;
         if (!nodeIds.has(category.id)) {
-            pushNode({ id: category.id, label: `${category.label}\n#${category.tag}`, path: null, kind: "category", color: category.color });
+            pushNode(graphNode({ id: category.id, title: category.label, keywordsLabel: `#${category.tag}`, label: category.label, openPath: null, kind: "category", color: category.color }));
         }
         if (!nodeIds.has(subcategory.id)) {
-            if (!pushNode({ id: subcategory.id, label: `${subcategory.label}\n#${subcategory.tag}`, path: null, kind: "subcategory", color: subcategory.color, categoryId: category.id })) break;
+            if (!pushNode(graphNode({ id: subcategory.id, title: subcategory.label, keywordsLabel: `#${subcategory.tag}`, label: subcategory.label, openPath: null, kind: "subcategory", color: subcategory.color, categoryId: category.id }))) break;
         }
-        if (!pushNode({
+        if (!pushNode(graphNode({
             id: item.path,
-            label: buttonLabel(item),
-            path: item.path,
+            title: item.title,
+            keywordsLabel: keywordsLabel(item),
+            label: item.title,
+            openPath: /\.md$/i.test(item.path) ? item.path : null,
             kind: "item",
             contentKind: item.contentKind,
             color: item.color,
@@ -62,13 +72,8 @@ export function projectVaultGraph(files, metadataEntries) {
             categoryId: category.id,
             subcategoryId: subcategory.id,
             facets: item.facets
-        })) break;
+        }))) break;
         includedItems.push(item);
-    }
-
-    for (const file of graphFiles) {
-        if (itemByPath.has(file.path) || nodes.length >= MAX_GRAPH_NODES) continue;
-        pushNode({ id: file.path, label: titleFor(file.path), path: file.path, kind: file.type, color: "#e2e8f0" });
     }
 
     for (const item of includedItems) {
@@ -78,38 +83,6 @@ export function projectVaultGraph(files, metadataEntries) {
 
     for (const metadata of metadataEntries) {
         for (const target of metadata.resolvedLinks || []) pushRawEdge(metadata.path, target, "링크", "wiki-link");
-    }
-
-    for (const file of graphFiles.filter(item => item.type === "canvas" && nodeIds.has(item.path))) {
-        if (nodes.length >= MAX_GRAPH_NODES) break;
-        try {
-            const canvas = parseJsonCanvas(file.content);
-            for (const node of canvas.nodes) {
-                if (nodes.length >= MAX_GRAPH_NODES) break;
-                const id = `${file.path}::${node.id}`;
-                const label = node.type === "text"
-                    ? node.text.replace(/^#+\s*/, "").slice(0, 50) || "텍스트"
-                    : node.type === "file"
-                        ? titleFor(node.file)
-                        : node.type === "link"
-                            ? node.url.replace(/^https?:\/\//, "").slice(0, 50)
-                            : node.label || "그룹";
-                pushNode({
-                    id,
-                    label,
-                    path: node.type === "file" && nodeIds.has(node.file) ? node.file : file.path,
-                    kind: `canvas-${node.type}`,
-                    color: "#e2e8f0"
-                });
-                if (node.type === "file") pushRawEdge(file.path, node.file, "캔버스", "canvas-file");
-            }
-            for (const edge of canvas.edges) {
-                if (edges.length >= MAX_GRAPH_EDGES) break;
-                pushRawEdge(`${file.path}::${edge.fromNode}`, `${file.path}::${edge.toNode}`, edge.label || "", "canvas-link");
-            }
-        } catch {
-            // A malformed canvas is isolated to its file; the rest of the vault remains usable.
-        }
     }
 
     const connectGroup = (ids, kind, label) => {
