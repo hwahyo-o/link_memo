@@ -1,5 +1,15 @@
 # PKM Graph View 아키텍처
 
+## 그래프 재구성 계층 지도 (2026-08-02)
+
+1. **화면 계층** — `pkm.html`, `styles/pkm.css`, `presentation/pkm/graph-view.js`, `workspace.js`: 캡슐 노드, viewport 라벨 culling, tooltip/범례, 파일 열기와 pan/zoom 보존을 담당합니다.
+2. **처리 계층** — `application/pkm/graph-projector.js`, `graph-worker.js`: 그래프 투영, 전체 좌표 계산, 실제 노드 크기 기반 무겹침 패킹을 담당합니다.
+3. **핵심 규칙 계층** — `domain/pkm/graph-node-policy.js`, `graph-highlight-rules.js`, `link-memo-keyword-policy.js`: 고유 색상, 크기, 검색·선택 상태 매트릭스, 키워드 규칙을 순수 함수로 정의합니다.
+4. **저장·외부 서비스 계층** — Vault repository와 `link-memo-vault-projector.js`: 원본 파일 보존, 인덱스 투영, tombstone 동기화를 담당합니다. 구형 자동 파일은 `mutationId`와 경로가 모두 일치할 때만 삭제 후보가 됩니다.
+5. **의존성 연결·앱 시작 계층** — `bootstrap/pkm-main.js`, `presentation/pkm/app-controller.js`: Worker, Vault, repository, viewport, workspace, 그래프를 조립하며 화면 계층이 저장소 구현을 직접 알지 않게 합니다.
+
+상세 Gate, 실패 재수정 Loop, 상태 매트릭스와 검증 기록은 `docs/PKM_GRAPH_REWORK_PLAN.md`를 기준 문서로 사용합니다.
+
 이 문서는 `pkm.html`의 구현·동기화·검색·그래프 처리 규칙과 협업 절차를 설명합니다. 실제 API 키, OAuth Client ID, Firebase/Cloudflare 식별자, Worker URL, 토큰, 사용자 UID와 이메일은 이 문서나 소스 예시에 기록하지 않습니다.
 
 ## 사용자 흐름

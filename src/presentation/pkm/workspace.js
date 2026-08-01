@@ -26,6 +26,7 @@ export function createWorkspace({
     activeFilePath,
     editorPanel,
     onChange,
+    onOpen,
     onFinish,
     onUploadImage
 }) {
@@ -111,6 +112,7 @@ export function createWorkspace({
         renderTabs();
         renderTree();
         editor.focus();
+        onOpen?.(path);
     }
 
     function closePath(path) {
@@ -128,7 +130,7 @@ export function createWorkspace({
         }
         renderTabs();
         renderTree();
-        onFinish(path);
+        onFinish?.(path);
     }
 
     async function saveEditor() {
@@ -165,7 +167,7 @@ export function createWorkspace({
             await saveEditor();
             const path = activePath;
             editorPanel.classList.remove("mobile-fullscreen");
-            if (path) onFinish(path);
+            if (path) onFinish?.(path);
         },
         async flush() {
             clearTimeout(editorTimer);
