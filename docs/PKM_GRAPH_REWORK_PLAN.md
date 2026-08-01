@@ -1,6 +1,6 @@
 # PKM 그래프 재구성 계획
 
-> 상태: 구현·자동 검증 완료 / PR Gate 진행
+> 상태: 구현·검증·main 병합·배포 완료 (PR #44 / `e7656ce`)
 > 기준 저장소: `hwahyo-o/link_memo`
 > 기준 브랜치/커밋: `main` / `c0c5e544ae06524931c65b952018b08b50ba699e`
 > 기준 시각: 2026-08-02 (KST)
@@ -358,4 +358,6 @@ Drop shadow의 정확한 계약은 CSS/Cytoscape 좌표 기준 `offset-x: 3px`, 
 - 대규모 검증: 10,000개 노드 레이아웃 유한 좌표, 100,000개 상한 유지.
 - 빌드: Vite production build 성공.
 - 비밀정보 검사 기준: 새 문서·코드에 API key, token, UID, email, 운영 payload를 기록하지 않았다.
-
+- GitHub Gate: Branch CI와 Test and Deploy GitHub Pages 성공(47개 테스트 파일, 189개 테스트).
+- 배포 확인: `pkm.html` HTTP 200, 배포 자산에서 범례/dim layer, `wheelSensitivity: 0.8`, `openPath`, legacy cleanup 코드를 확인했다.
+- 브랜치 정리: GitHub 앱에 ref 삭제 API가 없고 로컬 Git 자격증명이 없어 `drill` 삭제는 보류되었다. 코드·배포에는 영향이 없으며 GitHub UI에서 병합된 브랜치 삭제가 필요하다.
