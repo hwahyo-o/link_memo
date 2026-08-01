@@ -27,14 +27,18 @@ describe("PKM responsive search and file drawer", () => {
         expect(styles).toContain("@media (max-width: 1024px)");
     });
 
-    it("applies the exact shared typography without changing title or icon sizes", () => {
+    it("keeps shared typography and the 4px title-to-hashtag hierarchy", () => {
         expect(styles).toContain(".file-row[aria-current=\"page\"] { font-size: 20px; font-weight: 400; }");
         expect(styles).toContain("#schemaSummary { font-size: 18px; font-weight: 700; }");
         expect(styles).toContain(".editor-toolbar .small-button { font-size: 16px; font-weight: 400; }");
         expect(styles).toContain(".brand h1 { font-size: 16px; }");
+        expect(styles).toContain(".graph-node-label strong {");
+        expect(styles).toContain("font-size: 14px; font-weight: 800");
+        expect(styles).toContain(".graph-node-label span {");
+        expect(styles).toContain("font-size: 10px; font-weight: 500");
+        expect(styles).toContain(".graph-canvas.is-non-pc .graph-node-label strong { font-size: 20px; }");
+        expect(styles).toContain(".graph-canvas.is-non-pc .graph-node-label span { font-size: 16px; }");
         expect(graphView).toContain("setNonPcTypography(nonPc)");
-        expect(graphView).toContain('nonPc ? 20 : 9');
-        expect(graphView).toContain('nonPc ? 22 : 10');
         expect(controller).toContain("graphView.setNonPcTypography(deviceIsNonPc())");
     });
 
@@ -51,3 +55,4 @@ describe("PKM responsive search and file drawer", () => {
         expect(controller).toContain("subscribeNonPcViewport");
     });
 });
+
