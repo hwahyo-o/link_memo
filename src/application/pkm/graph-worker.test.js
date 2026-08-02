@@ -41,20 +41,21 @@ describe("PKM graph worker algorithms", () => {
         }
     });
 
-    it("places hierarchy levels on concentric radial rings", () => {
+    it("places linked nodes as a force-directed network near their edges", () => {
         const nodes = [
             { id: "category", kind: "category", width: 196, height: 72 },
             { id: "subcategory", kind: "subcategory", width: 174, height: 64 },
-            { id: "item", kind: "item", width: 188, height: 68 }
+            { id: "item", kind: "item", width: 188, height: 68 },
+            { id: "orphan", kind: "item", width: 188, height: 68 }
         ];
         const positions = new Map(layoutGraph(nodes, [
             { source: "category", target: "subcategory", kind: "category-membership" },
             { source: "subcategory", target: "item", kind: "subcategory-membership" }
-        ], 0).map(position => [position.id, position]));
-        const radius = id => Math.hypot(positions.get(id).x, positions.get(id).y);
-        expect(radius("category")).toBe(0);
-        expect(radius("subcategory")).toBeGreaterThan(200);
-        expect(radius("item")).toBeGreaterThan(radius("subcategory"));
+        ], 36).map(position => [position.id, position]));
+        const distance = (left, right) => Math.hypot(positions.get(left).x - positions.get(right).x, positions.get(left).y - positions.get(right).y);
+        expect(distance("category", "subcategory")).toBeLessThan(260);
+        expect(distance("subcategory", "item")).toBeLessThan(260);
+        expect(distance("category", "orphan")).toBeGreaterThan(500);
     });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {

@@ -34,11 +34,18 @@ describe("graph node policy", () => {
 
     it("raises a selected non-match and restores it below the dim layer after deselection", () => {
         expect(visual({ searchActive: true, selected: true, selectedBeforeSearch: true, hasSelection: true })).toMatchObject({ opacity: 1, layer: "above", borderColor: "#FF9797", shadowOpacity: 0.62 });
-        expect(visual({ searchActive: true })).toMatchObject({ opacity: 0.5, layer: "below", shadowOpacity: 0 });
+        expect(visual({ searchActive: true })).toMatchObject({ opacity: 0.5, layer: "below", shadowOpacity: 0, dimOverlayOpacity: 0.24 });
         expect(visual({ searchActive: true, hasSelection: true })).toMatchObject({ opacity: 0.5, layer: "below", shadowOpacity: 0 });
     });
 
     it("uses the stronger selected search shadow for direct and context matches", () => {
         expect(visual({ searchActive: true, selected: true, hasSelection: true, match: "direct" })).toMatchObject({ shadowOpacity: 0.8, shadowOffsetX: 5, shadowOffsetY: 7, shadowBlur: 7 });
+    });
+
+    it("keeps matching nodes clear while dimming only non-matches", () => {
+        expect(visual({ searchActive: true, match: "direct" })).toMatchObject({ opacity: 1, dimOverlayOpacity: 0, layer: "above" });
+        expect(visual({ searchActive: true, match: "context" })).toMatchObject({ dimOverlayOpacity: 0, layer: "above" });
+        expect(visual({ searchActive: true, match: "none" })).toMatchObject({ dimOverlayOpacity: 0.24, layer: "below" });
+        expect(visual({ searchActive: true, selected: true, selectedBeforeSearch: true, match: "none" })).toMatchObject({ dimOverlayOpacity: 0, shadowOpacity: 0.62, layer: "above" });
     });
 });

@@ -392,3 +392,25 @@ Drop shadow의 정확한 계약은 CSS/Cytoscape 좌표 기준 `offset-x: 3px`, 
 - Phase B Gate: 드래그·position 이벤트에서 Cytoscape 노드와 HTML 라벨을 함께 갱신하며, 검색 clear 버튼·24% dim layer·shadow 좌표를 정적 UI 계약으로 확인했다.
 - Phase C Gate: Vitest 30개 파일 108개 테스트와 Vite production build가 성공했다. PR #45의 Branch CI와 Test and Deploy GitHub Pages가 모두 성공했다.
 - 브라우저 세션은 현재 제공되지 않아 실제 포인터 조작은 자동화하지 못했다. 대신 공개 Pages HTTP 200 및 배포된 HTML/자산의 기능 토큰을 병합 후 재확인한다.
+
+## 12. 후속 변경 계획: 네트워크 그래프·선택 효과·검색 dim 계층
+
+### 12.1 문제별 수정 계획
+
+1. 동심원 방사형 ring 배치를 일반적인 네트워크 그래프로 교체한다. 초기 좌표는 연결 성분·부모 관계를 고려한 deterministic seed로 만들고, 링크 힘·반발력·충돌 반경을 제한된 반복으로 계산한다. 최종 AABB 패킹으로 노드 겹침은 계속 방지한다.
+2. 한 번 클릭/탭으로 선택된 노드는 Cytoscape `shadow-color`와 `shadow-opacity`를 이용한 색상 동일 box-shadow를 유지한다. 검색 중에도 선택 노드의 shadow와 z-index가 검색 dim layer보다 위에 남아야 한다.
+3. 검색 중 dim layer는 그래프 전체 위에 놓되, 검색 직접 일치·1-hop 노드와 선택 노드는 dim layer보다 위에 올린다. 미일치 노드는 dim layer 아래에 두어 어둡게 보이게 하고, 일치 노드는 검색 전 배경색·opacity를 유지한다. dim layer 자체는 단일 오버레이로 중복 어둡게 하지 않는다.
+
+### 12.2 Process Phase와 Gate
+
+- **Phase A — 도메인/레이아웃**: 네트워크 force 계약, connected component seed, 충돌 반경, 선택 shadow·검색 layer 정책을 순수 함수 테스트로 고정한다. Gate: 유한 좌표·성분 분리·AABB 무겹침·상태 매트릭스 통과.
+- **Phase B — 화면 연결**: worker 네트워크 배치, Cytoscape 선택 이벤트, dim layer z-index/layer 분리와 라벨 동기화를 반영한다. Gate: 정적 UI 계약과 기존 검색·더블클릭·파일 열기 회귀 통과.
+- **Phase C — 검증/배포**: Vitest, Vite build, GitHub Actions, 공개 Pages HTML/asset smoke check를 수행한다. Gate: 모든 CI 성공 후에만 main 병합.
+
+### 12.3 실패 시 재수정 Loop
+
+네트워크 겹침 → 반발력/충돌 반경/최종 패킹 재조정 → 무겹침 회귀 테스트. 선택 shadow 누락 → select/tap 이벤트와 visual policy 입력을 대조 → 선택·검색 순서별 테스트. 일치 노드까지 어두워짐 → dim layer와 노드 layer/z-index를 분리 → opacity·stacking 정적 계약 재실행. CI 실패 시 실패 로그의 단일 원인만 수정하고 동일 Gate를 반복한다.
+
+### 12.4 검증 절차
+
+도메인 테스트로 연결 성분·force 좌표·선택 shadow·direct/context/non-match layer를 검증한다. 정적 테스트로 dim layer가 `z-index` 2, 일치 노드가 30, 미일치 노드가 1인지 확인한다. 브라우저 세션이 제공되면 desktop/mobile에서 노드 선택, 검색 입력, 일치/미일치 대비를 확인한다. 세션이 없으면 로컬 테스트·빌드 및 공개 번들의 상태 토큰을 검증하고 브라우저 미검증을 보고한다.

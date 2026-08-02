@@ -10,6 +10,7 @@ const STYLE = [
         "shadow-offset-y": "data(visualShadowOffsetY)",
         "shadow-blur": "data(visualShadowBlur)",
         "shadow-color": "data(visualShadowColor)", "shadow-opacity": "data(visualShadowOpacity)",
+        "overlay-color": "#0f172a", "overlay-opacity": "data(visualDimOverlayOpacity)", "overlay-padding": 0,
         "z-index": "data(visualZIndex)"
     } },
     { selector: "edge", style: {
@@ -116,6 +117,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
                     visualShadowOffsetX: state.shadowOffsetX,
                     visualShadowOffsetY: state.shadowOffsetY,
                     visualShadowBlur: state.shadowBlur,
+                    visualDimOverlayOpacity: state.dimOverlayOpacity,
                     visualZIndex: state.layer === "above" ? 30 : 1
                 });
             });
@@ -145,7 +147,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
             label.style.left = `${point.x}px`;
             label.style.top = `${point.y}px`;
             label.style.width = `${Math.max(80, Number(data.width) * zoom)}px`;
-            label.style.opacity = String(data.visualOpacity ?? 1);
+            label.style.opacity = String((data.visualOpacity ?? 1) * (1 - (data.visualDimOverlayOpacity ?? 0)));
             label.style.zIndex = String(data.visualZIndex || 1);
             const title = document.createElement("strong");
             title.textContent = data.title || data.label || "";
@@ -205,6 +207,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
             visualOpacity: 1, visualBorderWidth: 1, visualBorderColor: "#94A3B8",
             visualShadowColor: node.color, visualShadowOpacity: 0,
             visualShadowOffsetX: 3, visualShadowOffsetY: 4, visualShadowBlur: 5,
+            visualDimOverlayOpacity: 0,
             visualZIndex: 30, ...node
         }));
         const nodeIds = new Set(nodes.map(node => node.id));
