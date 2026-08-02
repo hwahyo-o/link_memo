@@ -41,6 +41,7 @@ describe("PKM responsive search and file drawer", () => {
         expect(styles).toContain("font-size: 10px; font-weight: 500");
         expect(styles).toContain(".graph-canvas.is-non-pc .graph-node-label strong { font-size: 20px; }");
         expect(styles).toContain(".graph-canvas.is-non-pc .graph-node-label span { font-size: 16px; }");
+        expect(styles).toContain(".graph-node-label { position: absolute; display: grid; box-sizing: border-box;");
         expect(styles).toContain(".graph-dim-layer.is-active { background: rgb(15 23 42 / 24%); }");
         expect(styles).toContain(".graph-canvas { position: absolute; z-index: 1;");
         expect(styles).toContain(".graph-dim-layer { position: absolute; z-index: 0;");
