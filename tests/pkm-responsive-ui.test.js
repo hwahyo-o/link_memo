@@ -55,6 +55,9 @@ describe("PKM responsive search and file drawer", () => {
         expect(graphView).toContain('"corner-radius": "data(cornerRadius)"');
         expect(graphView).toContain("cornerRadius: Math.min");
         expect(graphView).toContain('shape: "round-rectangle"');
+        expect(graphView).toContain("const scaledFont = (base, minimum, maximum)");
+        expect(graphView).toContain("title.style.fontSize = titleFontSize");
+        expect(graphView).toContain("keywords.style.fontSize = keywordFontSize");
         expect(graphWorker).toContain("findFreePosition");
         expect(graphWorker).toContain("goldenAngle");
         expect(graphWorker).not.toContain("target.x + minX");
