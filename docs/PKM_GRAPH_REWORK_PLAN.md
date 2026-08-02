@@ -414,3 +414,25 @@ Drop shadow의 정확한 계약은 CSS/Cytoscape 좌표 기준 `offset-x: 3px`, 
 ### 12.4 검증 절차
 
 도메인 테스트로 연결 성분·force 좌표·선택 shadow·direct/context/non-match layer를 검증한다. 정적 테스트로 dim layer가 `z-index` 2, 일치 노드가 30, 미일치 노드가 1인지 확인한다. 브라우저 세션이 제공되면 desktop/mobile에서 노드 선택, 검색 입력, 일치/미일치 대비를 확인한다. 세션이 없으면 로컬 테스트·빌드 및 공개 번들의 상태 토큰을 검증하고 브라우저 미검증을 보고한다.
+
+## 13. 후속 변경 계획: 캡슐 노드·충분한 충돌 여백·fileTree 타이포그래피
+
+### 13.1 문제별 수정 계획
+
+1. Cytoscape `round-rectangle`에 노드 높이의 절반인 `corner-radius`를 지정해 모든 노드를 캡슐 형태로 렌더링한다.
+2. 네트워크 레이아웃의 충돌 분리 기준을 노드 반쪽 크기 + 64px로 높이고, 최종 분리 반복을 늘려 AABB 겹침과 과밀 배치를 방지한다.
+3. `#fileTree` 내부 그룹/제한 안내 텍스트는 18px에서 16px로, 파일 행 텍스트는 20px에서 18px로 재정의한다. 모바일 미디어 쿼리보다 높은 선택자 우선순위를 사용해 모든 화면 크기에 동일하게 적용한다.
+
+### 13.2 Process Phase와 Gate
+
+- **Phase A — 렌더링/레이아웃**: corner-radius 데이터 계약, 64px 충돌 여백, fileTree 선택자 테스트 작성. Gate: 캡슐 스타일 토큰·AABB 무겹침·최소 분리 간격 통과.
+- **Phase B — 회귀 검증**: 기존 검색/선택 shadow/dim layer와 파일 트리 상호작용을 유지한 상태에서 정적 UI 계약과 전체 테스트를 실행한다. Gate: 기존 기능 회귀 없음.
+- **Phase C — 배포**: production build, GitHub Actions, 공개 Pages 자산 확인 후 main 병합한다.
+
+### 13.3 실패 시 재수정 Loop
+
+캡슐 모서리 미적용 → Cytoscape corner-radius 데이터 매핑 확인 → 스타일 회귀 테스트. 겹침 또는 여백 부족 → 충돌 반경·cell size·반복 수 조정 → 전체 쌍 AABB와 최소 분리 간격 재검증. fileTree만 글자가 커짐 → `#fileTree` 선택자 우선순위 확인 → desktop/mobile CSS 회귀 테스트.
+
+### 13.4 검증 절차
+
+노드 스타일에 `round-rectangle`와 `corner-radius`가 연결되는지 정적 테스트하고, worker 좌표에서 겹침 0건과 최소 64px 분리 간격을 계산한다. `#fileTree` 그룹 라벨·파일 행의 최종 font-size를 정적 CSS 계약으로 확인한다. 브라우저 세션이 없으면 원격 CI 및 공개 Pages 번들 smoke check를 수행하고 포인터 기반 시각 검증의 제한을 기록한다.

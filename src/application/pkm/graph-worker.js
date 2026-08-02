@@ -80,7 +80,7 @@ function initialNetworkPositions(nodes, edges) {
 }
 
 function separateOverlaps(nodes, positions, passes = 4) {
-    const cellSize = 240;
+    const cellSize = 320;
     for (let pass = 0; pass < passes; pass += 1) {
         const buckets = new Map();
         for (const node of nodes) {
@@ -97,8 +97,8 @@ function separateOverlaps(nodes, positions, passes = 4) {
                 for (const other of buckets.get(`${x},${y}`) || []) {
                     if (node.id >= other.id) continue;
                     const target = positions.get(other.id);
-                    const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + 24;
-                    const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + 24;
+                    const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + 64;
+                    const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + 64;
                     const dx = position.x - target.x;
                     const dy = position.y - target.y;
                     if (Math.abs(dx) >= minX || Math.abs(dy) >= minY) continue;
@@ -152,7 +152,7 @@ export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes
         }
         separateOverlaps(nodes, positions, 1);
     }
-    separateOverlaps(nodes, positions, nodes.length > 5_000 ? 1 : 5);
+    separateOverlaps(nodes, positions, nodes.length > 5_000 ? 4 : 12);
     return nodes.map(node => {
         const position = positions.get(node.id);
         return { id: node.id, x: position.x, y: position.y };
