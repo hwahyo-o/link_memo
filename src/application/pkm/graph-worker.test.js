@@ -43,7 +43,7 @@ describe("PKM graph worker algorithms", () => {
                 minimumSeparatingGap = Math.min(minimumSeparatingGap, Math.max(gapX, gapY));
             }
         }
-        expect(minimumSeparatingGap).toBeGreaterThanOrEqual(64);
+        expect(minimumSeparatingGap).toBeGreaterThanOrEqual(96);
     });
 
     it("places linked nodes as a force-directed network near their edges", () => {

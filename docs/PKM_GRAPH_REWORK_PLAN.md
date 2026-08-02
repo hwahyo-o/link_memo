@@ -420,12 +420,12 @@ Drop shadow의 정확한 계약은 CSS/Cytoscape 좌표 기준 `offset-x: 3px`, 
 ### 13.1 문제별 수정 계획
 
 1. Cytoscape `round-rectangle`에 노드 높이의 절반인 `corner-radius`를 지정해 모든 노드를 캡슐 형태로 렌더링한다.
-2. 네트워크 레이아웃의 충돌 분리 기준을 노드 반쪽 크기 + 64px로 높이고, 최종 분리 반복을 늘려 AABB 겹침과 과밀 배치를 방지한다.
+2. 네트워크 레이아웃의 충돌 분리 기준을 노드 반쪽 크기 + 96px로 높이고, 최종 분리 반복을 늘려 AABB 겹침과 과밀 배치를 방지한다.
 3. `#fileTree` 내부 그룹/제한 안내 텍스트는 18px에서 16px로, 파일 행 텍스트는 20px에서 18px로 재정의한다. 모바일 미디어 쿼리보다 높은 선택자 우선순위를 사용해 모든 화면 크기에 동일하게 적용한다.
 
 ### 13.2 Process Phase와 Gate
 
-- **Phase A — 렌더링/레이아웃**: corner-radius 데이터 계약, 64px 충돌 여백, fileTree 선택자 테스트 작성. Gate: 캡슐 스타일 토큰·AABB 무겹침·최소 분리 간격 통과.
+- **Phase A — 렌더링/레이아웃**: corner-radius 데이터 계약, 96px 충돌 여백, fileTree 선택자 테스트 작성. Gate: 캡슐 스타일 토큰·AABB 무겹침·최소 분리 간격 통과.
 - **Phase B — 회귀 검증**: 기존 검색/선택 shadow/dim layer와 파일 트리 상호작용을 유지한 상태에서 정적 UI 계약과 전체 테스트를 실행한다. Gate: 기존 기능 회귀 없음.
 - **Phase C — 배포**: production build, GitHub Actions, 공개 Pages 자산 확인 후 main 병합한다.
 
@@ -435,18 +435,18 @@ Drop shadow의 정확한 계약은 CSS/Cytoscape 좌표 기준 `offset-x: 3px`, 
 
 ### 13.4 검증 절차
 
-노드 스타일에 `round-rectangle`와 `corner-radius`가 연결되는지 정적 테스트하고, worker 좌표에서 겹침 0건과 최소 64px 분리 간격을 계산한다. `#fileTree` 그룹 라벨·파일 행의 최종 font-size를 정적 CSS 계약으로 확인한다. 브라우저 세션이 없으면 원격 CI 및 공개 Pages 번들 smoke check를 수행하고 포인터 기반 시각 검증의 제한을 기록한다.
+노드 스타일에 `round-rectangle`와 `corner-radius`가 연결되는지 정적 테스트하고, worker 좌표에서 겹침 0건과 최소 96px 분리 간격을 계산한다. `#fileTree` 그룹 라벨·파일 행의 최종 font-size를 정적 CSS 계약으로 확인한다. 브라우저 세션이 없으면 원격 CI 및 공개 Pages 번들 smoke check를 수행하고 포인터 기반 시각 검증의 제한을 기록한다.
 
 ## 14. 후속 수정 계획: 밀집 네트워크의 최종 AABB 패킹 보강
 
 ### 14.1 문제별 수정 계획
 
 1. force 계산 중 같은 영역에 몰린 노드가 반복형 충돌 보정 후에도 겹칠 수 있으므로, 레이아웃 마지막에 force 결과의 상대 순서를 보존하는 공간 버킷 기반 greedy 패킹을 추가한다.
-2. 각 노드는 이미 배치된 이웃 후보와 실제 폭·높이 + 64px 여백을 비교하고, 충돌하면 오른쪽 빈 위치로 이동한 후 다시 검사한다. 배치 완료 시점에는 모든 앞선 노드와 AABB가 분리되도록 한다.
+2. 각 노드는 이미 배치된 이웃 후보와 실제 폭·높이 + 96px 여백을 비교하고, 충돌하면 오른쪽 빈 위치로 이동한 후 다시 검사한다. HTML 라벨은 `box-sizing: border-box`로 캡슐 폭 안에 포함한다. 배치 완료 시점에는 모든 앞선 노드와 AABB가 분리되도록 한다.
 
 ### 14.2 Process Phase와 Gate
 
-- **Phase A — 충돌 규칙**: greedy 패커와 버킷 후보 탐색을 구현하고 밀집 fixture의 전체 쌍 겹침 0건·최소 64px 분리 간격을 검증한다.
+- **Phase A — 충돌 규칙**: greedy 패커와 버킷 후보 탐색을 구현하고 밀집 fixture의 전체 쌍 겹침 0건·최소 96px 분리 간격을 검증한다.
 - **Phase B — 회귀 검증**: 네트워크 링크 거리·캡슐 corner-radius·검색/선택 시각 정책을 유지한 채 대규모 레이아웃과 파일 트리 테스트를 실행한다.
 - **Phase C — 배포**: CI와 Pages smoke check가 성공한 후에만 main 병합한다.
 

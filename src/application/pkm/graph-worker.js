@@ -80,7 +80,8 @@ function initialNetworkPositions(nodes, edges) {
 }
 
 function packWithoutOverlap(nodes, positions) {
-    const cellSize = 320;
+    const nodeGap = 96;
+    const cellSize = 400;
     const buckets = new Map();
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
     const ordered = nodes.slice().sort((left, right) => {
@@ -99,8 +100,8 @@ function packWithoutOverlap(nodes, positions) {
             for (let x = cellX - 1; x <= cellX + 1; x += 1) for (let y = cellY - 1; y <= cellY + 1; y += 1) {
                 for (const other of buckets.get(`${x},${y}`) || []) {
                     const target = positions.get(other.id);
-                    const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + 64;
-                    const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + 64;
+                    const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + nodeGap;
+                    const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + nodeGap;
                     if (Math.abs(position.x - target.x) >= minX || Math.abs(position.y - target.y) >= minY) continue;
                     collision = true;
                     nextX = Math.max(nextX, target.x + minX);

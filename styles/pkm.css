@@ -94,7 +94,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .graph-dim-layer { position: absolute; z-index: 0; inset: 0; background: rgb(15 23 42 / 0%); pointer-events: none; transition: background .15s ease; }
 .graph-dim-layer.is-active { background: rgb(15 23 42 / 24%); }
 .graph-node-labels { position: absolute; z-index: 4; inset: 0; overflow: hidden; pointer-events: none; }
-.graph-node-label { position: absolute; display: grid; gap: 2px; transform: translate(-50%, -50%); padding-inline: 8px; color: #334155; text-align: center; line-height: 1.1; }
+.graph-node-label { position: absolute; display: grid; box-sizing: border-box; gap: 2px; transform: translate(-50%, -50%); padding-inline: 8px; color: #334155; text-align: center; line-height: 1.1; }
 .graph-node-label strong { overflow: hidden; font-size: 14px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .graph-node-label span { overflow: hidden; font-size: 10px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .graph-canvas.is-non-pc .graph-node-label strong { font-size: 20px; }
