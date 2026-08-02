@@ -5,6 +5,7 @@ const html = readFileSync(new URL("../pkm.html", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../styles/pkm.css", import.meta.url), "utf8");
 const controller = readFileSync(new URL("../src/presentation/pkm/app-controller.js", import.meta.url), "utf8");
 const graphView = readFileSync(new URL("../src/presentation/pkm/graph-view.js", import.meta.url), "utf8");
+const graphWorker = readFileSync(new URL("../src/application/pkm/graph-worker.js", import.meta.url), "utf8");
 
 describe("PKM responsive search and file drawer", () => {
     it("keeps an explicit clear control visible while a query exists", () => {
@@ -54,6 +55,9 @@ describe("PKM responsive search and file drawer", () => {
         expect(graphView).toContain('"corner-radius": "data(cornerRadius)"');
         expect(graphView).toContain("cornerRadius: Math.min");
         expect(graphView).toContain('shape: "round-rectangle"');
+        expect(graphWorker).toContain("findFreePosition");
+        expect(graphWorker).toContain("goldenAngle");
+        expect(graphWorker).not.toContain("target.x + minX");
         expect(controller).toContain("graphView.setNonPcTypography(deviceIsNonPc())");
     });
 
