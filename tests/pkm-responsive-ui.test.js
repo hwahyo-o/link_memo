@@ -7,10 +7,13 @@ const controller = readFileSync(new URL("../src/presentation/pkm/app-controller.
 const graphView = readFileSync(new URL("../src/presentation/pkm/graph-view.js", import.meta.url), "utf8");
 
 describe("PKM responsive search and file drawer", () => {
-    it("uses only the browser-native search clear control", () => {
+    it("keeps an explicit clear control visible while a query exists", () => {
         expect(html).toContain('id="graphSearch" type="search"');
-        expect(html).not.toContain('id="clearSearch"');
-        expect(controller).not.toContain('byId("clearSearch")');
+        expect(html).toContain('id="clearGraphSearch"');
+        expect(html).toContain('class="search-clear hidden"');
+        expect(styles).toContain(".search-field input::-webkit-search-cancel-button { display: none; }");
+        expect(controller).toContain('byId("clearGraphSearch").classList.toggle("hidden", !query.trim())');
+        expect(controller).toContain('byId("clearGraphSearch").addEventListener("click"');
     });
 
     it("prevents flex shrink with a responsive 42px to 52px minimum", () => {
@@ -38,7 +41,9 @@ describe("PKM responsive search and file drawer", () => {
         expect(styles).toContain("font-size: 10px; font-weight: 500");
         expect(styles).toContain(".graph-canvas.is-non-pc .graph-node-label strong { font-size: 20px; }");
         expect(styles).toContain(".graph-canvas.is-non-pc .graph-node-label span { font-size: 16px; }");
+        expect(styles).toContain(".graph-dim-layer.is-active { background: rgb(15 23 42 / 24%); }");
         expect(graphView).toContain("setNonPcTypography(nonPc)");
+        expect(graphView).toContain('cy.on("drag position pan zoom resize"');
         expect(controller).toContain("graphView.setNonPcTypography(deviceIsNonPc())");
     });
 
@@ -55,4 +60,3 @@ describe("PKM responsive search and file drawer", () => {
         expect(controller).toContain("subscribeNonPcViewport");
     });
 });
-

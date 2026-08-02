@@ -20,21 +20,25 @@ describe("graph node policy", () => {
 
     it("applies selection without a query", () => {
         expect(visual({ selected: true, hasSelection: true })).toMatchObject({ opacity: 1, shadowOpacity: 0.58 });
-        expect(visual({ hasSelection: true })).toMatchObject({ opacity: 0.7, shadowOpacity: 0 });
+        expect(visual({ hasSelection: true })).toMatchObject({ opacity: 0.5, shadowOpacity: 0 });
     });
 
     it.each([
         ["direct", false, 1, "#2563EB"],
-        ["direct", true, 0.85, "#2563EB"],
-        ["context", false, 0.85, "#38BDF8"],
-        ["context", true, 0.7, "#38BDF8"]
+        ["direct", true, 0.7, "#2563EB"],
+        ["context", false, 0.7, "#38BDF8"],
+        ["context", true, 0.5, "#38BDF8"]
     ])("applies %s search state", (match, hasSelection, opacity, borderColor) => {
         expect(visual({ searchActive: true, match, hasSelection })).toMatchObject({ opacity, borderColor, borderWidth: 3, layer: "above" });
     });
 
     it("raises a selected non-match and restores it below the dim layer after deselection", () => {
-        expect(visual({ searchActive: true, selected: true, hasSelection: true })).toMatchObject({ opacity: 1, layer: "above", borderColor: "#FF9797", shadowOpacity: 0.62 });
-        expect(visual({ searchActive: true })).toMatchObject({ opacity: 0.7, layer: "below", shadowOpacity: 0 });
-        expect(visual({ searchActive: true, hasSelection: true })).toMatchObject({ opacity: 0.7, layer: "above", shadowOpacity: 0 });
+        expect(visual({ searchActive: true, selected: true, selectedBeforeSearch: true, hasSelection: true })).toMatchObject({ opacity: 1, layer: "above", borderColor: "#FF9797", shadowOpacity: 0.62 });
+        expect(visual({ searchActive: true })).toMatchObject({ opacity: 0.5, layer: "below", shadowOpacity: 0 });
+        expect(visual({ searchActive: true, hasSelection: true })).toMatchObject({ opacity: 0.5, layer: "below", shadowOpacity: 0 });
+    });
+
+    it("uses the stronger selected search shadow for direct and context matches", () => {
+        expect(visual({ searchActive: true, selected: true, hasSelection: true, match: "direct" })).toMatchObject({ shadowOpacity: 0.8, shadowOffsetX: 5, shadowOffsetY: 7, shadowBlur: 7 });
     });
 });

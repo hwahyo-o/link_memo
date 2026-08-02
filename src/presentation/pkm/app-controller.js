@@ -122,6 +122,7 @@ export function createPkmApp({
 
     function updateSearch() {
         const query = byId("graphSearch").value;
+        byId("clearGraphSearch").classList.toggle("hidden", !query.trim());
         if (!query.trim()) {
             graphView.clearHighlights();
             byId("fitSearchResults").classList.add("hidden");
@@ -261,6 +262,11 @@ export function createPkmApp({
     byId("graphSearch").addEventListener("input", () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(updateSearch, 300);
+    });
+    byId("clearGraphSearch").addEventListener("click", () => {
+        byId("graphSearch").value = "";
+        byId("graphSearch").focus();
+        updateSearch();
     });
     document.addEventListener("keydown", event => {
         if (event.key !== "Escape") return;
