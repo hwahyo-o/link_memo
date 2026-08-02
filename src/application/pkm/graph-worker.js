@@ -79,45 +79,39 @@ function initialNetworkPositions(nodes, edges) {
     return positions;
 }
 
-function separateOverlaps(nodes, positions, passes = 4) {
+function packWithoutOverlap(nodes, positions) {
     const cellSize = 320;
-    for (let pass = 0; pass < passes; pass += 1) {
-        const buckets = new Map();
-        for (const node of nodes) {
-            const position = positions.get(node.id);
-            const key = `${Math.floor(position.x / cellSize)},${Math.floor(position.y / cellSize)}`;
-            if (!buckets.has(key)) buckets.set(key, []);
-            buckets.get(key).push(node);
-        }
-        for (const node of nodes) {
-            const position = positions.get(node.id);
+    const buckets = new Map();
+    const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
+    const ordered = nodes.slice().sort((left, right) => {
+        const a = positions.get(left.id);
+        const b = positions.get(right.id);
+        return a.y - b.y || a.x - b.x || left.id.localeCompare(right.id);
+    });
+    for (const node of ordered) {
+        const position = positions.get(node.id);
+        let guard = 0;
+        while (guard++ < 10_000) {
             const cellX = Math.floor(position.x / cellSize);
             const cellY = Math.floor(position.y / cellSize);
+            let nextX = position.x;
+            let collision = false;
             for (let x = cellX - 1; x <= cellX + 1; x += 1) for (let y = cellY - 1; y <= cellY + 1; y += 1) {
                 for (const other of buckets.get(`${x},${y}`) || []) {
-                    if (node.id >= other.id) continue;
                     const target = positions.get(other.id);
                     const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + 64;
                     const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + 64;
-                    const dx = position.x - target.x;
-                    const dy = position.y - target.y;
-                    if (Math.abs(dx) >= minX || Math.abs(dy) >= minY) continue;
-                    const pushX = minX - Math.abs(dx);
-                    const pushY = minY - Math.abs(dy);
-                    if (pushX < pushY) {
-                        const direction = dx || (node.id < other.id ? 1 : -1);
-                        const delta = (direction < 0 ? -pushX : pushX) / 2;
-                        position.x += delta;
-                        target.x -= delta;
-                    } else {
-                        const direction = dy || (node.id < other.id ? 1 : -1);
-                        const delta = (direction < 0 ? -pushY : pushY) / 2;
-                        position.y += delta;
-                        target.y -= delta;
-                    }
+                    if (Math.abs(position.x - target.x) >= minX || Math.abs(position.y - target.y) >= minY) continue;
+                    collision = true;
+                    nextX = Math.max(nextX, target.x + minX);
                 }
             }
+            if (!collision) break;
+            position.x = nextX > position.x ? nextX : position.x + cellSize;
         }
+        const key = bucketKey(position.x, position.y);
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(node);
     }
 }
 
@@ -150,9 +144,8 @@ export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes
             position.x += Math.max(-28, Math.min(28, position.vx));
             position.y += Math.max(-28, Math.min(28, position.vy));
         }
-        separateOverlaps(nodes, positions, 1);
     }
-    separateOverlaps(nodes, positions, nodes.length > 5_000 ? 4 : 12);
+    packWithoutOverlap(nodes, positions);
     return nodes.map(node => {
         const position = positions.get(node.id);
         return { id: node.id, x: position.x, y: position.y };

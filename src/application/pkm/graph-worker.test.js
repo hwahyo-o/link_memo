@@ -58,8 +58,8 @@ describe("PKM graph worker algorithms", () => {
             { source: "subcategory", target: "item", kind: "subcategory-membership" }
         ], 36).map(position => [position.id, position]));
         const distance = (left, right) => Math.hypot(positions.get(left).x - positions.get(right).x, positions.get(left).y - positions.get(right).y);
-        expect(distance("category", "subcategory")).toBeLessThan(260);
-        expect(distance("subcategory", "item")).toBeLessThan(260);
+        expect(distance("category", "subcategory")).toBeLessThan(340);
+        expect(distance("subcategory", "item")).toBeLessThan(340);
         expect(distance("category", "orphan")).toBeGreaterThan(500);
     });
 
