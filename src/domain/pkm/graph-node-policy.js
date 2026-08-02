@@ -26,7 +26,8 @@ export function deriveNodeVisualState({ searchActive, match = "none", hasSelecti
         shadowOpacity: 0,
         shadowOffsetX: 3,
         shadowOffsetY: 4,
-        shadowBlur: 5
+        shadowBlur: 5,
+        dimOverlayOpacity: 0
     };
 
     if (!searchActive) {
@@ -63,5 +64,6 @@ export function deriveNodeVisualState({ searchActive, match = "none", hasSelecti
 
     state.opacity = 0.5;
     state.layer = "below";
+    state.dimOverlayOpacity = 0.24;
     return state;
 }

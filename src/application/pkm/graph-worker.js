@@ -27,37 +27,98 @@ export function parseMetadata(file) {
     };
 }
 
-const kindRank = kind => kind === "category" ? 0 : kind === "subcategory" ? 1 : kind === "item" ? 2 : 3;
-
-function nodeDepths(nodes, edges) {
-    const ids = new Set(nodes.map(node => node.id));
-    const parentOf = new Map();
-    for (const edge of edges) {
-        if (!ids.has(edge.source) || !ids.has(edge.target)) continue;
-        if (edge.kind === "category-membership" || edge.kind === "subcategory-membership") {
-            parentOf.set(edge.target, edge.source);
-        }
-    }
-    const cache = new Map();
-    const depthOf = id => {
-        if (cache.has(id)) return cache.get(id);
-        const parent = parentOf.get(id);
-        if (!parent || parent === id) {
-            cache.set(id, 0);
-            return 0;
-        }
-        const depth = Math.min(8, depthOf(parent) + 1);
-        cache.set(id, depth);
-        return depth;
-    };
-    return { parentOf, depthOf };
+function hashSeed(value) {
+    let hash = 2166136261;
+    for (const character of String(value)) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+    return (hash >>> 0) / 4294967296;
 }
 
-function ringRadius(count, maxWidth, maxHeight, depth) {
-    if (count <= 1) return depth === 0 ? 0 : 240 * depth;
-    const safeSize = Math.max(maxWidth, maxHeight) * Math.SQRT2;
-    const angularRadius = safeSize / (2 * Math.sin(Math.PI / count));
-    return Math.max(240 * (depth + 1), angularRadius + safeSize + 40);
+function connectedComponents(nodes, edges) {
+    const parent = new Map(nodes.map(node => [node.id, node.id]));
+    const find = id => {
+        let root = id;
+        while (parent.get(root) !== root) root = parent.get(root);
+        while (parent.get(id) !== id) {
+            const next = parent.get(id);
+            parent.set(id, root);
+            id = next;
+        }
+        return root;
+    };
+    const join = (left, right) => {
+        const a = find(left);
+        const b = find(right);
+        if (a !== b) parent.set(b, a);
+    };
+    for (const edge of edges) if (parent.has(edge.source) && parent.has(edge.target)) join(edge.source, edge.target);
+    const components = new Map();
+    for (const node of nodes) {
+        const root = find(node.id);
+        if (!components.has(root)) components.set(root, []);
+        components.get(root).push(node);
+    }
+    return [...components.values()].sort((left, right) => right.length - left.length || left[0].id.localeCompare(right[0].id));
+}
+
+function initialNetworkPositions(nodes, edges) {
+    const positions = new Map();
+    const components = connectedComponents(nodes, edges);
+    let offset = 0;
+    components.forEach((component, componentIndex) => {
+        const componentRadius = Math.max(260, Math.sqrt(component.length) * 190);
+        const centerAngle = componentIndex * 2.399963229728653;
+        const centerX = Math.cos(centerAngle) * offset;
+        const centerY = Math.sin(centerAngle) * offset;
+        component.forEach((node, index) => {
+            const angle = index * 2.399963229728653 + hashSeed(node.id) * 0.4;
+            const radius = Math.sqrt(index + 1) * Math.max(120, componentRadius / Math.sqrt(component.length));
+            positions.set(node.id, { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius, vx: 0, vy: 0 });
+        });
+        offset += componentRadius * 2 + 320;
+    });
+    return positions;
+}
+
+function separateOverlaps(nodes, positions, passes = 4) {
+    const cellSize = 240;
+    for (let pass = 0; pass < passes; pass += 1) {
+        const buckets = new Map();
+        for (const node of nodes) {
+            const position = positions.get(node.id);
+            const key = `${Math.floor(position.x / cellSize)},${Math.floor(position.y / cellSize)}`;
+            if (!buckets.has(key)) buckets.set(key, []);
+            buckets.get(key).push(node);
+        }
+        for (const node of nodes) {
+            const position = positions.get(node.id);
+            const cellX = Math.floor(position.x / cellSize);
+            const cellY = Math.floor(position.y / cellSize);
+            for (let x = cellX - 1; x <= cellX + 1; x += 1) for (let y = cellY - 1; y <= cellY + 1; y += 1) {
+                for (const other of buckets.get(`${x},${y}`) || []) {
+                    if (node.id >= other.id) continue;
+                    const target = positions.get(other.id);
+                    const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + 24;
+                    const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + 24;
+                    const dx = position.x - target.x;
+                    const dy = position.y - target.y;
+                    if (Math.abs(dx) >= minX || Math.abs(dy) >= minY) continue;
+                    const pushX = minX - Math.abs(dx);
+                    const pushY = minY - Math.abs(dy);
+                    if (pushX < pushY) {
+                        const direction = dx || (node.id < other.id ? 1 : -1);
+                        const delta = (direction < 0 ? -pushX : pushX) / 2;
+                        position.x += delta;
+                        target.x -= delta;
+                    } else {
+                        const direction = dy || (node.id < other.id ? 1 : -1);
+                        const delta = (direction < 0 ? -pushY : pushY) / 2;
+                        position.y += delta;
+                        target.y -= delta;
+                    }
+                }
+            }
+        }
+    }
 }
 
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
@@ -66,42 +127,36 @@ export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes
     edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, MAX_GRAPH_EDGES);
     if (!nodes.length) return [];
 
-    const { parentOf, depthOf } = nodeDepths(nodes, edges);
-    const depths = new Map(nodes.map(node => [node.id, depthOf(node.id)]));
-    const levels = new Map();
-    for (const node of nodes) {
-        const depth = depths.get(node.id);
-        if (!levels.has(depth)) levels.set(depth, []);
-        levels.get(depth).push(node);
+    const positions = initialNetworkPositions(nodes, edges);
+    const edgePairs = edges.map(edge => ({
+        source: positions.get(edge.source), target: positions.get(edge.target),
+        distance: edge.kind === "category-membership" ? 220 : edge.kind === "subcategory-membership" ? 180 : 240
+    })).filter(edge => edge.source && edge.target);
+    const safeIterations = nodes.length > 5_000 ? Math.min(8, iterations) : Math.min(36, iterations);
+    for (let iteration = 0; iteration < safeIterations; iteration += 1) {
+        for (const pair of edgePairs) {
+            const dx = pair.target.x - pair.source.x;
+            const dy = pair.target.y - pair.source.y;
+            const distance = Math.max(1, Math.hypot(dx, dy));
+            const force = (distance - pair.distance) * 0.018;
+            pair.source.vx += dx / distance * force;
+            pair.source.vy += dy / distance * force;
+            pair.target.vx -= dx / distance * force;
+            pair.target.vy -= dy / distance * force;
+        }
+        for (const position of positions.values()) {
+            position.vx = (position.vx - position.x * 0.00035) * 0.82;
+            position.vy = (position.vy - position.y * 0.00035) * 0.82;
+            position.x += Math.max(-28, Math.min(28, position.vx));
+            position.y += Math.max(-28, Math.min(28, position.vy));
+        }
+        separateOverlaps(nodes, positions, 1);
     }
-
-    const parentOrder = new Map();
-    const orderedLevels = [...levels.keys()].sort((a, b) => a - b);
-    const positions = new Map();
-    let previousRadius = 0;
-    let previousHeight = 0;
-    for (const depth of orderedLevels) {
-        const level = levels.get(depth).sort((left, right) => {
-            const leftParent = parentOrder.get(parentOf.get(left.id)) || 0;
-            const rightParent = parentOrder.get(parentOf.get(right.id)) || 0;
-            return leftParent - rightParent || kindRank(left.kind) - kindRank(right.kind) || left.id.localeCompare(right.id);
-        });
-        const maxWidth = Math.max(50, ...level.map(node => Number(node.width) || 50));
-        const maxHeight = Math.max(50, ...level.map(node => Number(node.height) || 50));
-        const radius = Math.max(
-            ringRadius(level.length, maxWidth, maxHeight, depth),
-            depth === 0 ? 0 : previousRadius + previousHeight / 2 + maxHeight / 2 + 60
-        );
-        const start = depth === 0 ? -Math.PI / 2 : -Math.PI / 2 + (depth % 2 ? 0.15 : -0.15);
-        level.forEach((node, index) => {
-            const angle = level.length === 1 ? start : start + (Math.PI * 2 * index) / level.length;
-            positions.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
-            parentOrder.set(node.id, index);
-        });
-        previousRadius = radius;
-        previousHeight = maxHeight;
-    }
-    return nodes.map(node => ({ id: node.id, ...positions.get(node.id) }));
+    separateOverlaps(nodes, positions, nodes.length > 5_000 ? 1 : 5);
+    return nodes.map(node => {
+        const position = positions.get(node.id);
+        return { id: node.id, x: position.x, y: position.y };
+    });
 }
 
 if (typeof self !== "undefined") {

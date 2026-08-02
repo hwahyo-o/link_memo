@@ -90,8 +90,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .schema-summary { padding: 9px 7px 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 10px; line-height: 1.45; }
 
 .graph-panel { position: relative; overflow: hidden; }
-.graph-canvas { position: absolute; inset: 0; background-color: #fbfdff; background-image: radial-gradient(#dbe5f1 1px, transparent 1px); background-size: 22px 22px; }
-.graph-dim-layer { position: absolute; z-index: 2; inset: 0; background: rgb(15 23 42 / 0%); pointer-events: none; transition: background .15s ease; }
+.graph-canvas { position: absolute; z-index: 1; inset: 0; background-color: #fbfdff; background-image: radial-gradient(#dbe5f1 1px, transparent 1px); background-size: 22px 22px; }
+.graph-dim-layer { position: absolute; z-index: 0; inset: 0; background: rgb(15 23 42 / 0%); pointer-events: none; transition: background .15s ease; }
 .graph-dim-layer.is-active { background: rgb(15 23 42 / 24%); }
 .graph-node-labels { position: absolute; z-index: 4; inset: 0; overflow: hidden; pointer-events: none; }
 .graph-node-label { position: absolute; display: grid; gap: 2px; transform: translate(-50%, -50%); padding-inline: 8px; color: #334155; text-align: center; line-height: 1.1; }
