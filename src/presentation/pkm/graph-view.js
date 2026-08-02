@@ -4,6 +4,7 @@ import { deriveNodeVisualState } from "../../domain/pkm/graph-node-policy.js";
 const STYLE = [
     { selector: "node", style: {
         width: "data(width)", height: "data(height)", shape: "round-rectangle",
+        "corner-radius": "data(cornerRadius)",
         "background-color": "data(color)", "border-width": "data(visualBorderWidth)",
         "border-color": "data(visualBorderColor)", opacity: "data(visualOpacity)",
         "shadow-offset-x": "data(visualShadowOffsetX)",
@@ -204,6 +205,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
 
     function render({ nodes, edges }) {
         nodes = nodes.slice(0, MAX_GRAPH_NODES).map(node => ({
+            cornerRadius: Math.min(Number(node.width) || 188, Number(node.height) || 68) / 2,
             visualOpacity: 1, visualBorderWidth: 1, visualBorderColor: "#94A3B8",
             visualShadowColor: node.color, visualShadowOpacity: 0,
             visualShadowOffsetX: 3, visualShadowOffsetY: 4, visualShadowBlur: 5,

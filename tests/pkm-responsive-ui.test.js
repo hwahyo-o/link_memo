@@ -44,10 +44,15 @@ describe("PKM responsive search and file drawer", () => {
         expect(styles).toContain(".graph-dim-layer.is-active { background: rgb(15 23 42 / 24%); }");
         expect(styles).toContain(".graph-canvas { position: absolute; z-index: 1;");
         expect(styles).toContain(".graph-dim-layer { position: absolute; z-index: 0;");
+        expect(styles).toContain("#fileTree .file-group-label,");
+        expect(styles).toContain("#fileTree .file-row[aria-current=\"page\"] { font-size: 18px; }");
         expect(graphView).toContain("setNonPcTypography(nonPc)");
         expect(graphView).toContain('cy.on("drag position pan zoom resize"');
         expect(graphView).toContain('"overlay-opacity": "data(visualDimOverlayOpacity)"');
         expect(graphView).toContain("visualDimOverlayOpacity: state.dimOverlayOpacity");
+        expect(graphView).toContain('"corner-radius": "data(cornerRadius)"');
+        expect(graphView).toContain("cornerRadius: Math.min");
+        expect(graphView).toContain('shape: "round-rectangle"');
         expect(controller).toContain("graphView.setNonPcTypography(deviceIsNonPc())");
     });
 

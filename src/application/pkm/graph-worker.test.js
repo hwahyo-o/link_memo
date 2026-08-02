@@ -30,6 +30,7 @@ describe("PKM graph worker algorithms", () => {
         }));
         const positions = layoutGraph(nodes, [], 2);
         const placed = positions.map((position, index) => ({ ...position, ...nodes[index] }));
+        let minimumSeparatingGap = Infinity;
         for (let left = 0; left < placed.length; left += 1) {
             for (let right = left + 1; right < placed.length; right += 1) {
                 const a = placed[left];
@@ -37,8 +38,12 @@ describe("PKM graph worker algorithms", () => {
                 const overlaps = Math.abs(a.x - b.x) < (a.width + b.width) / 2
                     && Math.abs(a.y - b.y) < (a.height + b.height) / 2;
                 expect(overlaps).toBe(false);
+                const gapX = Math.abs(a.x - b.x) - (a.width + b.width) / 2;
+                const gapY = Math.abs(a.y - b.y) - (a.height + b.height) / 2;
+                minimumSeparatingGap = Math.min(minimumSeparatingGap, Math.max(gapX, gapY));
             }
         }
+        expect(minimumSeparatingGap).toBeGreaterThanOrEqual(64);
     });
 
     it("places linked nodes as a force-directed network near their edges", () => {
