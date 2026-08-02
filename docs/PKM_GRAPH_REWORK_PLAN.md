@@ -385,3 +385,10 @@ Drop shadow의 정확한 계약은 CSS/Cytoscape 좌표 기준 `offset-x: 3px`, 
 ### 11.4 검증 절차
 
 단위 테스트로 각 상태 조합과 ring 좌표를 검증하고, 정적 테스트로 clear button 상시 노출 계약·drag sync·24% dim layer를 확인한다. 브라우저 세션이 제공되면 desktop/mobile에서 검색 입력·clear·노드 드래그·선택/검색 순서를 수행한다. Browser 세션이 없으면 Vite build, Vitest, 공개 HTML/asset HTTP 검증을 수행하고 미검증 브라우저 항목을 보고한다.
+
+### 11.5 구현 결과 및 Gate 판정
+
+- Phase A/B Gate: 방사형 깊이·ring 좌표와 검색 시각 정책의 Vitest 계약을 통과했다. 노드 AABB 무겹침, 계층별 반지름 증가, 100k 노드 제한을 회귀 검증했다.
+- Phase B Gate: 드래그·position 이벤트에서 Cytoscape 노드와 HTML 라벨을 함께 갱신하며, 검색 clear 버튼·24% dim layer·shadow 좌표를 정적 UI 계약으로 확인했다.
+- Phase C Gate: Vitest 30개 파일 108개 테스트와 Vite production build가 성공했다. PR #45의 Branch CI와 Test and Deploy GitHub Pages가 모두 성공했다.
+- 브라우저 세션은 현재 제공되지 않아 실제 포인터 조작은 자동화하지 못했다. 대신 공개 Pages HTTP 200 및 배포된 HTML/자산의 기능 토큰을 병합 후 재확인한다.
