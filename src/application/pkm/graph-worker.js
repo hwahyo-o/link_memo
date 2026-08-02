@@ -84,32 +84,41 @@ function packWithoutOverlap(nodes, positions) {
     const cellSize = 400;
     const buckets = new Map();
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
+    const collides = (node, x, y) => {
+        const cellX = Math.floor(x / cellSize);
+        const cellY = Math.floor(y / cellSize);
+        for (let bucketX = cellX - 1; bucketX <= cellX + 1; bucketX += 1) for (let bucketY = cellY - 1; bucketY <= cellY + 1; bucketY += 1) {
+            for (const other of buckets.get(`${bucketX},${bucketY}`) || []) {
+                const target = positions.get(other.id);
+                const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + nodeGap;
+                const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + nodeGap;
+                if (Math.abs(x - target.x) < minX && Math.abs(y - target.y) < minY) return true;
+            }
+        }
+        return false;
+    };
+    const findFreePosition = (node, origin) => {
+        if (!collides(node, origin.x, origin.y)) return origin;
+        const goldenAngle = 2.399963229728653;
+        for (let ring = 1; ring <= 200; ring += 1) {
+            const radius = ring * 180;
+            const count = Math.max(8, ring * 8);
+            for (let index = 0; index < count; index += 1) {
+                const angle = goldenAngle * (ring * count + index) + hashSeed(node.id) * 0.5;
+                const candidate = { x: origin.x + Math.cos(angle) * radius, y: origin.y + Math.sin(angle) * radius };
+                if (!collides(node, candidate.x, candidate.y)) return candidate;
+            }
+        }
+        return { x: origin.x + 200 * Math.cos(hashSeed(node.id) * Math.PI * 2), y: origin.y + 200 * Math.sin(hashSeed(node.id) * Math.PI * 2) };
+    };
     const ordered = nodes.slice().sort((left, right) => {
         const a = positions.get(left.id);
         const b = positions.get(right.id);
-        return a.y - b.y || a.x - b.x || left.id.localeCompare(right.id);
+        return hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id);
     });
     for (const node of ordered) {
-        const position = positions.get(node.id);
-        let guard = 0;
-        while (guard++ < 10_000) {
-            const cellX = Math.floor(position.x / cellSize);
-            const cellY = Math.floor(position.y / cellSize);
-            let nextX = position.x;
-            let collision = false;
-            for (let x = cellX - 1; x <= cellX + 1; x += 1) for (let y = cellY - 1; y <= cellY + 1; y += 1) {
-                for (const other of buckets.get(`${x},${y}`) || []) {
-                    const target = positions.get(other.id);
-                    const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + nodeGap;
-                    const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + nodeGap;
-                    if (Math.abs(position.x - target.x) >= minX || Math.abs(position.y - target.y) >= minY) continue;
-                    collision = true;
-                    nextX = Math.max(nextX, target.x + minX);
-                }
-            }
-            if (!collision) break;
-            position.x = nextX > position.x ? nextX : position.x + cellSize;
-        }
+        const position = findFreePosition(node, positions.get(node.id));
+        positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
         const key = bucketKey(position.x, position.y);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(node);

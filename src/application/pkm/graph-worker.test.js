@@ -61,6 +61,8 @@ describe("PKM graph worker algorithms", () => {
         expect(distance("category", "subcategory")).toBeLessThan(340);
         expect(distance("subcategory", "item")).toBeLessThan(340);
         expect(distance("category", "orphan")).toBeGreaterThan(500);
+        expect(new Set([...positions.values()].map(position => Math.round(position.x))).size).toBeGreaterThan(2);
+        expect(new Set([...positions.values()].map(position => Math.round(position.y))).size).toBeGreaterThan(2);
     });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
