@@ -361,3 +361,34 @@ Drop shadow의 정확한 계약은 CSS/Cytoscape 좌표 기준 `offset-x: 3px`, 
 - GitHub Gate: Branch CI와 Test and Deploy GitHub Pages 성공(47개 테스트 파일, 189개 테스트).
 - 배포 확인: `pkm.html` HTTP 200, 배포 자산에서 범례/dim layer, `wheelSensitivity: 0.8`, `openPath`, legacy cleanup 코드를 확인했다.
 - 브랜치 정리: GitHub 앱에 ref 삭제 API가 없고 로컬 Git 자격증명이 없어 `drill` 삭제는 보류되었다. 코드·배포에는 영향이 없으며 GitHub UI에서 병합된 브랜치 삭제가 필요하다.
+
+## 11. 후속 변경 계획: 방사형 레이아웃·검색 상태 재조정
+
+### 11.1 문제별 수정 계획
+
+1. 현재 최종 패킹이 정사각 격자라 계층 관계가 약하다. category → subcategory → item 부모 관계를 깊이로 계산하고, 깊이별 원형 ring에 배치하는 방사형 트리 레이아웃으로 변경한다. 각 ring은 실제 노드 최대 폭·높이와 간격을 반영해 AABB가 겹치지 않도록 반지름을 산출한다.
+2. 라벨 HTML layer가 `pan/zoom` 이벤트만 듣고 노드 `position` 이벤트를 듣지 않아 드래그 직후 텍스트가 분리된다. `drag position`에서 같은 프레임에 라벨을 재배치하고, layout 결과·resize에도 동일한 sync 경로를 사용한다.
+3. 검색어가 있을 때 명시적 clear 버튼을 상시 표시한다. native search cancel UI는 숨기고 값이 비어 있을 때만 버튼을 숨긴다.
+4. 검색 상태를 다음 값으로 고정한다: 무검색 비선택 1.0, 무검색 선택 외 0.5, direct 1.0/0.7, context 0.7/0.5, non-match 0.5. 검색 dim layer는 기존 12%에서 24%로 조정한다.
+5. 검색 전부터 선택된 non-match는 검색 중에도 위 레이어·100%·노드 색 3px border·노드 색 shadow를 유지하고, 선택 해제 즉시 non-match 0.5 아래 레이어로 복귀한다. direct/context 선택 노드는 노드 색 3px border와 opacity 80% shadow(5px/7px/7px)를 사용한다.
+
+### 11.2 Process Phase와 Gate
+
+- **Phase A — 도메인 규칙**: radial depth 계산 계약, 새 opacity/shadow 상태 테이블, 검색 clear 상태 테스트 작성. Gate: 순수 함수 테스트와 색상·geometry 불변식 통과.
+- **Phase B — 처리/화면 연결**: worker ring 배치, drag position 라벨 sync, clear button DOM/event, dim layer 24% 적용. Gate: 기존 기능 테스트·무겹침·정적 UI 계약 통과.
+- **Phase C — 검증/배포**: production build, GitHub Actions, 공개 Pages smoke check. Gate: CI 녹색·배포 자산 확인 후에만 main 병합.
+
+### 11.3 실패 시 재수정 Loop
+
+레이아웃 겹침 → ring 반지름/간격 재계산 → AABB 회귀 테스트. 라벨 분리 → position 이벤트·requestAnimationFrame 순서 확인 → 드래그 테스트. 검색 상태 불일치 → 순수 정책 매트릭스와 DOM opacity/border를 대조 → 실패 상태만 수정. CI 실패 → 로그의 단일 원인을 수정하고 동일 Gate를 재실행한다.
+
+### 11.4 검증 절차
+
+단위 테스트로 각 상태 조합과 ring 좌표를 검증하고, 정적 테스트로 clear button 상시 노출 계약·drag sync·24% dim layer를 확인한다. 브라우저 세션이 제공되면 desktop/mobile에서 검색 입력·clear·노드 드래그·선택/검색 순서를 수행한다. Browser 세션이 없으면 Vite build, Vitest, 공개 HTML/asset HTTP 검증을 수행하고 미검증 브라우저 항목을 보고한다.
+
+### 11.5 구현 결과 및 Gate 판정
+
+- Phase A/B Gate: 방사형 깊이·ring 좌표와 검색 시각 정책의 Vitest 계약을 통과했다. 노드 AABB 무겹침, 계층별 반지름 증가, 100k 노드 제한을 회귀 검증했다.
+- Phase B Gate: 드래그·position 이벤트에서 Cytoscape 노드와 HTML 라벨을 함께 갱신하며, 검색 clear 버튼·24% dim layer·shadow 좌표를 정적 UI 계약으로 확인했다.
+- Phase C Gate: Vitest 30개 파일 108개 테스트와 Vite production build가 성공했다. PR #45의 Branch CI와 Test and Deploy GitHub Pages가 모두 성공했다.
+- 브라우저 세션은 현재 제공되지 않아 실제 포인터 조작은 자동화하지 못했다. 대신 공개 Pages HTTP 200 및 배포된 HTML/자산의 기능 토큰을 병합 후 재확인한다.

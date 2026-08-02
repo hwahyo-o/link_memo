@@ -41,6 +41,22 @@ describe("PKM graph worker algorithms", () => {
         }
     });
 
+    it("places hierarchy levels on concentric radial rings", () => {
+        const nodes = [
+            { id: "category", kind: "category", width: 196, height: 72 },
+            { id: "subcategory", kind: "subcategory", width: 174, height: 64 },
+            { id: "item", kind: "item", width: 188, height: 68 }
+        ];
+        const positions = new Map(layoutGraph(nodes, [
+            { source: "category", target: "subcategory", kind: "category-membership" },
+            { source: "subcategory", target: "item", kind: "subcategory-membership" }
+        ], 0).map(position => [position.id, position]));
+        const radius = id => Math.hypot(positions.get(id).x, positions.get(id).y);
+        expect(radius("category")).toBe(0);
+        expect(radius("subcategory")).toBeGreaterThan(200);
+        expect(radius("item")).toBeGreaterThan(radius("subcategory"));
+    });
+
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
         const nodes = Array.from({ length: 100_100 }, (_, index) => ({ id: `n${index}` }));
         expect(layoutGraph(nodes, [], 0)).toHaveLength(100_000);

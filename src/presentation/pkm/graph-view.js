@@ -6,7 +6,9 @@ const STYLE = [
         width: "data(width)", height: "data(height)", shape: "round-rectangle",
         "background-color": "data(color)", "border-width": "data(visualBorderWidth)",
         "border-color": "data(visualBorderColor)", opacity: "data(visualOpacity)",
-        "shadow-offset-x": 3, "shadow-offset-y": 4, "shadow-blur": 5,
+        "shadow-offset-x": "data(visualShadowOffsetX)",
+        "shadow-offset-y": "data(visualShadowOffsetY)",
+        "shadow-blur": "data(visualShadowBlur)",
         "shadow-color": "data(visualShadowColor)", "shadow-opacity": "data(visualShadowOpacity)",
         "z-index": "data(visualZIndex)"
     } },
@@ -43,6 +45,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
     let searchElements = cy.collection();
     let matches = MATCH_NONE;
     let searchActive = false;
+    let selectedBeforeSearch = new Set();
     let nonPcMode = false;
     let tooltipPath = null;
     let tooltipTimer = null;
@@ -100,7 +103,9 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
             cy.nodes().forEach(node => {
                 const state = deriveNodeVisualState({
                     searchActive, match: matchFor(node.id()), hasSelection,
-                    selected: node.id() === selectedId, color: node.data("color")
+                    selected: node.id() === selectedId,
+                    selectedBeforeSearch: selectedBeforeSearch.has(node.id()),
+                    color: node.data("color")
                 });
                 node.data({
                     visualOpacity: state.opacity,
@@ -108,6 +113,9 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
                     visualBorderColor: state.borderColor,
                     visualShadowColor: state.shadowColor,
                     visualShadowOpacity: state.shadowOpacity,
+                    visualShadowOffsetX: state.shadowOffsetX,
+                    visualShadowOffsetY: state.shadowOffsetY,
+                    visualShadowBlur: state.shadowBlur,
                     visualZIndex: state.layer === "above" ? 30 : 1
                 });
             });
@@ -187,7 +195,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
         if (event.target === cy) hideTooltip();
     });
     cy.on("select unselect", "node", applyVisualStates);
-    cy.on("pan zoom resize", () => {
+    cy.on("drag position pan zoom resize", () => {
         scheduleTooltipHide();
         scheduleLabels();
     });
@@ -195,7 +203,9 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
     function render({ nodes, edges }) {
         nodes = nodes.slice(0, MAX_GRAPH_NODES).map(node => ({
             visualOpacity: 1, visualBorderWidth: 1, visualBorderColor: "#94A3B8",
-            visualShadowColor: node.color, visualShadowOpacity: 0, visualZIndex: 30, ...node
+            visualShadowColor: node.color, visualShadowOpacity: 0,
+            visualShadowOffsetX: 3, visualShadowOffsetY: 4, visualShadowBlur: 5,
+            visualZIndex: 30, ...node
         }));
         const nodeIds = new Set(nodes.map(node => node.id));
         edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, MAX_GRAPH_EDGES);
@@ -217,6 +227,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
     }
 
     function applyHighlights(nextMatches) {
+        if (!searchActive) selectedBeforeSearch = new Set(cy.nodes(":selected").map(node => node.id()));
         matches = nextMatches;
         searchActive = true;
         searchElements = cy.collection([
@@ -238,6 +249,7 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
         clearHighlights() {
             matches = MATCH_NONE;
             searchActive = false;
+            selectedBeforeSearch = new Set();
             searchElements = cy.collection();
             applyVisualStates();
         },
@@ -266,4 +278,3 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
         }
     };
 }
-

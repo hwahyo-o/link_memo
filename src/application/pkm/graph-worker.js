@@ -21,101 +21,87 @@ export function parseMetadata(file) {
     const links = [...content.matchAll(/\[\[([^\]]+)\]\]/g)].map(match => match[1].trim());
     const urls = [...content.matchAll(/https?:\/\/[^\s<>)\]]+/g)].map(match => match[0]);
     return {
-        path: file.path,
-        title,
-        content,
-        tags,
-        comments,
+        path: file.path, title, content, tags, comments,
         links: [...links, ...urls],
         resolvedLinks: links.map(link => resolveWikiLink(file.path, link)).filter(Boolean)
     };
+}
+
+const kindRank = kind => kind === "category" ? 0 : kind === "subcategory" ? 1 : kind === "item" ? 2 : 3;
+
+function nodeDepths(nodes, edges) {
+    const ids = new Set(nodes.map(node => node.id));
+    const parentOf = new Map();
+    for (const edge of edges) {
+        if (!ids.has(edge.source) || !ids.has(edge.target)) continue;
+        if (edge.kind === "category-membership" || edge.kind === "subcategory-membership") {
+            parentOf.set(edge.target, edge.source);
+        }
+    }
+    const cache = new Map();
+    const depthOf = id => {
+        if (cache.has(id)) return cache.get(id);
+        const parent = parentOf.get(id);
+        if (!parent || parent === id) {
+            cache.set(id, 0);
+            return 0;
+        }
+        const depth = Math.min(8, depthOf(parent) + 1);
+        cache.set(id, depth);
+        return depth;
+    };
+    return { parentOf, depthOf };
+}
+
+function ringRadius(count, maxWidth, maxHeight, depth) {
+    if (count <= 1) return depth === 0 ? 0 : 240 * depth;
+    const safeSize = Math.max(maxWidth, maxHeight) * Math.SQRT2;
+    const angularRadius = safeSize / (2 * Math.sin(Math.PI / count));
+    return Math.max(240 * (depth + 1), angularRadius + safeSize + 40);
 }
 
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
     nodes = nodes.slice(0, MAX_GRAPH_NODES);
     const nodeIds = new Set(nodes.map(node => node.id));
     edges = edges.filter(edge => nodeIds.has(edge.source) && nodeIds.has(edge.target)).slice(0, MAX_GRAPH_EDGES);
-    const count = nodes.length;
-    const side = Math.max(1, Math.ceil(Math.sqrt(count)));
-    const maxWidth = Math.max(50, ...nodes.map(node => Number(node.width) || 50));
-    const maxHeight = Math.max(50, ...nodes.map(node => Number(node.height) || 50));
-    const horizontalStep = maxWidth + 30;
-    const verticalStep = maxHeight + 30;
-    const positions = new Map(nodes.map((node, index) => [node.id, {
-        x: (index % side) * horizontalStep,
-        y: Math.floor(index / side) * verticalStep,
-        vx: 0,
-        vy: 0
-    }]));
-    const edgePairs = edges.map(edge => {
-        const profiles = {
-            "category-membership": { distance: 170, strength: 0.0045 },
-            "subcategory-membership": { distance: 105, strength: 0.0052 },
-            "same-link-type": { distance: 145, strength: 0.0025 },
-            "same-image-type": { distance: 145, strength: 0.0025 },
-            "keyword-related": { distance: 210, strength: 0.0016 }
-        };
-        return {
-            source: positions.get(edge.source),
-            target: positions.get(edge.target),
-            ...(profiles[edge.kind] || { distance: 130, strength: 0.0028 })
-        };
-    }).filter(pair => pair.source && pair.target);
-    const cellSize = Math.max(horizontalStep, verticalStep);
+    if (!nodes.length) return [];
 
-    for (let iteration = 0; iteration < iterations; iteration += 1) {
-        const buckets = new Map();
-        for (const [id, position] of positions) {
-            const key = `${Math.floor(position.x / cellSize)},${Math.floor(position.y / cellSize)}`;
-            if (!buckets.has(key)) buckets.set(key, []);
-            buckets.get(key).push([id, position]);
-        }
-        for (const [id, position] of positions) {
-            const cellX = Math.floor(position.x / cellSize);
-            const cellY = Math.floor(position.y / cellSize);
-            for (let x = cellX - 1; x <= cellX + 1; x += 1) {
-                for (let y = cellY - 1; y <= cellY + 1; y += 1) {
-                    for (const [otherId, other] of buckets.get(`${x},${y}`) || []) {
-                        if (id === otherId) continue;
-                        const dx = position.x - other.x || 0.1;
-                        const dy = position.y - other.y || 0.1;
-                        const distanceSquared = Math.max(64, dx * dx + dy * dy);
-                        const force = 720 / distanceSquared;
-                        position.vx += dx * force;
-                        position.vy += dy * force;
-                    }
-                }
-            }
-        }
-        for (const { source, target, distance: desiredDistance, strength } of edgePairs) {
-            const dx = target.x - source.x;
-            const dy = target.y - source.y;
-            const distance = Math.max(1, Math.hypot(dx, dy));
-            const force = (distance - desiredDistance) * strength;
-            source.vx += dx * force;
-            source.vy += dy * force;
-            target.vx -= dx * force;
-            target.vy -= dy * force;
-        }
-        for (const position of positions.values()) {
-            position.vx = (position.vx - position.x * 0.0003) * 0.72;
-            position.vy = (position.vy - position.y * 0.0003) * 0.72;
-            position.x += Math.max(-18, Math.min(18, position.vx));
-            position.y += Math.max(-18, Math.min(18, position.vy));
-        }
+    const { parentOf, depthOf } = nodeDepths(nodes, edges);
+    const depths = new Map(nodes.map(node => [node.id, depthOf(node.id)]));
+    const levels = new Map();
+    for (const node of nodes) {
+        const depth = depths.get(node.id);
+        if (!levels.has(depth)) levels.set(depth, []);
+        levels.get(depth).push(node);
     }
-    // Snap the force-ordered result into geometry-sized slots. This final deterministic
-    // packing pass is what makes overlap impossible even for unusually long labels.
-    const ordered = [...nodes].sort((left, right) => {
-        const a = positions.get(left.id);
-        const b = positions.get(right.id);
-        return a.y - b.y || a.x - b.x || left.id.localeCompare(right.id);
-    });
-    const packed = new Map(ordered.map((node, index) => [node.id, {
-        x: (index % side) * horizontalStep,
-        y: Math.floor(index / side) * verticalStep
-    }]));
-    return nodes.map(node => ({ id: node.id, ...packed.get(node.id) }));
+
+    const parentOrder = new Map();
+    const orderedLevels = [...levels.keys()].sort((a, b) => a - b);
+    const positions = new Map();
+    let previousRadius = 0;
+    let previousHeight = 0;
+    for (const depth of orderedLevels) {
+        const level = levels.get(depth).sort((left, right) => {
+            const leftParent = parentOrder.get(parentOf.get(left.id)) || 0;
+            const rightParent = parentOrder.get(parentOf.get(right.id)) || 0;
+            return leftParent - rightParent || kindRank(left.kind) - kindRank(right.kind) || left.id.localeCompare(right.id);
+        });
+        const maxWidth = Math.max(50, ...level.map(node => Number(node.width) || 50));
+        const maxHeight = Math.max(50, ...level.map(node => Number(node.height) || 50));
+        const radius = Math.max(
+            ringRadius(level.length, maxWidth, maxHeight, depth),
+            depth === 0 ? 0 : previousRadius + previousHeight / 2 + maxHeight / 2 + 60
+        );
+        const start = depth === 0 ? -Math.PI / 2 : -Math.PI / 2 + (depth % 2 ? 0.15 : -0.15);
+        level.forEach((node, index) => {
+            const angle = level.length === 1 ? start : start + (Math.PI * 2 * index) / level.length;
+            positions.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+            parentOrder.set(node.id, index);
+        });
+        previousRadius = radius;
+        previousHeight = maxHeight;
+    }
+    return nodes.map(node => ({ id: node.id, ...positions.get(node.id) }));
 }
 
 if (typeof self !== "undefined") {
