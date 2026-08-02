@@ -138,6 +138,9 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
             return;
         }
         const bounds = container.getBoundingClientRect();
+        const scaledFont = (base, minimum, maximum) => `${Math.round(Math.min(maximum, Math.max(minimum, base * zoom)) * 10) / 10}px`;
+        const titleFontSize = scaledFont(nonPcMode ? 20 : 14, nonPcMode ? 14 : 10, nonPcMode ? 64 : 56);
+        const keywordFontSize = scaledFont(nonPcMode ? 16 : 10, nonPcMode ? 12 : 8, nonPcMode ? 48 : 40);
         const labels = [];
         cy.nodes().forEach(node => {
             const point = node.renderedPosition();
@@ -151,10 +154,12 @@ export function createGraphView({ container, worker, onOpen, tooltip, dimLayer }
             label.style.opacity = String((data.visualOpacity ?? 1) * (1 - (data.visualDimOverlayOpacity ?? 0)));
             label.style.zIndex = String(data.visualZIndex || 1);
             const title = document.createElement("strong");
+            title.style.fontSize = titleFontSize;
             title.textContent = data.title || data.label || "";
             label.append(title);
             if (data.keywordsLabel) {
                 const keywords = document.createElement("span");
+                keywords.style.fontSize = keywordFontSize;
                 keywords.textContent = data.keywordsLabel;
                 label.append(keywords);
             }
