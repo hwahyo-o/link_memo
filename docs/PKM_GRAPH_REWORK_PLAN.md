@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: category 소유 영역·계층별 방사 배치·전역 component seed 압축·동일 계층 부모 비교 구현 및 drill CI 검증 완료; main 병합 전
+> 상태: category 소유 영역·계층별 방사 배치·전역 component seed 압축·동일 계층 부모 비교 구현 및 main 병합 완료
 
 ## 1. 목적
 
