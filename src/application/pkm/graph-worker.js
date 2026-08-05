@@ -79,7 +79,14 @@ function initialNetworkPositions(nodes, edges) {
         component.forEach((node, index) => {
             const angle = index * 2.399963229728653 + hashSeed(node.id) * 0.4;
             const radius = Math.sqrt(index + 1) * Math.max(120, componentRadius / Math.sqrt(component.length));
-            positions.set(node.id, { x: cfunction createHierarchy(nodes, edges) {
+            positions.set(node.id, { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius, vx: 0, vy: 0 });
+        });
+        offset += componentRadius * 2 + 320;
+    });
+    return positions;
+}
+
+function createHierarchy(nodes, edges) {
     const nodeIds = new Set(nodes.map(node => node.id));
     const parents = new Map();
     const children = new Map(nodes.map(node => [node.id, []]));
@@ -93,9 +100,7 @@ function initialNetworkPositions(nodes, edges) {
         if (node.kind === "item") addRelation(node.subcategoryId, node.id);
     });
     edges.forEach(edge => {
-        if (edge.kind === "category-membership" || edge.kind === "subcategory-membership") {
-            addRelation(edge.source, edge.target);
-        }
+        if (edge.kind === "category-membership" || edge.kind === "subcategory-membership") addRelation(edge.source, edge.target);
     });
     return { parents, children };
 }
@@ -108,9 +113,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const hierarchy = createHierarchy(nodes, edges);
     const byId = new Map(nodes.map(node => [node.id, node]));
     const radii = new Map();
-    const roots = nodes.filter(node => !hierarchy.parents.has(node.id) && (
-        node.kind === "category" || hierarchy.children.get(node.id)?.length
-    ));
+    const roots = nodes.filter(node => !hierarchy.parents.has(node.id) && (node.kind === "category" || hierarchy.children.get(node.id)?.length));
     const categories = roots.filter(node => node.kind === "category");
     const otherRoots = roots.filter(node => node.kind !== "category");
     const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
@@ -146,9 +149,7 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (valid(origin)) return origin;
 
         const goldenAngle = 2.399963229728653;
-        const minimumRadius = parent
-            ? Math.max(120, Math.max(node.width || 188, parent.width || 188) + nodeGap)
-            : 0;
+        const minimumRadius = parent ? Math.max(120, Math.max(node.width || 188, parent.width || 188) + nodeGap) : 0;
         const ringStep = 180;
         const maxRing = parent ? Math.max(1, Math.ceil(Math.max(0, radius - minimumRadius) / ringStep)) : 200;
         for (let ring = parent ? 0 : 1; ring <= maxRing; ring += 1) {
@@ -157,14 +158,8 @@ function packWithoutOverlap(nodes, positions, edges) {
             for (let index = 0; index < count; index += 1) {
                 const angle = goldenAngle * (ring * count + index) + hashSeed(node.id) * 0.5;
                 const candidate = parent
-                    ? {
-                        x: parentPosition.x + Math.cos(angle) * candidateRadius,
-                        y: parentPosition.y + Math.sin(angle) * candidateRadius
-                    }
-                    : {
-                        x: origin.x + Math.cos(angle) * candidateRadius,
-                        y: origin.y + Math.sin(angle) * candidateRadius
-                    };
+                    ? { x: parentPosition.x + Math.cos(angle) * candidateRadius, y: parentPosition.y + Math.sin(angle) * candidateRadius }
+                    : { x: origin.x + Math.cos(angle) * candidateRadius, y: origin.y + Math.sin(angle) * candidateRadius };
                 if (valid(candidate)) return candidate;
             }
         }
@@ -183,14 +178,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const placeCategories = scale => {
         for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
             const accept = candidate => categories.every(other => other.id === node.id || !placed.has(other.id)
-                || categorySeparationSatisfied(
-                    node,
-                    other,
-                    candidate,
-                    positions.get(other.id),
-                    getRadius(node.id, scale),
-                    getRadius(other.id, scale)
-                ));
+                || categorySeparationSatisfied(node, other, candidate, positions.get(other.id), getRadius(node.id, scale), getRadius(other.id, scale)));
             const position = findFreePosition(node, positions.get(node.id), null, 0, accept);
             if (!position) return false;
             mark(node, position);
@@ -210,9 +198,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             const rank = node => node.kind === "subcategory" ? 0 : 1;
             const leftParent = hierarchy.parents.get(left.id);
             const rightParent = hierarchy.parents.get(right.id);
-            return rank(left) - rank(right)
-                || String(leftParent).localeCompare(String(rightParent))
-                || left.id.localeCompare(right.id);
+            return rank(left) - rank(right) || String(leftParent).localeCompare(String(rightParent)) || left.id.localeCompare(right.id);
         });
         for (const node of ordered) {
             const parent = byId.get(hierarchy.parents.get(node.id));
@@ -270,7 +256,7 @@ export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes
             position.y += Math.max(-28, Math.min(28, position.vy));
         }
     }
-    packWithoutOverlap(nodes, positions);
+    packWithoutOverlap(nodes, positions, edges);
     return nodes.map(node => {
         const position = positions.get(node.id);
         return { id: node.id, x: position.x, y: position.y };
