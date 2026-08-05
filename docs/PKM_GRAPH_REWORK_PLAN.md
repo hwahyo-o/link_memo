@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: drill에 최소 descendant envelope·category group compact packing·소규모 orphan 최적화 반영, CI 성공, main 병합 대기
+> 상태: main 병합 완료(c0228a8), 최소 descendant envelope·category group compact packing·소규모 orphan 최적화 반영
 
 ## 1. 목적
 
