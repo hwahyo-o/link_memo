@@ -28,8 +28,8 @@ describe("graph layout policy", () => {
 
     it("rejects category influence overlap of 50px or more", () => {
         const left = { x: 0, y: 0 };
-        const right = { x: 951, y: 0 };
+        const right = { x: 950, y: 0 };
         expect(categorySeparationSatisfied(left, right, left, right, 500, 500)).toBe(false);
-        expect(categorySeparationSatisfied(left, right, left, { x: 1000, y: 0 }, 500, 500)).toBe(true);
+        expect(categorySeparationSatisfied(left, right, left, { x: 951, y: 0 }, 500, 500)).toBe(true);
     });
 });
