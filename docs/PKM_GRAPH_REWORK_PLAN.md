@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 계층 배치 정책과 Worker 구현 완료, 자동 검증 대기
+> 상태: 계층 배치 정책·Worker 구현·자동 테스트·production build 검증 완료, main 병합 대기
 
 ## 1. 목적
 
@@ -179,13 +179,27 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 
 정책 파일, Worker 연결, 정책 테스트, 계층 Worker 테스트를 `drill` 브랜치에 반영했다.
 
-아직 다음 항목은 자동 검증 결과 확인 전이다.
+현재 확인된 Gate 결과:
 
-- 전체 테스트
-- production build
-- GitHub Actions
-- 배포 화면 smoke test
-- 최종 보안 스캔
-- main 병합 및 배포
+- 전체 Vitest: 성공
+- Worker 문법 분석: 성공
+- Vite production build: 성공
+- Branch CI의 test/build job: 성공
+- PR 검증 workflow의 test/build job: 성공
+- PR 검증 workflow의 Pages deploy job: PR 이벤트이므로 실행되지 않음
+- 문서·fixture에는 API key, token, 운영 식별자, 사용자 데이터가 없음
 
-검증 완료 후 이 문서의 상태와 Gate 결과를 같은 브랜치에서 갱신한다.
+아직 main 병합 후 확인해야 하는 항목:
+
+- main push에 따른 실제 GitHub Pages deploy job
+- 배포 결과와 공개 화면의 수동 smoke test
+- 사용 가능한 연결 도구 범위에서의 최종 보안 점검
+
+## 9. 실패 시 재검증 순서
+
+1. CI 실패 시 실패한 파일과 단계만 확인한다.
+2. 정책 실패 시 `graph-layout-policy.js`와 관련 테스트를 함께 수정한다.
+3. Worker 배치 실패 시 후보 반경, AABB 충돌 판정, spatial bucket 범위만 조정한다.
+4. build 실패 시 새 import와 번들 경로를 먼저 확인한다.
+5. main deploy 실패 시 소스 변경과 무관한 Pages·외부 Worker health check를 분리해 확인한다.
+6. 각 수정 뒤 동일한 테스트·build Gate를 다시 통과시킨다.
