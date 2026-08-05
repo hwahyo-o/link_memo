@@ -78,7 +78,7 @@ function initialNetworkPositions(nodes, edges) {
     const components = connectedComponents(nodes, edges);
     const columns = Math.max(1, Math.ceil(Math.sqrt(components.length)));
     const rows = Math.max(1, Math.ceil(components.length / columns));
-    const largestComponent = Math.max(1, ...components.map(component => component.length));
+    const largestComponent = components.reduce((largest, component) => Math.max(largest, component.length), 1);
     const componentGap = Math.max(620, Math.sqrt(largestComponent) * 140);
 
     components.forEach((component, componentIndex) => {
@@ -127,6 +127,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const cellSize = 400;
     const buckets = new Map();
     const placed = new Set();
+    const placedByKind = new Map();
     const hierarchy = createHierarchy(nodes, edges);
     const byId = new Map(nodes.map(node => [node.id, node]));
     const childrenByParent = new Map(nodes.map(node => [
@@ -157,6 +158,8 @@ function packWithoutOverlap(nodes, positions, edges) {
     const mark = (node, position) => {
         positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
         placed.add(node.id);
+        if (!placedByKind.has(node.kind)) placedByKind.set(node.kind, new Map());
+        placedByKind.get(node.kind).set(node.id, position);
         const key = bucketKey(position.x, position.y);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(node);
@@ -280,12 +283,9 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .slice(0, Math.max(0, siblingIndex))
                 .map(sibling => positions.get(sibling.id))
                 .filter(Boolean);
-            const competingParentPositions = nodes
-                .filter(candidate => candidate.kind === parent.kind
-                    && candidate.id !== parent.id
-                    && placed.has(candidate.id))
-                .map(candidate => positions.get(candidate.id))
-                .filter(Boolean);
+            const competingParentPositions = [...(placedByKind.get(parent.kind)?.entries() || [])]
+                .filter(([id]) => id !== parent.id)
+                .map(([, position]) => position);
             const accept = candidate => {
                 const regionSatisfied = !category
                     || categoryOwnershipSatisfied(
@@ -335,6 +335,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
         buckets.clear();
         placed.clear();
+        placedByKind.clear();
         if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
