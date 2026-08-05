@@ -46,6 +46,14 @@ export function deriveInfluenceRadius(parent, children = [], gap = GRAPH_LAYOUT_
     return nodeHalfDiagonal(parent) + gap + largestChild + Math.max(220, childSpread) * scale;
 }
 
+export function nearestParentSatisfied(candidatePosition, parentPosition, peerPositions = []) {
+    if (!candidatePosition || !parentPosition) return false;
+    const parentDistance = centerDistance(candidatePosition, parentPosition);
+    return peerPositions.filter(Boolean).every(peerPosition => (
+        parentDistance < centerDistance(candidatePosition, peerPosition)
+    ));
+}
+
 export function categorySeparationSatisfied(left, right, leftPosition, rightPosition, leftRadius, rightRadius) {
     const distance = centerDistance(leftPosition, rightPosition);
     const overlapDepth = Math.max(0, leftRadius + rightRadius - distance);
