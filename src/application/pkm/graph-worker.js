@@ -4,7 +4,8 @@ import {
     aabbSeparated,
     categorySeparationSatisfied,
     centerDistance,
-    deriveInfluenceRadius
+    deriveInfluenceRadius,
+    nearestParentSatisfied
 } from "../../domain/pkm/graph-layout-policy.js";
 
 function normalizePath(path) {
@@ -204,7 +205,26 @@ function packWithoutOverlap(nodes, positions, edges) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
             if (!parent || !parentPosition || !placed.has(parent.id)) return false;
-            const position = findFreePosition(node, positions.get(node.id), parent, getRadius(parent.id, scale));
+            const parentKind = node.kind === "item"
+                ? "subcategory"
+                : node.kind === "subcategory"
+                    ? "category"
+                    : null;
+            const peerPositions = parentKind
+                ? nodes
+                    .filter(peer => peer.id !== parent.id && peer.kind === parentKind)
+                    .map(peer => positions.get(peer.id))
+                    .filter(Boolean)
+                : [];
+            const accept = candidate => !parentKind
+                || nearestParentSatisfied(candidate, parentPosition, peerPositions);
+            const position = findFreePosition(
+                node,
+                positions.get(node.id),
+                parent,
+                getRadius(parent.id, scale),
+                accept
+            );
             if (!position) return false;
             mark(node, position);
         }

@@ -3,7 +3,8 @@ import {
     GRAPH_LAYOUT_RULES,
     aabbSeparated,
     categorySeparationSatisfied,
-    deriveInfluenceRadius
+    deriveInfluenceRadius,
+    nearestParentSatisfied
 } from "./graph-layout-policy.js";
 
 describe("graph layout policy", () => {
@@ -24,6 +25,17 @@ describe("graph layout policy", () => {
         const child = { width: 174, height: 64 };
         expect(deriveInfluenceRadius(parent, [child])).toBeGreaterThan(420);
         expect(deriveInfluenceRadius(parent, [child, child])).toBeGreaterThan(deriveInfluenceRadius(parent, [child]));
+    });
+
+
+    it("requires the assigned parent to be strictly nearest among peers", () => {
+        const candidate = { x: 0, y: 0 };
+        const parent = { x: 80, y: 0 };
+        const nearerPeer = { x: -60, y: 0 };
+        const fartherPeer = { x: -120, y: 0 };
+        expect(nearestParentSatisfied(candidate, parent, [fartherPeer])).toBe(true);
+        expect(nearestParentSatisfied(candidate, parent, [nearerPeer])).toBe(false);
+        expect(nearestParentSatisfied(candidate, parent, [{ x: -80, y: 0 }])).toBe(false);
     });
 
     it("rejects category influence overlap of 50px or more", () => {
