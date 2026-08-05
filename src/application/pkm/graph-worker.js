@@ -143,6 +143,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const otherRoots = roots.filter(node => node.kind !== "category");
     const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
     const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
+    const orphanIds = new Set(orphans.map(node => node.id));
 
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
     const collides = (node, x, y) => {
@@ -305,7 +306,7 @@ function packWithoutOverlap(nodes, positions, edges) {
 
         buckets.clear();
         for (const node of nodes) {
-            if (orphans.some(orphan => orphan.id === node.id)) continue;
+            if (orphanIds.has(node.id)) continue;
             const position = positions.get(node.id);
             if (position) addToBucket(node, position);
         }
@@ -445,7 +446,7 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
         if (!compactCategoryGroups()) continue;
         const orphanOrigin = [...nodes]
-            .filter(node => !orphans.some(orphan => orphan.id === node.id))
+            .filter(node => !orphanIds.has(node.id))
             .map(node => positions.get(node.id))
             .filter(Boolean)
             .reduce(
