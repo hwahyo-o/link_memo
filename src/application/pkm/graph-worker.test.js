@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph, parseMetadata } from "./graph-worker.js";
-import { aabbSeparated, deriveInfluenceRadius } from "../../domain/pkm/graph-layout-policy.js";
+import { aabbSeparated, categorySeparationSatisfied, deriveInfluenceRadius } from "../../domain/pkm/graph-layout-policy.js";
 
 describe("PKM graph worker algorithms", () => {
     it("extracts searchable metadata and resolved wiki links", () => {
@@ -87,6 +87,14 @@ describe("PKM graph worker algorithms", () => {
         const byId = new Map(nodes.map(node => [node.id, node]));
 
         expect(distance("category-a", "category-b")).toBeGreaterThanOrEqual(420);
+        expect(categorySeparationSatisfied(
+            byId.get("category-a"),
+            byId.get("category-b"),
+            get("category-a"),
+            get("category-b"),
+            deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]),
+            deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")])
+        )).toBe(true);
         expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]));
         expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")]));
         expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-a"), [byId.get("item-a")]));
