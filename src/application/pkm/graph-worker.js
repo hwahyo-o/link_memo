@@ -445,20 +445,24 @@ function packWithoutOverlap(nodes, positions, edges) {
         placedByKind.clear();
         if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
         if (!compactCategoryGroups()) continue;
-        const orphanOrigin = [...nodes]
-            .filter(node => !orphanIds.has(node.id))
-            .map(node => positions.get(node.id))
-            .filter(Boolean)
-            .reduce(
-                (center, position, index, all) => ({
-                    x: center.x + position.x / all.length,
-                    y: center.y + position.y / all.length
-                }),
-                { x: 0, y: 0 }
-            );
+        const compactOrphans = orphans.length <= 512;
+        const orphanOrigin = compactOrphans
+            ? [...nodes]
+                .filter(node => !orphanIds.has(node.id))
+                .map(node => positions.get(node.id))
+                .filter(Boolean)
+                .reduce(
+                    (center, position, index, all) => ({
+                        x: center.x + position.x / all.length,
+                        y: center.y + position.y / all.length
+                    }),
+                    { x: 0, y: 0 }
+                )
+            : null;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
-            const position = findFreePosition(node, orphanOrigin);
+            const origin = compactOrphans ? orphanOrigin : positions.get(node.id);
+            const position = findFreePosition(node, origin);
             if (!position) return false;
             mark(node, position);
             return true;
