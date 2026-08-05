@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph, parseMetadata } from "./graph-worker.js";
+import { aabbSeparated, categorySeparationSatisfied, deriveInfluenceRadius } from "../../domain/pkm/graph-layout-policy.js";
 
 describe("PKM graph worker algorithms", () => {
     it("extracts searchable metadata and resolved wiki links", () => {
@@ -63,6 +64,47 @@ describe("PKM graph worker algorithms", () => {
         expect(distance("category", "orphan")).toBeGreaterThan(500);
         expect(new Set([...positions.values()].map(position => Math.round(position.x))).size).toBeGreaterThan(2);
         expect(new Set([...positions.values()].map(position => Math.round(position.y))).size).toBeGreaterThan(2);
+    });
+
+    it("keeps hierarchical nodes near their parent without entering the parent shape", () => {
+        const nodes = [
+            { id: "category-a", kind: "category", width: 196, height: 72 },
+            { id: "category-b", kind: "category", width: 196, height: 72 },
+            { id: "subcategory-a", kind: "subcategory", categoryId: "category-a", width: 174, height: 64 },
+            { id: "subcategory-b", kind: "subcategory", categoryId: "category-b", width: 174, height: 64 },
+            { id: "item-a", kind: "item", subcategoryId: "subcategory-a", width: 188, height: 68 },
+            { id: "item-b", kind: "item", subcategoryId: "subcategory-b", width: 188, height: 68 }
+        ];
+        const edges = [
+            { source: "category-a", target: "subcategory-a", kind: "category-membership" },
+            { source: "category-b", target: "subcategory-b", kind: "category-membership" },
+            { source: "subcategory-a", target: "item-a", kind: "subcategory-membership" },
+            { source: "subcategory-b", target: "item-b", kind: "subcategory-membership" }
+        ];
+        const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
+        const get = id => positions.get(id);
+        const distance = (left, right) => Math.hypot(get(left).x - get(right).x, get(left).y - get(right).y);
+        const byId = new Map(nodes.map(node => [node.id, node]));
+
+        expect(distance("category-a", "category-b")).toBeGreaterThanOrEqual(420);
+        expect(categorySeparationSatisfied(
+            byId.get("category-a"),
+            byId.get("category-b"),
+            get("category-a"),
+            get("category-b"),
+            deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]),
+            deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")])
+        )).toBe(true);
+        expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]));
+        expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")]));
+        expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-a"), [byId.get("item-a")]));
+        expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-b"), [byId.get("item-b")]));
+
+        for (let left = 0; left < nodes.length; left += 1) {
+            for (let right = left + 1; right < nodes.length; right += 1) {
+                expect(aabbSeparated(nodes[left], nodes[right], get(nodes[left].id), get(nodes[right].id))).toBe(true);
+            }
+        }
     });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
