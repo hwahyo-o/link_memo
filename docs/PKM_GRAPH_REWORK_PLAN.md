@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: category 소유 영역·계층별 방사 배치·전역 component seed 압축·동일 계층 부모 비교 구현 및 main 병합 완료
+> 상태: drill에 최소 descendant envelope·category group compact packing·소규모 orphan 최적화 반영, CI 성공, main 병합 대기
 
 ## 1. 목적
 
@@ -323,3 +323,73 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 ### 제한 사항
 
 Browser 연결 도구가 제공되지 않아 실제 화면 screenshot, DOM, console, mobile viewport 검증은 아직 수행하지 않았다. Pages workflow 성공은 branch/PR workflow 기준이며, main 병합 후 공개 asset HTTP 확인은 별도 Gate로 남긴다.
+
+
+## 12. 2026-08-05 실제 descendant envelope 및 최소 그룹 반경 반영
+
+### 문제와 해석
+
+기존 category group 반경이 부모 거리 상한(최대 360px/300px)을 그대로 사용하면, 실제 descendant가 차지하는 공간보다 큰 빈 영역을 그룹으로 취급하게 된다. 그 결과 category 간 배치가 불필요하게 멀어지고 전체 graph fit 시 node가 작아질 수 있다.
+
+이번 단계에서는 다음 두 목적을 분리했다.
+
+- 부모 자식 후보를 찾을 때: 기존의 부모 거리 상한과 category placement allowance를 사용한다.
+- 배치가 끝난 뒤 category 영역을 분리할 때: 실제로 배치된 category·subcategory·item의 도형 외곽을 포함한 envelope만 사용한다.
+
+여기서 "반경"은 부모 도형 안쪽을 뜻하지 않는다. 각 node의 중심과 실제 도형 외곽, preferred gap을 기준으로 한 영향·배치 영역이다.
+
+### 구현 규칙
+
+- deriveRingRadius가 직접 자식 도형의 크기와 개수에 따라 최소 환형 반경을 계산한다.
+- deriveCategoryGroupRadius는 category → subcategory → item의 예상 최소 환형 외곽만 계산한다.
+- deriveCategoryPlacementRadius는 후보 탐색용 allowance로 분리해 부모 거리 상한을 보존한다.
+- deriveCategoryGroupEnvelope는 실제 배치 좌표와 node width/height를 사용해 min/max 외곽과 radius를 산출한다.
+- compactCategoryGroups는 실제 envelope를 기준으로 category group을 결정적인 행/열로 압축 배치한다.
+- group 이동은 category와 모든 descendant를 함께 이동하므로 부모-자식 상대 배치와 변칙 angular slot을 보존한다.
+- category 중심 간격은 420px 이상을 유지하고, group 외곽은 최소 64px의 로컬 여백을 두어 50px 겹침 조건보다 보수적으로 분리한다.
+- 연결되지 않은 orphan graph는 512개 이하일 때만 중심 재배치를 적용한다. 대규모 입력에서는 deterministic seed를 재사용해 O(N²) 재배치를 피한다.
+- 실제 node AABB 충돌 검사, 부모 최단성, 부모 거리 상한, 같은 부모 간선 각도 분리는 기존 Worker 후보 검사에서 계속 적용한다.
+
+### 변경 파일
+
+- src/domain/pkm/graph-layout-policy.js
+  - deriveRingRadius
+  - deriveCategoryGroupRadius
+  - deriveCategoryPlacementRadius
+  - deriveCategoryGroupEnvelope
+- src/application/pkm/graph-worker.js
+  - 실제 group envelope 기반 compact packing
+  - descendant 동시 이동
+  - 대규모 orphan 재배치 비용 제한
+- src/application/pkm/graph-worker.test.js
+  - category별 실제 envelope를 사용하는 소유 영역 검증
+  - disconnected category group bounded seed 검증
+  - 실제 descendant geometry가 placement allowance보다 작은 envelope를 만드는지 검증
+
+### 현재 Gate 결과
+
+- 최신 drill 커밋: 257e7bff28ada4fa22c288cb8ab16f35d2b404fd
+- Branch CI run 419: 성공
+- Test and Deploy GitHub Pages run 280: 성공
+- 전체 테스트 및 production build: 성공
+- 변경 범위: graph layout policy, graph worker, graph worker tests, 본 문서
+- 저장, 인증, Firestore, Cloudflare Worker, 외부 API, 의존성 변경: 없음
+- 변경 파일 대상 정적 비밀값 검사: API key, token, client secret, private key, 사용자 식별자 패턴 없음
+
+### 병합 후 검증 순서
+
+1. PR #59를 ready for review로 전환한다.
+2. 최신 head SHA를 다시 확인한 뒤 main으로 병합한다.
+3. main push Pages workflow의 test/build/deploy 결과를 확인한다.
+4. 연결된 Browser 도구가 제공되면 pkm.html의 실제 DOM·console·screenshot으로 계층 그룹, node overlap, viewport fit을 확인한다.
+5. 공개 asset HTTP 응답으로 main 배포 버전을 확인한다.
+6. GitHub connector가 원격 branch ref 삭제를 지원하지 않으면 drill 삭제는 수동 정리로 남긴다.
+
+### 실패 시 재수정 Loop
+
+- envelope가 과대 계산되면 node geometry와 gap을 포함하는 지점을 확인하고 envelope 계산만 수정한다.
+- category group이 과도하게 멀면 compact packing의 group gap과 420px center constraint를 확인한다.
+- 부모보다 다른 node가 가까워지면 같은 계층 parent index와 candidate rejection을 확인한다.
+- 같은 부모 간선이 겹치면 angular slot seed와 최소 angle 검사를 확인한다.
+- 10만 node에서 느려지면 orphan 처리와 spatial bucket 탐색의 시간복잡도를 먼저 측정한다.
+- 각 수정은 해당 실패 테스트를 먼저 재현한 뒤 전체 test/build Gate를 다시 통과시킨다.
