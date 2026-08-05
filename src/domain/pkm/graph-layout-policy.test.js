@@ -49,7 +49,7 @@ describe("graph layout policy", () => {
         expect(parentDistanceLimit(subcategory, item, "item")).toBe(300);
         expect(deriveCategoryGroupRadius(category, [subcategory], new Map([
             ["subcategory", [item]]
-        ])).toBeGreaterThan(700);
+        ]))).toBeGreaterThan(700);
     });
 
     it("rejects same-parent edges that are too close in angle", () => {
