@@ -100,7 +100,7 @@ describe("PKM graph worker algorithms", () => {
             deriveCategoryGroupRadius(
                 byId.get("category-b"),
                 [byId.get("subcategory-b")],
-                new Map([["subcategory-b", [byId.get("item-b")]])
+                new Map([["subcategory-b", [byId.get("item-b")]]])
             )
         )).toBe(true);
         expect(categorySeparationSatisfied(
