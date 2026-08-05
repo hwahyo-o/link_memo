@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 원형 계층 영역·부모 거리 상한·간선 방향 분리 구현·검증·main 병합·Pages 배포 확인 완료
+> 상태: category 소유 영역·계층별 방사 배치·간선 방향 분리 구현 및 drill CI 검증 완료; main 병합 전
 
 ## 1. 목적
 
@@ -239,3 +239,56 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 6. category 그룹 겹침 실패 시 descendant geometry를 포함한 그룹 반경과 category 중심 배치를 확인한다.
 7. build 또는 Pages 실패 시 새 Worker asset 생성과 main push deploy 상태를 분리해 확인한다.
 8. 각 수정 뒤 동일한 테스트·build·asset Gate를 다시 통과시킨다.
+
+
+## 10. 2026-08-05 추가 요구사항 반영
+
+### 이미지에서 확인한 문제
+
+첨부된 그래프처럼 category, subcategory, item이 서로 다른 category 영역에 섞이면 item과 subcategory의 부모를 사용자가 잘못 해석할 수 있다. 특히 item이 다른 subcategory 사이에 끼거나 같은 부모의 간선이 동일 방향으로 뻗으면 계층 구조가 무너져 보인다.
+
+### 추가 정책
+
+이번 구현은 기존 변칙 네트워크 그래프 시드를 유지하면서 다음 후보 검사를 추가한다.
+
+- 모든 category descendant는 자신의 category가 소유한 외곽 반경 안에 있어야 한다.
+- 후보 node의 geometry와 preferred gap을 포함한 뒤 다른 category region의 외곽 밖에 있어야 한다.
+- 자신의 category까지의 거리가 다른 category까지의 거리보다 짧아야 한다.
+- subcategory는 기존 category 부모 거리 상한 360px 안에서 배치한다.
+- item은 기존 subcategory 부모 거리 상한 300px 안에서 배치한다.
+- item 후보는 부모 subcategory에서 category 반대 방향으로 최소 outward projection을 확보한다.
+- 같은 부모의 간선은 deterministic slot과 최소 각도 차이를 계속 사용한다.
+- AABB 외곽 간격은 preferred 96px, 절대 최소 42px 정책을 계속 사용한다.
+- category group 외곽 겹침 깊이는 50px 미만을 계속 사용한다.
+
+### 변경 파일
+
+- src/domain/pkm/graph-layout-policy.js
+  - categoryRegionContains
+  - categoryOwnershipSatisfied
+  - hierarchyBandSatisfied
+- src/application/pkm/graph-worker.js
+  - category ancestor 추적
+  - category region ownership 후보 검사
+  - item outward fan 배치
+- src/application/pkm/graph-worker.test.js
+  - category region 계층화
+  - item 부모 근접성
+  - item outward band
+  - 다른 category region 침범 방지
+
+### 검증 기록
+
+- PR #55 Branch CI 성공
+- PR #55 Test and Deploy GitHub Pages 성공
+- 변경 범위에는 저장, 인증, Firestore, Cloudflare Worker, 외부 API, 의존성 변경 없음
+- 변경 파일에 API key, token, client secret, private key, 사용자 식별자 패턴 없음
+- 브라우저 직접 시각 검증은 Browser 연결 도구 부재로 미수행이며, 배포 산출물 확인 단계에서 별도로 기록한다.
+
+### 다음 Gate
+
+1. PR diff와 CI 결과를 다시 확인한다.
+2. PR을 main에 병합한다.
+3. main Pages workflow 성공을 확인한다.
+4. 공개 HTML과 최신 graph Worker asset HTTP 응답을 확인한다.
+5. GitHub connector가 branch ref 삭제를 지원하지 않으면 drill 삭제 필요 상태를 명시한다.
