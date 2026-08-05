@@ -76,18 +76,29 @@ function connectedComponents(nodes, edges) {
 function initialNetworkPositions(nodes, edges) {
     const positions = new Map();
     const components = connectedComponents(nodes, edges);
-    let offset = 0;
+    const columns = Math.max(1, Math.ceil(Math.sqrt(components.length)));
+    const rows = Math.max(1, Math.ceil(components.length / columns));
+    const largestComponent = Math.max(1, ...components.map(component => component.length));
+    const componentGap = Math.max(620, Math.sqrt(largestComponent) * 140);
+
     components.forEach((component, componentIndex) => {
+        const column = componentIndex % columns;
+        const row = Math.floor(componentIndex / columns);
+        const jitter = (hashSeed(component[0].id) - 0.5) * 72;
+        const centerX = (column - (columns - 1) / 2) * componentGap + jitter;
+        const centerY = (row - (rows - 1) / 2) * componentGap - jitter;
         const componentRadius = Math.max(260, Math.sqrt(component.length) * 190);
-        const centerAngle = componentIndex * 2.399963229728653;
-        const centerX = Math.cos(centerAngle) * offset;
-        const centerY = Math.sin(centerAngle) * offset;
+
         component.forEach((node, index) => {
             const angle = index * 2.399963229728653 + hashSeed(node.id) * 0.4;
             const radius = Math.sqrt(index + 1) * Math.max(120, componentRadius / Math.sqrt(component.length));
-            positions.set(node.id, { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius, vx: 0, vy: 0 });
+            positions.set(node.id, {
+                x: centerX + Math.cos(angle) * radius,
+                y: centerY + Math.sin(angle) * radius,
+                vx: 0,
+                vy: 0
+            });
         });
-        offset += componentRadius * 2 + 320;
     });
     return positions;
 }
@@ -269,6 +280,12 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .slice(0, Math.max(0, siblingIndex))
                 .map(sibling => positions.get(sibling.id))
                 .filter(Boolean);
+            const competingParentPositions = nodes
+                .filter(candidate => candidate.kind === parent.kind
+                    && candidate.id !== parent.id
+                    && placed.has(candidate.id))
+                .map(candidate => positions.get(candidate.id))
+                .filter(Boolean);
             const accept = candidate => {
                 const regionSatisfied = !category
                     || categoryOwnershipSatisfied(
@@ -290,7 +307,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                     );
                 return regionSatisfied
                     && hierarchySatisfied
-                    && nearestParentSatisfied(candidate, parentPosition, peerPositions)
+                    && nearestParentSatisfied(candidate, parentPosition, competingParentPositions)
                     && parentEdgeAngleSeparated(
                         candidate,
                         parentPosition,
