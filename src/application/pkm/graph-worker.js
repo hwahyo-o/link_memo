@@ -5,7 +5,9 @@ import {
     categorySeparationSatisfied,
     categoryOwnershipSatisfied,
     centerDistance,
+    deriveCategoryGroupEnvelope,
     deriveCategoryGroupRadius,
+    deriveCategoryPlacementRadius,
     hierarchyBandSatisfied,
     nearestParentSatisfied,
     parentDistanceLimit,
@@ -141,6 +143,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const otherRoots = roots.filter(node => node.kind !== "category");
     const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
     const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
+    const orphanIds = new Set(orphans.map(node => node.id));
 
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
     const collides = (node, x, y) => {
@@ -155,14 +158,17 @@ function packWithoutOverlap(nodes, positions, edges) {
         }
         return false;
     };
+    const addToBucket = (node, position) => {
+        const key = bucketKey(position.x, position.y);
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(node);
+    };
     const mark = (node, position) => {
         positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
         placed.add(node.id);
         if (!placedByKind.has(node.kind)) placedByKind.set(node.kind, new Map());
         placedByKind.get(node.kind).set(node.id, position);
-        const key = bucketKey(position.x, position.y);
-        if (!buckets.has(key)) buckets.set(key, []);
-        buckets.get(key).push(node);
+        addToBucket(node, position);
     };
     const findFreePosition = (
         node,
@@ -216,6 +222,97 @@ function packWithoutOverlap(nodes, positions, edges) {
         return byId.get(current)?.kind === "category" ? current : null;
     };
 
+    const categoryMembers = new Map(categories.map(category => [category.id, [category]]));
+    for (const node of nodes) {
+        const categoryId = categoryAncestor(node.id);
+        if (categoryId && categoryMembers.has(categoryId) && node.kind !== "category") {
+            categoryMembers.get(categoryId).push(node);
+        }
+    }
+
+    const compactCategoryGroups = () => {
+        const groups = categories
+            .map(category => ({
+                category,
+                members: categoryMembers.get(category.id) || [category],
+                envelope: deriveCategoryGroupEnvelope(
+                    category,
+                    categoryMembers.get(category.id) || [category],
+                    positions,
+                    nodeGap
+                )
+            }))
+            .filter(group => group.envelope);
+        if (groups.length < 2) return true;
+
+        const columns = Math.max(1, Math.ceil(Math.sqrt(groups.length)));
+        const rows = [];
+        for (let index = 0; index < groups.length; index += columns) {
+            const rowGroups = groups.slice(index, index + columns);
+            let cursor = 0;
+            let previousRadius = 0;
+            const centers = rowGroups.map((group, column) => {
+                const radius = group.envelope.radius;
+                const gap = column === 0
+                    ? 0
+                    : Math.max(64, GRAPH_LAYOUT_RULES.minimumCategoryCenterDistance - previousRadius - radius);
+                cursor += column === 0 ? radius : previousRadius + gap + radius;
+                previousRadius = radius;
+                return { group, x: cursor };
+            });
+            rows.push({
+                centers,
+                width: cursor + previousRadius,
+                radius: Math.max(...rowGroups.map(group => group.envelope.radius))
+            });
+        }
+
+        const totalHeight = rows.reduce((height, row) => height + row.radius * 2, 0)
+            + rows.slice(1).reduce(
+                (height, row, index) => height + Math.max(
+                    64,
+                    GRAPH_LAYOUT_RULES.minimumCategoryCenterDistance
+                        - rows[index].radius
+                        - row.radius
+                ),
+                0
+            );
+        const maxWidth = Math.max(...rows.map(row => row.width));
+        let cursorY = -totalHeight / 2;
+        rows.forEach((row, rowIndex) => {
+            const rowY = cursorY + row.radius;
+            const shiftX = (maxWidth - row.width) / 2 - maxWidth / 2;
+            row.centers.forEach(({ group, x }) => {
+                const current = positions.get(group.category.id);
+                const target = { x: x + shiftX, y: rowY };
+                const delta = { x: target.x - current.x, y: target.y - current.y };
+                for (const member of group.members) {
+                    const position = positions.get(member.id);
+                    if (!position) continue;
+                    position.x += delta.x;
+                    position.y += delta.y;
+                }
+            });
+            cursorY += row.radius * 2;
+            if (rowIndex < rows.length - 1) {
+                cursorY += Math.max(
+                    64,
+                    GRAPH_LAYOUT_RULES.minimumCategoryCenterDistance
+                        - row.radius
+                        - rows[rowIndex + 1].radius
+                );
+            }
+        });
+
+        buckets.clear();
+        for (const node of nodes) {
+            if (orphanIds.has(node.id)) continue;
+            const position = positions.get(node.id);
+            if (position) addToBucket(node, position);
+        }
+        return true;
+    };
+
     const placeCategories = scale => {
         for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
             const accept = candidate => categories.every(other => other.id === node.id || !placed.has(other.id)
@@ -264,13 +361,23 @@ function packWithoutOverlap(nodes, positions, edges) {
             const category = categoryId ? byId.get(categoryId) : null;
             const categoryPosition = category ? positions.get(category.id) : null;
             const categoryRadius = category
-                ? getCategoryGroupRadius(category, scale)
+                ? deriveCategoryPlacementRadius(
+                    category,
+                    (childrenByParent.get(category.id) || []).filter(child => child.kind === "subcategory"),
+                    childrenByParent,
+                    nodeGap * scale
+                )
                 : null;
             const otherRegions = categories
                 .filter(other => other.id !== categoryId && positions.get(other.id))
                 .map(other => ({
                     position: positions.get(other.id),
-                    radius: getCategoryGroupRadius(other, scale)
+                    radius: deriveCategoryPlacementRadius(
+                        other,
+                        (childrenByParent.get(other.id) || []).filter(child => child.kind === "subcategory"),
+                        childrenByParent,
+                        nodeGap * scale
+                    )
                 }));
             const outwardAngle = categoryPosition
                 ? Math.atan2(parentPosition.y - categoryPosition.y, parentPosition.x - categoryPosition.x)
@@ -337,9 +444,25 @@ function packWithoutOverlap(nodes, positions, edges) {
         placed.clear();
         placedByKind.clear();
         if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
+        if (!compactCategoryGroups()) continue;
+        const compactOrphans = orphans.length <= 512;
+        const orphanOrigin = compactOrphans
+            ? [...nodes]
+                .filter(node => !orphanIds.has(node.id))
+                .map(node => positions.get(node.id))
+                .filter(Boolean)
+                .reduce(
+                    (center, position, index, all) => ({
+                        x: center.x + position.x / all.length,
+                        y: center.y + position.y / all.length
+                    }),
+                    { x: 0, y: 0 }
+                )
+            : null;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
-            const position = findFreePosition(node, positions.get(node.id));
+            const origin = compactOrphans ? orphanOrigin : positions.get(node.id);
+            const position = findFreePosition(node, origin);
             if (!position) return false;
             mark(node, position);
             return true;
