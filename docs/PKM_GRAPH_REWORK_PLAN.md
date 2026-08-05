@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 최단 부모 배치 규칙 추가, 자동 검증 대기
+> 상태: 최단 부모 배치 규칙 구현·검증·main 병합·Pages asset 배포 확인 완료
 
 ## 1. 목적
 
@@ -188,35 +188,34 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 
 ## 8. 현재 검증 상태
 
-정책 파일, Worker 연결, 최단 부모 정책 테스트, 계층 Worker 회귀 테스트를 `drill` 브랜치에 반영했다.
+최단 부모 정책, Worker 연결, 계층 회귀 테스트를 `drill`에서 반영하고 `main`에 병합했다.
 
-이번 수정의 Gate:
+완료된 Gate:
 
-- 정책 함수가 부모와 같은 계층의 모든 peer를 비교하는가
-- item이 자신의 subcategory를 가장 가까운 subcategory로 선택하는가
-- subcategory가 자신의 category를 가장 가까운 category로 선택하는가
-- 동일 거리 후보를 거부하는가
-- 기존 영향 반경·외곽 여백·대분류 분리 규칙을 유지하는가
-- 전체 테스트와 production build가 성공하는가
-- 문서·fixture에 민감정보가 없는가
+- 정책 함수가 부모와 같은 계층의 모든 peer를 비교함
+- item은 모든 subcategory 중 자신의 부모 subcategory가 가장 가까운 후보만 허용함
+- subcategory는 모든 category 중 자신의 부모 category가 가장 가까운 후보만 허용함
+- 동일 거리 후보를 거부함
+- 기존 영향 반경·외곽 여백·대분류 분리 규칙을 유지함
+- Branch CI test/build 성공
+- PR test/build 성공
+- main 병합 성공
+- main push 후 공개 PKM HTML, JavaScript asset, graph Worker asset이 HTTP 200으로 응답함
+- main push 후 Worker asset 이름이 갱신되어 새 배포가 반영됨
+- 변경 문서·fixture·소스에서 API key, token, 운영 식별자, 사용자 데이터 패턴을 확인하지 못함
 
-현재 최단 부모 수정은 자동 검증 결과 확인 전이다.
+미수행 또는 제한된 항목:
 
-
-- main에 계층 배치 변경과 테스트가 반영됨
-- 공개 PKM HTML이 HTTP 200으로 응답함
-- 공개 PKM JavaScript asset이 HTTP 200으로 응답함
-- 공개 graph Worker asset이 HTTP 200으로 응답함
-- 배포된 asset에서 영향 반경 정책과 category/subcategory membership 처리 문자열을 확인함
-- 브라우저를 직접 조작하는 visual smoke test는 연결 도구 부재로 수행하지 못함
-- 최종 보안 점검은 변경 파일·문서·fixture의 비밀값 패턴을 확인했으며, 전용 보안 스캔 도구는 이 실행에 연결되지 않음
-- 병합 후 GitHub connector가 제공하는 브랜치 목록에는 main과 작업 브랜치만 남아 있음. 작업 브랜치 ref를 삭제하는 API는 현재 연결 도구에 없어 자동 삭제는 수행하지 못함.
+- 브라우저 직접 조작 도구가 없어 시각적 visual smoke test는 수행하지 못함
+- 전용 보안 스캔 도구가 연결되지 않아 변경 파일 대상 정적 비밀값 점검만 수행함
+- GitHub connector에 원격 branch ref 삭제 기능이 없어 병합된 `drill` 삭제는 수행하지 못함
 
 ## 9. 실패 시 재검증 순서
 
 1. CI 실패 시 실패한 파일과 단계만 확인한다.
-2. 정책 실패 시 `graph-layout-policy.js`와 관련 테스트를 함께 수정한다.
-3. Worker 배치 실패 시 후보 반경, AABB 충돌 판정, spatial bucket 범위만 조정한다.
-4. build 실패 시 새 import와 번들 경로를 먼저 확인한다.
-5. main deploy 실패 시 소스 변경과 무관한 Pages·외부 Worker health check를 분리해 확인한다.
-6. 각 수정 뒤 동일한 테스트·build Gate를 다시 통과시킨다.
+2. 최단 부모 실패 시 `nearestParentSatisfied` 정책, peer 수집, 배치 순서를 확인한다.
+3. 부모 반경 실패 시 반경 산정 또는 후보 반경을 조정한다.
+4. 외곽 여백 실패 시 AABB 후보 판정과 spatial bucket 범위를 확인한다.
+5. 변칙성 저하 시 force 기준 좌표, stable hash, golden-angle 후보 순서를 확인한다.
+6. build 또는 Pages 실패 시 새 Worker asset 생성과 main push deploy 상태를 분리해 확인한다.
+7. 각 수정 뒤 동일한 테스트·build·asset Gate를 다시 통과시킨다.
