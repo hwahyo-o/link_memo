@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 계층 배치 정책·Worker 구현·자동 테스트·production build 검증 완료, main 병합 대기
+> 상태: main 병합 및 Pages asset 배포 확인 완료, 브라우저 visual smoke test는 도구 제약으로 미수행
 
 ## 1. 목적
 
@@ -189,11 +189,16 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - PR 검증 workflow의 Pages deploy job: PR 이벤트이므로 실행되지 않음
 - 문서·fixture에는 API key, token, 운영 식별자, 사용자 데이터가 없음
 
-아직 main 병합 후 확인해야 하는 항목:
+main 병합 후 확인된 결과:
 
-- main push에 따른 실제 GitHub Pages deploy job
-- 배포 결과와 공개 화면의 수동 smoke test
-- 사용 가능한 연결 도구 범위에서의 최종 보안 점검
+- main에 계층 배치 변경과 테스트가 반영됨
+- 공개 PKM HTML이 HTTP 200으로 응답함
+- 공개 PKM JavaScript asset이 HTTP 200으로 응답함
+- 공개 graph Worker asset이 HTTP 200으로 응답함
+- 배포된 asset에서 영향 반경 정책과 category/subcategory membership 처리 문자열을 확인함
+- 브라우저를 직접 조작하는 visual smoke test는 연결 도구 부재로 수행하지 못함
+- 최종 보안 점검은 변경 파일·문서·fixture의 비밀값 패턴을 확인했으며, 전용 보안 스캔 도구는 이 실행에 연결되지 않음
+- 병합 후 GitHub connector가 제공하는 브랜치 목록에는 main과 작업 브랜치만 남아 있음. 작업 브랜치 ref를 삭제하는 API는 현재 연결 도구에 없어 자동 삭제는 수행하지 못함.
 
 ## 9. 실패 시 재검증 순서
 
