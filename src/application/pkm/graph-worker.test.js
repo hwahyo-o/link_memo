@@ -193,13 +193,19 @@ describe("PKM graph worker algorithms", () => {
         );
         const categoryA = positions.get("category-a");
         const categoryB = positions.get("category-b");
-        const regionRadius = deriveCategoryGroupRadius(
+        const categoryAEnvelope = deriveCategoryGroupEnvelope(
             byId.get("category-a"),
-            [byId.get("subcategory-a1"), byId.get("subcategory-a2")],
-            new Map([
-                ["subcategory-a1", [byId.get("item-a1")]],
-                ["subcategory-a2", [byId.get("item-a2")]]
-            ])
+            nodes.filter(node => node.id === "category-a"
+                || node.categoryId === "category-a"
+                || ["item-a1", "item-a2"].includes(node.id)),
+            positions
+        );
+        const categoryBEnvelope = deriveCategoryGroupEnvelope(
+            byId.get("category-b"),
+            nodes.filter(node => node.id === "category-b"
+                || node.categoryId === "category-b"
+                || node.id === "item-b1"),
+            positions
         );
 
         for (const subcategoryId of ["subcategory-a1", "subcategory-a2"]) {
@@ -208,7 +214,7 @@ describe("PKM graph worker algorithms", () => {
                 positions.get(subcategoryId),
                 byId.get(subcategoryId),
                 categoryA,
-                regionRadius
+                categoryAEnvelope.radius
             )).toBe(true);
         }
         expect(distance("item-a1", "subcategory-a1")).toBeLessThan(distance("item-a1", "subcategory-a2"));
@@ -225,8 +231,8 @@ describe("PKM graph worker algorithms", () => {
                 positions.get(itemId),
                 byId.get(itemId),
                 categoryA,
-                regionRadius,
-                [{ position: categoryB, radius: regionRadius }]
+                categoryAEnvelope.radius,
+                [{ position: categoryB, radius: categoryBEnvelope.radius }]
             )).toBe(true);
         }
     });
