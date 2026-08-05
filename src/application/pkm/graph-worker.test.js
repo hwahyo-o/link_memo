@@ -61,7 +61,7 @@ describe("PKM graph worker algorithms", () => {
         const distance = (left, right) => Math.hypot(positions.get(left).x - positions.get(right).x, positions.get(left).y - positions.get(right).y);
         expect(distance("category", "subcategory")).toBeLessThan(500);
         expect(distance("subcategory", "item")).toBeLessThan(500);
-        expect(distance("category", "orphan")).toBeGreaterThan(500);
+        expect(distance("category", "orphan")).toBeLessThan(1_200);
         expect(new Set([...positions.values()].map(position => Math.round(position.x))).size).toBeGreaterThan(2);
         expect(new Set([...positions.values()].map(position => Math.round(position.y))).size).toBeGreaterThan(2);
     });
@@ -229,6 +229,36 @@ describe("PKM graph worker algorithms", () => {
                 [{ position: categoryB, radius: regionRadius }]
             )).toBe(true);
         }
+    });
+
+    it("keeps disconnected category groups in a compact bounded seed", () => {
+        const nodes = Array.from({ length: 5 }, (_, index) => ([
+            { id: `category-${index}`, kind: "category", width: 196, height: 72 },
+            { id: `subcategory-${index}`, kind: "subcategory", categoryId: `category-${index}`, width: 174, height: 64 },
+            { id: `item-${index}`, kind: "item", subcategoryId: `subcategory-${index}`, width: 188, height: 68 }
+        ])).flat();
+        const edges = Array.from({ length: 5 }, (_, index) => ([
+            { source: `category-${index}`, target: `subcategory-${index}`, kind: "category-membership" },
+            { source: `subcategory-${index}`, target: `item-${index}`, kind: "subcategory-membership" }
+        ])).flat();
+        const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
+        const categoryPositions = nodes
+            .filter(node => node.kind === "category")
+            .map(node => positions.get(node.id));
+        const center = categoryPositions.reduce(
+            (sum, position) => ({ x: sum.x + position.x, y: sum.y + position.y }),
+            { x: 0, y: 0 }
+        );
+        center.x /= categoryPositions.length;
+        center.y /= categoryPositions.length;
+        const span = Math.max(
+            ...categoryPositions.map(position => Math.hypot(position.x - center.x, position.y - center.y))
+        );
+
+        expect(categoryPositions.every(position => Number.isFinite(position.x) && Number.isFinite(position.y))).toBe(true);
+        expect(Math.abs(center.x)).toBeLessThan(800);
+        expect(Math.abs(center.y)).toBeLessThan(800);
+        expect(span).toBeLessThan(3_500);
     });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
