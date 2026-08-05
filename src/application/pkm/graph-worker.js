@@ -3,8 +3,10 @@ import {
     GRAPH_LAYOUT_RULES,
     aabbSeparated,
     categorySeparationSatisfied,
+    categoryOwnershipSatisfied,
     centerDistance,
     deriveCategoryGroupRadius,
+    hierarchyBandSatisfied,
     nearestParentSatisfied,
     parentDistanceLimit,
     parentEdgeAngleSeparated,
@@ -194,6 +196,12 @@ function packWithoutOverlap(nodes, positions, edges) {
         nodeGap * scale
     );
 
+    const categoryAncestor = nodeId => {
+        let current = nodeId;
+        while (hierarchy.parents.has(current)) current = hierarchy.parents.get(current);
+        return byId.get(current)?.kind === "category" ? current : null;
+    };
+
     const placeCategories = scale => {
         for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
             const accept = candidate => categories.every(other => other.id === node.id || !placed.has(other.id)
@@ -236,19 +244,60 @@ function packWithoutOverlap(nodes, positions, edges) {
             const siblingIndex = siblings.findIndex(sibling => sibling.id === node.id);
             const siblingCount = Math.max(1, siblings.length);
             const slotWidth = Math.PI * 2 / siblingCount;
-            const slotAngle = (siblingIndex + 0.5) * slotWidth
+            const baseSlotAngle = (siblingIndex + 0.5) * slotWidth
                 + hashSeed(parent.id) * slotWidth * 0.3;
+            const categoryId = categoryAncestor(node.id);
+            const category = categoryId ? byId.get(categoryId) : null;
+            const categoryPosition = category ? positions.get(category.id) : null;
+            const categoryRadius = category
+                ? getCategoryGroupRadius(category, scale)
+                : null;
+            const otherRegions = categories
+                .filter(other => other.id !== categoryId && positions.get(other.id))
+                .map(other => ({
+                    position: positions.get(other.id),
+                    radius: getCategoryGroupRadius(other, scale)
+                }));
+            const outwardAngle = categoryPosition
+                ? Math.atan2(parentPosition.y - categoryPosition.y, parentPosition.x - categoryPosition.x)
+                : baseSlotAngle;
+            const itemFanWidth = Math.min(Math.PI * 1.1, Math.PI * 2);
+            const slotAngle = node.kind === "item" && categoryPosition
+                ? outwardAngle + (((siblingIndex + 0.5) / siblingCount) - 0.5) * itemFanWidth
+                : baseSlotAngle;
             const peerPositions = siblings
                 .slice(0, Math.max(0, siblingIndex))
                 .map(sibling => positions.get(sibling.id))
                 .filter(Boolean);
-            const accept = candidate => nearestParentSatisfied(candidate, parentPosition, peerPositions)
-                && parentEdgeAngleSeparated(
-                    candidate,
-                    parentPosition,
-                    peerPositions,
-                    siblingEdgeAngleLimit(siblingCount)
-                );
+            const accept = candidate => {
+                const regionSatisfied = !category
+                    || categoryOwnershipSatisfied(
+                        candidate,
+                        node,
+                        categoryPosition,
+                        categoryRadius,
+                        otherRegions,
+                        nodeGap
+                    );
+                const hierarchySatisfied = !category
+                    || hierarchyBandSatisfied(
+                        node,
+                        candidate,
+                        parentPosition,
+                        categoryPosition,
+                        node.kind,
+                        nodeGap
+                    );
+                return regionSatisfied
+                    && hierarchySatisfied
+                    && nearestParentSatisfied(candidate, parentPosition, peerPositions)
+                    && parentEdgeAngleSeparated(
+                        candidate,
+                        parentPosition,
+                        peerPositions,
+                        siblingEdgeAngleLimit(siblingCount)
+                    );
+            };
             const position = findFreePosition(
                 node,
                 positions.get(node.id),
@@ -256,7 +305,9 @@ function packWithoutOverlap(nodes, positions, edges) {
                 parentDistanceLimit(parent, node, node.kind, nodeGap * scale),
                 accept,
                 slotAngle,
-                Math.min(Math.PI / 2, slotWidth * 0.7)
+                node.kind === "item"
+                    ? Math.min(Math.PI / 3, Math.max(0.24, itemFanWidth / siblingCount * 0.75))
+                    : Math.min(Math.PI / 2, slotWidth * 0.7)
             );
             if (!position) return false;
             mark(node, position);

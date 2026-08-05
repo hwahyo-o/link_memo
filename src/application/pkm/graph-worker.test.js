@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph, parseMetadata } from "./graph-worker.js";
-import { GRAPH_LAYOUT_RULES, aabbSeparated, categorySeparationSatisfied, deriveCategoryGroupRadius, deriveInfluenceRadius } from "../../domain/pkm/graph-layout-policy.js";
+import { GRAPH_LAYOUT_RULES, aabbSeparated, categoryOwnershipSatisfied, categoryRegionContains, categorySeparationSatisfied, deriveCategoryGroupRadius, deriveInfluenceRadius, hierarchyBandSatisfied } from "../../domain/pkm/graph-layout-policy.js";
 
 describe("PKM graph worker algorithms", () => {
     it("extracts searchable metadata and resolved wiki links", () => {
@@ -164,6 +164,71 @@ describe("PKM graph worker algorithms", () => {
             angle("subcategory-a", "item-a"),
             angle("subcategory-a", "item-b")
         )).toBeGreaterThanOrEqual(GRAPH_LAYOUT_RULES.minimumSiblingEdgeAngle);
+    });
+
+    it("keeps each category region layered and item nodes outward from their subcategory", () => {
+        const nodes = [
+            { id: "category-a", kind: "category", width: 196, height: 72 },
+            { id: "category-b", kind: "category", width: 196, height: 72 },
+            { id: "subcategory-a1", kind: "subcategory", categoryId: "category-a", width: 174, height: 64 },
+            { id: "subcategory-a2", kind: "subcategory", categoryId: "category-a", width: 174, height: 64 },
+            { id: "subcategory-b1", kind: "subcategory", categoryId: "category-b", width: 174, height: 64 },
+            { id: "item-a1", kind: "item", subcategoryId: "subcategory-a1", width: 188, height: 68 },
+            { id: "item-a2", kind: "item", subcategoryId: "subcategory-a2", width: 188, height: 68 },
+            { id: "item-b1", kind: "item", subcategoryId: "subcategory-b1", width: 188, height: 68 }
+        ];
+        const edges = [
+            { source: "category-a", target: "subcategory-a1", kind: "category-membership" },
+            { source: "category-a", target: "subcategory-a2", kind: "category-membership" },
+            { source: "category-b", target: "subcategory-b1", kind: "category-membership" },
+            { source: "subcategory-a1", target: "item-a1", kind: "subcategory-membership" },
+            { source: "subcategory-a2", target: "item-a2", kind: "subcategory-membership" },
+            { source: "subcategory-b1", target: "item-b1", kind: "subcategory-membership" }
+        ];
+        const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
+        const byId = new Map(nodes.map(node => [node.id, node]));
+        const distance = (left, right) => Math.hypot(
+            positions.get(left).x - positions.get(right).x,
+            positions.get(left).y - positions.get(right).y
+        );
+        const categoryA = positions.get("category-a");
+        const categoryB = positions.get("category-b");
+        const regionRadius = deriveCategoryGroupRadius(
+            byId.get("category-a"),
+            [byId.get("subcategory-a1"), byId.get("subcategory-a2")],
+            new Map([
+                ["subcategory-a1", [byId.get("item-a1")]],
+                ["subcategory-a2", [byId.get("item-a2")]]
+            ])
+        );
+
+        for (const subcategoryId of ["subcategory-a1", "subcategory-a2"]) {
+            expect(distance(subcategoryId, "category-a")).toBeLessThan(distance(subcategoryId, "category-b"));
+            expect(categoryRegionContains(
+                positions.get(subcategoryId),
+                byId.get(subcategoryId),
+                categoryA,
+                regionRadius
+            )).toBe(true);
+        }
+        expect(distance("item-a1", "subcategory-a1")).toBeLessThan(distance("item-a1", "subcategory-a2"));
+        expect(distance("item-a2", "subcategory-a2")).toBeLessThan(distance("item-a2", "subcategory-a1"));
+        for (const [itemId, subcategoryId] of [["item-a1", "subcategory-a1"], ["item-a2", "subcategory-a2"]]) {
+            expect(hierarchyBandSatisfied(
+                byId.get(itemId),
+                positions.get(itemId),
+                positions.get(subcategoryId),
+                categoryA,
+                "item"
+            )).toBe(true);
+            expect(categoryOwnershipSatisfied(
+                positions.get(itemId),
+                byId.get(itemId),
+                categoryA,
+                regionRadius,
+                [{ position: categoryB, radius: regionRadius }]
+            )).toBe(true);
+        }
     });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
