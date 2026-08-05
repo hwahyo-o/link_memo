@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: category 소유 영역·계층별 방사 배치·간선 방향 분리 구현 및 drill CI 검증 완료; main 병합 전
+> 상태: category 소유 영역·계층별 방사 배치·drill CI·PR 병합 완료; main Pages run-level 및 브라우저 visual smoke 확인 제한
 
 ## 1. 목적
 
@@ -283,12 +283,12 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - PR #55 Test and Deploy GitHub Pages 성공
 - 변경 범위에는 저장, 인증, Firestore, Cloudflare Worker, 외부 API, 의존성 변경 없음
 - 변경 파일에 API key, token, client secret, private key, 사용자 식별자 패턴 없음
-- 브라우저 직접 시각 검증은 Browser 연결 도구 부재로 미수행이며, 배포 산출물 확인 단계에서 별도로 기록한다.
+- 브라우저 직접 시각 검증과 main 배포 asset HTTP 확인은 연결된 Browser/Actions run 조회 도구 부재로 미수행이다.
 
 ### 다음 Gate
 
 1. PR diff와 CI 결과를 다시 확인한다.
-2. PR을 main에 병합한다.
-3. main Pages workflow 성공을 확인한다.
-4. 공개 HTML과 최신 graph Worker asset HTTP 응답을 확인한다.
-5. GitHub connector가 branch ref 삭제를 지원하지 않으면 drill 삭제 필요 상태를 명시한다.
+2. PR을 main에 병합한다. 완료.
+3. main push가 Pages workflow를 시작하도록 workflow 조건을 확인한다. 완료.
+4. main Pages run-level과 공개 HTML의 최신 asset HTTP 응답은 연결 도구 제한으로 별도 확인하지 못했다.
+5. GitHub connector가 branch ref 삭제를 지원하지 않아 drill 삭제는 수동 정리 필요 상태다.
