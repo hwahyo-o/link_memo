@@ -76,18 +76,29 @@ function connectedComponents(nodes, edges) {
 function initialNetworkPositions(nodes, edges) {
     const positions = new Map();
     const components = connectedComponents(nodes, edges);
-    let offset = 0;
+    const columns = Math.max(1, Math.ceil(Math.sqrt(components.length)));
+    const rows = Math.max(1, Math.ceil(components.length / columns));
+    const largestComponent = components.reduce((largest, component) => Math.max(largest, component.length), 1);
+    const componentGap = Math.max(620, Math.sqrt(largestComponent) * 140);
+
     components.forEach((component, componentIndex) => {
+        const column = componentIndex % columns;
+        const row = Math.floor(componentIndex / columns);
+        const jitter = (hashSeed(component[0].id) - 0.5) * 72;
+        const centerX = (column - (columns - 1) / 2) * componentGap + jitter;
+        const centerY = (row - (rows - 1) / 2) * componentGap - jitter;
         const componentRadius = Math.max(260, Math.sqrt(component.length) * 190);
-        const centerAngle = componentIndex * 2.399963229728653;
-        const centerX = Math.cos(centerAngle) * offset;
-        const centerY = Math.sin(centerAngle) * offset;
+
         component.forEach((node, index) => {
             const angle = index * 2.399963229728653 + hashSeed(node.id) * 0.4;
             const radius = Math.sqrt(index + 1) * Math.max(120, componentRadius / Math.sqrt(component.length));
-            positions.set(node.id, { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius, vx: 0, vy: 0 });
+            positions.set(node.id, {
+                x: centerX + Math.cos(angle) * radius,
+                y: centerY + Math.sin(angle) * radius,
+                vx: 0,
+                vy: 0
+            });
         });
-        offset += componentRadius * 2 + 320;
     });
     return positions;
 }
@@ -116,6 +127,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const cellSize = 400;
     const buckets = new Map();
     const placed = new Set();
+    const placedByKind = new Map();
     const hierarchy = createHierarchy(nodes, edges);
     const byId = new Map(nodes.map(node => [node.id, node]));
     const childrenByParent = new Map(nodes.map(node => [
@@ -146,6 +158,8 @@ function packWithoutOverlap(nodes, positions, edges) {
     const mark = (node, position) => {
         positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
         placed.add(node.id);
+        if (!placedByKind.has(node.kind)) placedByKind.set(node.kind, new Map());
+        placedByKind.get(node.kind).set(node.id, position);
         const key = bucketKey(position.x, position.y);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(node);
@@ -269,6 +283,9 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .slice(0, Math.max(0, siblingIndex))
                 .map(sibling => positions.get(sibling.id))
                 .filter(Boolean);
+            const competingParentPositions = [...(placedByKind.get(parent.kind)?.entries() || [])]
+                .filter(([id]) => id !== parent.id)
+                .map(([, position]) => position);
             const accept = candidate => {
                 const regionSatisfied = !category
                     || categoryOwnershipSatisfied(
@@ -290,7 +307,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                     );
                 return regionSatisfied
                     && hierarchySatisfied
-                    && nearestParentSatisfied(candidate, parentPosition, peerPositions)
+                    && nearestParentSatisfied(candidate, parentPosition, competingParentPositions)
                     && parentEdgeAngleSeparated(
                         candidate,
                         parentPosition,
@@ -318,6 +335,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
         buckets.clear();
         placed.clear();
+        placedByKind.clear();
         if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {

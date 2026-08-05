@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: category 소유 영역·계층별 방사 배치·drill CI·PR 병합 완료; main Pages run-level 및 브라우저 visual smoke 확인 제한
+> 상태: category 소유 영역·계층별 방사 배치·전역 component seed 압축·동일 계층 부모 비교 구현 및 drill CI 검증 완료; main 병합 전
 
 ## 1. 목적
 
@@ -292,3 +292,34 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 3. main push가 Pages workflow를 시작하도록 workflow 조건을 확인한다. 완료.
 4. main Pages run-level과 공개 HTML의 최신 asset HTTP 응답은 연결 도구 제한으로 별도 확인하지 못했다.
 5. GitHub connector가 branch ref 삭제를 지원하지 않아 drill 삭제는 수동 정리 필요 상태다.
+
+
+## 11. 2026-08-05 전역 그래프 영역 압축 반영
+
+### 첨부 이미지 진단
+
+새 이미지에서는 대부분의 node가 화면 상단에 밀집되고 일부 node가 하단에 고립되어 전체 fit 시 node가 지나치게 작아지는 현상이 확인되었다. 이는 부모 반경만의 문제가 아니라 disconnected component의 초기 좌표 offset이 누적되는 전역 배치 문제다.
+
+### 수정 내용
+
+- initialNetworkPositions의 증가형 golden-angle spiral offset을 deterministic bounded grid seed로 교체했다.
+- component를 화면 중심 주변의 행·열 영역에 배치하고 작은 stable jitter만 유지한다.
+- subcategory 후보는 이미 배치된 모든 category parent와 비교한다.
+- item 후보는 이미 배치된 모든 subcategory parent와 비교한다.
+- same-parent edge angle 검사는 기존 sibling peer index를 계속 사용한다.
+- placed parent index를 사용해 반복적인 전체 node scan을 제거했다.
+- component 크기 계산은 spread 기반 호출 없이 reduce로 처리한다.
+- 기존 category-owned region, outward item band, parent distance cap, AABB gap 규칙은 유지한다.
+
+### 검증
+
+- PR #57 Branch CI run 404 성공
+- PR #57 Test and Deploy workflow run 273 성공
+- compact disconnected category group 회귀 테스트 추가
+- 기존 metadata, rectangle overlap, hierarchy, angle, node-cap 테스트 유지
+- 저장, 인증, Firestore, Cloudflare Worker, 외부 API, 의존성 변경 없음
+- 변경 파일 대상 정적 비밀값 검사에서 API key, token, client secret, private key, 사용자 식별자 패턴 없음
+
+### 제한 사항
+
+Browser 연결 도구가 제공되지 않아 실제 화면 screenshot, DOM, console, mobile viewport 검증은 아직 수행하지 않았다. Pages workflow 성공은 branch/PR workflow 기준이며, main 병합 후 공개 asset HTTP 확인은 별도 Gate로 남긴다.
