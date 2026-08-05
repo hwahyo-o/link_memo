@@ -100,6 +100,11 @@ describe("PKM graph worker algorithms", () => {
         expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-a"), [byId.get("item-a")]));
         expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-b"), [byId.get("item-b")]));
 
+        expect(distance("subcategory-a", "category-a")).toBeLessThan(distance("subcategory-a", "category-b"));
+        expect(distance("subcategory-b", "category-b")).toBeLessThan(distance("subcategory-b", "category-a"));
+        expect(distance("item-a", "subcategory-a")).toBeLessThan(distance("item-a", "subcategory-b"));
+        expect(distance("item-b", "subcategory-b")).toBeLessThan(distance("item-b", "subcategory-a"));
+
         for (let left = 0; left < nodes.length; left += 1) {
             for (let right = left + 1; right < nodes.length; right += 1) {
                 expect(aabbSeparated(nodes[left], nodes[right], get(nodes[left].id), get(nodes[right].id))).toBe(true);
