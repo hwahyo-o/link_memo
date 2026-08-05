@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 최단 부모 배치 규칙 구현·검증·main 병합·Pages asset 배포 확인 완료
+> 상태: 원형 계층 영역·부모 거리 상한·간선 방향 분리 구현, 자동 검증 대기
 
 ## 1. 목적
 
@@ -12,6 +12,10 @@
 - 버튼 노드는 모든 소분류 노드 중 자신의 부모 소분류에 가장 가까워야 한다.
 - 소분류 노드는 자신이 속한 대분류 노드의 중심 영향 반경 안에 위치한다.
 - 소분류 노드는 모든 대분류 노드 중 자신의 부모 대분류에 가장 가까워야 한다.
+- subcategory의 category 중심 거리는 기본 360px 이하로 제한한다.
+- item의 subcategory 중심 거리는 기본 300px 이하로 제한한다.
+- 같은 부모를 가진 계층 간선은 서로 다른 방사 방향을 사용한다.
+- category·subcategory·item을 포함한 category 영역 그룹의 외곽 겹침 깊이는 50px 미만이다.
 - 자식 노드는 부모 도형 내부에 들어가지 않는다.
 - 노드 간 여백은 노드 도형의 외곽 geometry를 기준으로 계산한다.
 - 대분류 중심점 간 거리는 최소 420px이다.
@@ -88,6 +92,14 @@ IndexedDB, Firestore, Firebase Auth, Google Drive Worker, Cloudflare Backup Work
 - 관련 edge가 있는지 없는지와 무관하게 현재 배치 대상 그래프의 같은 계층 노드를 모두 비교한다.
 - 동일 거리도 허용하지 않으며, 배치 후보를 다시 탐색하거나 반경 scale을 확장한다.
 
+### 원형 계층 영역
+
+- category 중심에서 subcategory를 제한된 환형 영역에 배치한다.
+- 각 subcategory 중심에서 item을 제한된 환형 영역에 배치한다.
+- 자식 수가 많아도 부모-자식 거리를 무한히 늘리지 않고 category 영역 외곽을 확장하거나 보조 환형을 사용한다.
+- 부모별 자식은 deterministic angular slot과 작은 jitter를 사용해 변칙성을 유지한다.
+- 같은 부모의 간선 방향은 최소 각도 차이를 확보하며, 일반 네트워크 간선의 교차는 네트워크 표현 특성상 별도 영역으로 취급한다.
+
 ### 대분류 분리
 
 대분류 쌍마다 다음을 검사한다.
@@ -109,6 +121,9 @@ IndexedDB, Firestore, Firebase Auth, Google Drive Worker, Cloudflare Backup Work
 - 중심점 거리
 - 부모 영향 반경 계산
 - 대분류 반경 분리 판정
+- 부모 거리 상한
+- category 영역 외곽 반경
+- 같은 부모 간선 방향 분리
 
 ### Worker
 
@@ -116,9 +131,9 @@ Worker 최종 패커는 다음 순서로 동작한다.
 
 1. 명시적인 category/subcategory ID와 membership edge로 부모 관계를 구성한다.
 2. 대분류 root를 먼저 배치한다.
-3. 부모 중심 영향 반경을 계산한다.
-4. 소분류와 버튼 노드를 부모 반경 안에서 golden-angle 후보로 배치한다.
-5. 모든 후보에 부모 외곽 여백, 기존 노드 충돌, 같은 계층 최단 부모 조건을 함께 적용한다.
+3. category 영역 외곽 반경과 부모별 제한 환형을 계산한다.
+4. category 중심을 먼저 배치하고 subcategory와 item을 부모별 angular slot 안에 배치한다.
+5. 모든 후보에 부모 거리 상한, 부모 외곽 여백, 기존 노드 충돌, 같은 계층 최단 부모, 같은 부모 간선 방향 조건을 함께 적용한다.
 6. 고아 root와 일반 고아 노드는 기존 변칙 위치를 최대한 유지하며 배치한다.
 7. 후보가 부족하면 반경 scale을 단계적으로 확대한다.
 8. 유한 좌표와 충돌 없는 좌표만 결과로 반환한다.
@@ -143,6 +158,9 @@ Worker 최종 패커는 다음 순서로 동작한다.
 - 모든 계층 노드 외곽 여백
 - item → 자신의 subcategory 최단 부모
 - subcategory → 자신의 category 최단 부모
+- subcategory/item 부모 거리 상한
+- 같은 부모 간선 방향 분리
+- category 영역 그룹 외곽 겹침 깊이 50px 미만
 
 ### 통합 검증
 
@@ -188,27 +206,20 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 
 ## 8. 현재 검증 상태
 
-최단 부모 정책, Worker 연결, 계층 회귀 테스트를 `drill`에서 반영하고 `main`에 병합했다.
+원형 계층 영역, 부모 거리 상한, 부모별 angular slot, 간선 방향 분리 정책과 Worker 연결을 `drill` 브랜치에 반영했다.
 
-완료된 Gate:
+이번 Gate:
 
-- 정책 함수가 부모와 같은 계층의 모든 peer를 비교함
-- item은 모든 subcategory 중 자신의 부모 subcategory가 가장 가까운 후보만 허용함
-- subcategory는 모든 category 중 자신의 부모 category가 가장 가까운 후보만 허용함
-- 동일 거리 후보를 거부함
-- 기존 영향 반경·외곽 여백·대분류 분리 규칙을 유지함
-- Branch CI test/build 성공
-- PR test/build 성공
-- main 병합 성공
-- main push 후 공개 PKM HTML, JavaScript asset, graph Worker asset이 HTTP 200으로 응답함
-- main push 후 Worker asset 이름이 갱신되어 새 배포가 반영됨
-- 변경 문서·fixture·소스에서 API key, token, 운영 식별자, 사용자 데이터 패턴을 확인하지 못함
+- category 영역 외곽 반경이 subcategory·item descendant geometry를 포함하는가
+- subcategory 중심 거리가 기본 360px 이하인가
+- item 중심 거리가 기본 300px 이하인가
+- 같은 부모 간선의 각도 차이가 최소 정책값 이상인가
+- item·subcategory가 여전히 자기 부모에 가장 가까운가
+- 전체 노드 외곽 여백과 category 그룹 겹침 규칙을 유지하는가
+- 전체 테스트와 production build가 성공하는가
+- 문서·fixture·변경 소스에 민감정보가 없는가
 
-미수행 또는 제한된 항목:
-
-- 브라우저 직접 조작 도구가 없어 시각적 visual smoke test는 수행하지 못함
-- 전용 보안 스캔 도구가 연결되지 않아 변경 파일 대상 정적 비밀값 점검만 수행함
-- GitHub connector에 원격 branch ref 삭제 기능이 없어 병합된 `drill` 삭제는 수행하지 못함
+첫 CI에서 obsolete radius cache 참조를 수정했고, 최신 테스트 기대값 수정 후 재검증을 진행한다.
 
 ## 9. 실패 시 재검증 순서
 

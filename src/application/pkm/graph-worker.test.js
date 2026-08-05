@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph, parseMetadata } from "./graph-worker.js";
-import { aabbSeparated, categorySeparationSatisfied, deriveInfluenceRadius } from "../../domain/pkm/graph-layout-policy.js";
+import { GRAPH_LAYOUT_RULES, aabbSeparated, categorySeparationSatisfied, deriveCategoryGroupRadius, deriveInfluenceRadius } from "../../domain/pkm/graph-layout-policy.js";
 
 describe("PKM graph worker algorithms", () => {
     it("extracts searchable metadata and resolved wiki links", () => {
@@ -92,10 +92,30 @@ describe("PKM graph worker algorithms", () => {
             byId.get("category-b"),
             get("category-a"),
             get("category-b"),
+            deriveCategoryGroupRadius(
+                byId.get("category-a"),
+                [byId.get("subcategory-a")],
+                new Map([["subcategory-a", [byId.get("item-a")]]])
+            ),
+            deriveCategoryGroupRadius(
+                byId.get("category-b"),
+                [byId.get("subcategory-b")],
+                new Map([["subcategory-b", [byId.get("item-b")]]])
+            )
+        )).toBe(true);
+        expect(categorySeparationSatisfied(
+            byId.get("category-a"),
+            byId.get("category-b"),
+            get("category-a"),
+            get("category-b"),
             deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]),
             deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")])
         )).toBe(true);
         expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]));
+        expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumSubcategoryDistance);
+        expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumSubcategoryDistance);
+        expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance);
+        expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance);
         expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")]));
         expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-a"), [byId.get("item-a")]));
         expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-b"), [byId.get("item-b")]));
@@ -110,6 +130,40 @@ describe("PKM graph worker algorithms", () => {
                 expect(aabbSeparated(nodes[left], nodes[right], get(nodes[left].id), get(nodes[right].id))).toBe(true);
             }
         }
+    });
+
+    it("separates same-parent hierarchy edges into distinct radial directions", () => {
+        const nodes = [
+            { id: "category", kind: "category", width: 196, height: 72 },
+            { id: "subcategory-a", kind: "subcategory", categoryId: "category", width: 174, height: 64 },
+            { id: "subcategory-b", kind: "subcategory", categoryId: "category", width: 174, height: 64 },
+            { id: "item-a", kind: "item", subcategoryId: "subcategory-a", width: 188, height: 68 },
+            { id: "item-b", kind: "item", subcategoryId: "subcategory-a", width: 188, height: 68 }
+        ];
+        const edges = [
+            { source: "category", target: "subcategory-a", kind: "category-membership" },
+            { source: "category", target: "subcategory-b", kind: "category-membership" },
+            { source: "subcategory-a", target: "item-a", kind: "subcategory-membership" },
+            { source: "subcategory-a", target: "item-b", kind: "subcategory-membership" }
+        ];
+        const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
+        const angle = (parent, child) => Math.atan2(
+            positions.get(child).y - positions.get(parent).y,
+            positions.get(child).x - positions.get(parent).x
+        );
+        const angularDistance = (left, right) => {
+            const distance = Math.abs(left - right) % (Math.PI * 2);
+            return Math.min(distance, Math.PI * 2 - distance);
+        };
+
+        expect(angularDistance(
+            angle("category", "subcategory-a"),
+            angle("category", "subcategory-b")
+        )).toBeGreaterThanOrEqual(GRAPH_LAYOUT_RULES.minimumSiblingEdgeAngle);
+        expect(angularDistance(
+            angle("subcategory-a", "item-a"),
+            angle("subcategory-a", "item-b")
+        )).toBeGreaterThanOrEqual(GRAPH_LAYOUT_RULES.minimumSiblingEdgeAngle);
     });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {

@@ -2,7 +2,10 @@ export const GRAPH_LAYOUT_RULES = Object.freeze({
     minimumNodeGap: 42,
     preferredNodeGap: 96,
     minimumCategoryCenterDistance: 420,
-    maximumCategoryRadiusOverlap: 50
+    maximumCategoryRadiusOverlap: 50,
+    maximumSubcategoryDistance: 360,
+    maximumItemDistance: 300,
+    minimumSiblingEdgeAngle: 0.17453292519943295
 });
 
 function dimension(node, key, fallback) {
@@ -44,6 +47,58 @@ export function deriveInfluenceRadius(parent, children = [], gap = GRAPH_LAYOUT_
         ? Math.sqrt(children.length - 1) * Math.max(240, largestChild * 2 + gap)
         : 0;
     return nodeHalfDiagonal(parent) + gap + largestChild + Math.max(220, childSpread) * scale;
+}
+
+export function parentDistanceLimit(parent, child, kind, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
+    const parentSize = nodeDimensions(parent);
+    const childSize = nodeDimensions(child);
+    const minimum = Math.max(
+        (parentSize.width + childSize.width) / 2 + gap,
+        (parentSize.height + childSize.height) / 2 + gap
+    );
+    const maximum = kind === "subcategory"
+        ? GRAPH_LAYOUT_RULES.maximumSubcategoryDistance
+        : kind === "item"
+            ? GRAPH_LAYOUT_RULES.maximumItemDistance
+            : minimum;
+    return Math.max(minimum, maximum);
+}
+
+export function deriveCategoryGroupRadius(category, subcategories = [], childrenByParent = new Map(), gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
+    let radius = nodeHalfDiagonal(category) + gap;
+    for (const subcategory of subcategories) {
+        const subcategoryDistance = parentDistanceLimit(category, subcategory, "subcategory", gap);
+        radius = Math.max(radius, subcategoryDistance + nodeHalfDiagonal(subcategory) + gap);
+        const items = childrenByParent.get(subcategory.id) || [];
+        for (const item of items) {
+            const itemDistance = parentDistanceLimit(subcategory, item, "item", gap);
+            radius = Math.max(radius, subcategoryDistance + itemDistance + nodeHalfDiagonal(item) + gap);
+        }
+    }
+    return radius;
+}
+
+function angleOf(position, origin) {
+    return Math.atan2(position.y - origin.y, position.x - origin.x);
+}
+
+function circularAngleDistance(left, right) {
+    const distance = Math.abs(left - right) % (Math.PI * 2);
+    return Math.min(distance, Math.PI * 2 - distance);
+}
+
+export function parentEdgeAngleSeparated(candidatePosition, parentPosition, peerPositions = [], minimumAngle = GRAPH_LAYOUT_RULES.minimumSiblingEdgeAngle) {
+    const candidateAngle = angleOf(candidatePosition, parentPosition);
+    return peerPositions.filter(Boolean).every(peerPosition => (
+        circularAngleDistance(candidateAngle, angleOf(peerPosition, parentPosition)) >= minimumAngle
+    ));
+}
+
+export function siblingEdgeAngleLimit(siblingCount) {
+    return Math.min(
+        GRAPH_LAYOUT_RULES.minimumSiblingEdgeAngle,
+        Math.PI / Math.max(1, siblingCount)
+    );
 }
 
 export function nearestParentSatisfied(candidatePosition, parentPosition, peerPositions = []) {

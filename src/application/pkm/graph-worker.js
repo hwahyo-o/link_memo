@@ -4,8 +4,11 @@ import {
     aabbSeparated,
     categorySeparationSatisfied,
     centerDistance,
-    deriveInfluenceRadius,
-    nearestParentSatisfied
+    deriveCategoryGroupRadius,
+    nearestParentSatisfied,
+    parentDistanceLimit,
+    parentEdgeAngleSeparated,
+    siblingEdgeAngleLimit
 } from "../../domain/pkm/graph-layout-policy.js";
 
 function normalizePath(path) {
@@ -113,7 +116,12 @@ function packWithoutOverlap(nodes, positions, edges) {
     const placed = new Set();
     const hierarchy = createHierarchy(nodes, edges);
     const byId = new Map(nodes.map(node => [node.id, node]));
-    const radii = new Map();
+    const childrenByParent = new Map(nodes.map(node => [
+        node.id,
+        (hierarchy.children.get(node.id) || [])
+            .map(childId => byId.get(childId))
+            .filter(Boolean)
+    ]));
     const roots = nodes.filter(node => !hierarchy.parents.has(node.id) && (node.kind === "category" || hierarchy.children.get(node.id)?.length));
     const categories = roots.filter(node => node.kind === "category");
     const otherRoots = roots.filter(node => node.kind !== "category");
@@ -140,7 +148,15 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(node);
     };
-    const findFreePosition = (node, origin, parent = null, radius = 0, accept = () => true) => {
+    const findFreePosition = (
+        node,
+        origin,
+        parent = null,
+        radius = 0,
+        accept = () => true,
+        angleCenter = null,
+        angleWindow = Math.PI
+    ) => {
         const parentPosition = parent ? positions.get(parent.id) : null;
         const withinParent = candidate => !parent || centerDistance(candidate, parentPosition) <= radius;
         const valid = candidate => withinParent(candidate)
@@ -157,7 +173,11 @@ function packWithoutOverlap(nodes, positions, edges) {
             const candidateRadius = parent ? Math.min(radius, minimumRadius + ring * ringStep) : ring * ringStep;
             const count = Math.max(8, ring * 8);
             for (let index = 0; index < count; index += 1) {
-                const angle = goldenAngle * (ring * count + index) + hashSeed(node.id) * 0.5;
+                const angle = angleCenter === null
+                    ? goldenAngle * (ring * count + index) + hashSeed(node.id) * 0.5
+                    : angleCenter
+                        + (((index + 0.5) / count) - 0.5) * angleWindow
+                        + (hashSeed(node.id) - 0.5) * angleWindow * 0.3;
                 const candidate = parent
                     ? { x: parentPosition.x + Math.cos(angle) * candidateRadius, y: parentPosition.y + Math.sin(angle) * candidateRadius }
                     : { x: origin.x + Math.cos(angle) * candidateRadius, y: origin.y + Math.sin(angle) * candidateRadius };
@@ -167,19 +187,24 @@ function packWithoutOverlap(nodes, positions, edges) {
         return null;
     };
 
-    const getRadius = (nodeId, scale) => {
-        if (!radii.has(nodeId)) {
-            const node = byId.get(nodeId);
-            const children = (hierarchy.children.get(nodeId) || []).map(childId => byId.get(childId)).filter(Boolean);
-            radii.set(nodeId, deriveInfluenceRadius(node, children, nodeGap, scale));
-        }
-        return radii.get(nodeId);
-    };
+    const getCategoryGroupRadius = (category, scale) => deriveCategoryGroupRadius(
+        category,
+        (childrenByParent.get(category.id) || []).filter(node => node.kind === "subcategory"),
+        childrenByParent,
+        nodeGap * scale
+    );
 
     const placeCategories = scale => {
         for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
             const accept = candidate => categories.every(other => other.id === node.id || !placed.has(other.id)
-                || categorySeparationSatisfied(node, other, candidate, positions.get(other.id), getRadius(node.id, scale), getRadius(other.id, scale)));
+                || categorySeparationSatisfied(
+                    node,
+                    other,
+                    candidate,
+                    positions.get(other.id),
+                    getCategoryGroupRadius(node, scale),
+                    getCategoryGroupRadius(other, scale)
+                ));
             const position = findFreePosition(node, positions.get(node.id), null, 0, accept);
             if (!position) return false;
             mark(node, position);
@@ -205,25 +230,33 @@ function packWithoutOverlap(nodes, positions, edges) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
             if (!parent || !parentPosition || !placed.has(parent.id)) return false;
-            const parentKind = node.kind === "item"
-                ? "subcategory"
-                : node.kind === "subcategory"
-                    ? "category"
-                    : null;
-            const peerPositions = parentKind
-                ? nodes
-                    .filter(peer => peer.id !== parent.id && peer.kind === parentKind)
-                    .map(peer => positions.get(peer.id))
-                    .filter(Boolean)
-                : [];
-            const accept = candidate => !parentKind
-                || nearestParentSatisfied(candidate, parentPosition, peerPositions);
+            const siblings = (childrenByParent.get(parent.id) || [])
+                .filter(sibling => sibling.kind === node.kind)
+                .sort((left, right) => left.id.localeCompare(right.id));
+            const siblingIndex = siblings.findIndex(sibling => sibling.id === node.id);
+            const siblingCount = Math.max(1, siblings.length);
+            const slotWidth = Math.PI * 2 / siblingCount;
+            const slotAngle = (siblingIndex + 0.5) * slotWidth
+                + hashSeed(parent.id) * slotWidth * 0.3;
+            const peerPositions = siblings
+                .slice(0, Math.max(0, siblingIndex))
+                .map(sibling => positions.get(sibling.id))
+                .filter(Boolean);
+            const accept = candidate => nearestParentSatisfied(candidate, parentPosition, peerPositions)
+                && parentEdgeAngleSeparated(
+                    candidate,
+                    parentPosition,
+                    peerPositions,
+                    siblingEdgeAngleLimit(siblingCount)
+                );
             const position = findFreePosition(
                 node,
                 positions.get(node.id),
                 parent,
-                getRadius(parent.id, scale),
-                accept
+                parentDistanceLimit(parent, node, node.kind, nodeGap * scale),
+                accept,
+                slotAngle,
+                Math.min(Math.PI / 2, slotWidth * 0.7)
             );
             if (!position) return false;
             mark(node, position);
@@ -234,7 +267,6 @@ function packWithoutOverlap(nodes, positions, edges) {
     for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
         buckets.clear();
         placed.clear();
-        radii.clear();
         if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {

@@ -3,8 +3,11 @@ import {
     GRAPH_LAYOUT_RULES,
     aabbSeparated,
     categorySeparationSatisfied,
+    deriveCategoryGroupRadius,
     deriveInfluenceRadius,
-    nearestParentSatisfied
+    nearestParentSatisfied,
+    parentDistanceLimit,
+    parentEdgeAngleSeparated
 } from "./graph-layout-policy.js";
 
 describe("graph layout policy", () => {
@@ -36,6 +39,31 @@ describe("graph layout policy", () => {
         expect(nearestParentSatisfied(candidate, parent, [fartherPeer])).toBe(true);
         expect(nearestParentSatisfied(candidate, parent, [nearerPeer])).toBe(false);
         expect(nearestParentSatisfied(candidate, parent, [{ x: -80, y: 0 }])).toBe(false);
+    });
+
+    it("bounds parent distances without violating geometry minimums", () => {
+        const category = { width: 196, height: 72 };
+        const subcategory = { width: 174, height: 64 };
+        const item = { width: 188, height: 68 };
+        expect(parentDistanceLimit(category, subcategory, "subcategory")).toBe(360);
+        expect(parentDistanceLimit(subcategory, item, "item")).toBe(300);
+        expect(deriveCategoryGroupRadius(category, [subcategory], new Map([
+            ["subcategory", [item]]
+        ]))).toBeGreaterThan(500);
+    });
+
+    it("rejects same-parent edges that are too close in angle", () => {
+        const parent = { x: 0, y: 0 };
+        expect(parentEdgeAngleSeparated(
+            { x: 100, y: 0 },
+            parent,
+            [{ x: 100, y: 5 }]
+        )).toBe(false);
+        expect(parentEdgeAngleSeparated(
+            { x: 100, y: 0 },
+            parent,
+            [{ x: 0, y: 100 }]
+        )).toBe(true);
     });
 
     it("rejects category influence overlap of 50px or more", () => {
