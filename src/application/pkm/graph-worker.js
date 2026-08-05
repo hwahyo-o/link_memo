@@ -267,7 +267,6 @@ function packWithoutOverlap(nodes, positions, edges) {
     for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
         buckets.clear();
         placed.clear();
-        radii.clear();
         if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
