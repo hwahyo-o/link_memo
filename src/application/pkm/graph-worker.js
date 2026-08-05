@@ -1,4 +1,11 @@
 import { layoutIterationsFor, MAX_GRAPH_EDGES, MAX_GRAPH_NODES } from "../../domain/pkm/graph-limits.js";
+import {
+    GRAPH_LAYOUT_RULES,
+    aabbSeparated,
+    categorySeparationSatisfied,
+    centerDistance,
+    deriveInfluenceRadius
+} from "../../domain/pkm/graph-layout-policy.js";
 
 function normalizePath(path) {
     return String(path || "").replaceAll("\\", "/").replace(/^\/+/, "");
@@ -72,59 +79,167 @@ function initialNetworkPositions(nodes, edges) {
         component.forEach((node, index) => {
             const angle = index * 2.399963229728653 + hashSeed(node.id) * 0.4;
             const radius = Math.sqrt(index + 1) * Math.max(120, componentRadius / Math.sqrt(component.length));
-            positions.set(node.id, { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius, vx: 0, vy: 0 });
-        });
-        offset += componentRadius * 2 + 320;
+            positions.set(node.id, { x: cfunction createHierarchy(nodes, edges) {
+    const nodeIds = new Set(nodes.map(node => node.id));
+    const parents = new Map();
+    const children = new Map(nodes.map(node => [node.id, []]));
+    const addRelation = (parentId, childId) => {
+        if (!nodeIds.has(parentId) || !nodeIds.has(childId) || parents.has(childId)) return;
+        parents.set(childId, parentId);
+        children.get(parentId).push(childId);
+    };
+    nodes.forEach(node => {
+        if (node.kind === "subcategory") addRelation(node.categoryId, node.id);
+        if (node.kind === "item") addRelation(node.subcategoryId, node.id);
     });
-    return positions;
+    edges.forEach(edge => {
+        if (edge.kind === "category-membership" || edge.kind === "subcategory-membership") {
+            addRelation(edge.source, edge.target);
+        }
+    });
+    return { parents, children };
 }
 
-function packWithoutOverlap(nodes, positions) {
-    const nodeGap = 96;
+function packWithoutOverlap(nodes, positions, edges) {
+    const nodeGap = GRAPH_LAYOUT_RULES.preferredNodeGap;
     const cellSize = 400;
     const buckets = new Map();
+    const placed = new Set();
+    const hierarchy = createHierarchy(nodes, edges);
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    const radii = new Map();
+    const roots = nodes.filter(node => !hierarchy.parents.has(node.id) && (
+        node.kind === "category" || hierarchy.children.get(node.id)?.length
+    ));
+    const categories = roots.filter(node => node.kind === "category");
+    const otherRoots = roots.filter(node => node.kind !== "category");
+    const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
+    const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
+
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
     const collides = (node, x, y) => {
         const cellX = Math.floor(x / cellSize);
         const cellY = Math.floor(y / cellSize);
-        for (let bucketX = cellX - 1; bucketX <= cellX + 1; bucketX += 1) for (let bucketY = cellY - 1; bucketY <= cellY + 1; bucketY += 1) {
-            for (const other of buckets.get(`${bucketX},${bucketY}`) || []) {
-                const target = positions.get(other.id);
-                const minX = ((Number(node.width) || 188) + (Number(other.width) || 188)) / 2 + nodeGap;
-                const minY = ((Number(node.height) || 68) + (Number(other.height) || 68)) / 2 + nodeGap;
-                if (Math.abs(x - target.x) < minX && Math.abs(y - target.y) < minY) return true;
+        for (let bucketX = cellX - 1; bucketX <= cellX + 1; bucketX += 1) {
+            for (let bucketY = cellY - 1; bucketY <= cellY + 1; bucketY += 1) {
+                for (const other of buckets.get(`${bucketX},${bucketY}`) || []) {
+                    if (!aabbSeparated(node, other, { x, y }, positions.get(other.id), nodeGap)) return true;
+                }
             }
         }
         return false;
     };
-    const findFreePosition = (node, origin) => {
-        if (!collides(node, origin.x, origin.y)) return origin;
-        const goldenAngle = 2.399963229728653;
-        for (let ring = 1; ring <= 200; ring += 1) {
-            const radius = ring * 180;
-            const count = Math.max(8, ring * 8);
-            for (let index = 0; index < count; index += 1) {
-                const angle = goldenAngle * (ring * count + index) + hashSeed(node.id) * 0.5;
-                const candidate = { x: origin.x + Math.cos(angle) * radius, y: origin.y + Math.sin(angle) * radius };
-                if (!collides(node, candidate.x, candidate.y)) return candidate;
-            }
-        }
-        return { x: origin.x + 200 * Math.cos(hashSeed(node.id) * Math.PI * 2), y: origin.y + 200 * Math.sin(hashSeed(node.id) * Math.PI * 2) };
-    };
-    const ordered = nodes.slice().sort((left, right) => {
-        const a = positions.get(left.id);
-        const b = positions.get(right.id);
-        return hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id);
-    });
-    for (const node of ordered) {
-        const position = findFreePosition(node, positions.get(node.id));
+    const mark = (node, position) => {
         positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
+        placed.add(node.id);
         const key = bucketKey(position.x, position.y);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(node);
+    };
+    const findFreePosition = (node, origin, parent = null, radius = 0, accept = () => true) => {
+        const parentPosition = parent ? positions.get(parent.id) : null;
+        const withinParent = candidate => !parent || centerDistance(candidate, parentPosition) <= radius;
+        const valid = candidate => withinParent(candidate)
+            && !collides(node, candidate.x, candidate.y)
+            && (!parent || aabbSeparated(node, parent, candidate, parentPosition, nodeGap))
+            && accept(candidate);
+        if (valid(origin)) return origin;
+
+        const goldenAngle = 2.399963229728653;
+        const minimumRadius = parent
+            ? Math.max(120, Math.max(node.width || 188, parent.width || 188) + nodeGap)
+            : 0;
+        const ringStep = 180;
+        const maxRing = parent ? Math.max(1, Math.ceil(Math.max(0, radius - minimumRadius) / ringStep)) : 200;
+        for (let ring = parent ? 0 : 1; ring <= maxRing; ring += 1) {
+            const candidateRadius = parent ? Math.min(radius, minimumRadius + ring * ringStep) : ring * ringStep;
+            const count = Math.max(8, ring * 8);
+            for (let index = 0; index < count; index += 1) {
+                const angle = goldenAngle * (ring * count + index) + hashSeed(node.id) * 0.5;
+                const candidate = parent
+                    ? {
+                        x: parentPosition.x + Math.cos(angle) * candidateRadius,
+                        y: parentPosition.y + Math.sin(angle) * candidateRadius
+                    }
+                    : {
+                        x: origin.x + Math.cos(angle) * candidateRadius,
+                        y: origin.y + Math.sin(angle) * candidateRadius
+                    };
+                if (valid(candidate)) return candidate;
+            }
+        }
+        return null;
+    };
+
+    const getRadius = (nodeId, scale) => {
+        if (!radii.has(nodeId)) {
+            const node = byId.get(nodeId);
+            const children = (hierarchy.children.get(nodeId) || []).map(childId => byId.get(childId)).filter(Boolean);
+            radii.set(nodeId, deriveInfluenceRadius(node, children, nodeGap, scale));
+        }
+        return radii.get(nodeId);
+    };
+
+    const placeCategories = scale => {
+        for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
+            const accept = candidate => categories.every(other => other.id === node.id || !placed.has(other.id)
+                || categorySeparationSatisfied(
+                    node,
+                    other,
+                    candidate,
+                    positions.get(other.id),
+                    getRadius(node.id, scale),
+                    getRadius(other.id, scale)
+                ));
+            const position = findFreePosition(node, positions.get(node.id), null, 0, accept);
+            if (!position) return false;
+            mark(node, position);
+        }
+        return true;
+    };
+
+    const placeRoots = () => otherRoots.every(node => {
+        const position = findFreePosition(node, positions.get(node.id));
+        if (!position) return false;
+        mark(node, position);
+        return true;
+    });
+
+    const placeChildren = scale => {
+        const ordered = hierarchyNodes.slice().sort((left, right) => {
+            const rank = node => node.kind === "subcategory" ? 0 : 1;
+            const leftParent = hierarchy.parents.get(left.id);
+            const rightParent = hierarchy.parents.get(right.id);
+            return rank(left) - rank(right)
+                || String(leftParent).localeCompare(String(rightParent))
+                || left.id.localeCompare(right.id);
+        });
+        for (const node of ordered) {
+            const parent = byId.get(hierarchy.parents.get(node.id));
+            const parentPosition = positions.get(parent?.id);
+            if (!parent || !parentPosition || !placed.has(parent.id)) return false;
+            const position = findFreePosition(node, positions.get(node.id), parent, getRadius(parent.id, scale));
+            if (!position) return false;
+            mark(node, position);
+        }
+        return true;
+    };
+
+    for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
+        buckets.clear();
+        placed.clear();
+        radii.clear();
+        if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
+        const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
+        if (!orderedOrphans.every(node => {
+            const position = findFreePosition(node, positions.get(node.id));
+            if (!position) return false;
+            mark(node, position);
+            return true;
+        })) continue;
+        if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return;
     }
 }
-
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
     nodes = nodes.slice(0, MAX_GRAPH_NODES);
     const nodeIds = new Set(nodes.map(node => node.id));
