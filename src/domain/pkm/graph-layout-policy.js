@@ -78,6 +78,66 @@ export function deriveCategoryGroupRadius(category, subcategories = [], children
     return radius;
 }
 
+export function categoryRegionContains(candidatePosition, node, categoryPosition, categoryRadius, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
+    if (!candidatePosition || !categoryPosition || !Number.isFinite(categoryRadius)) return false;
+    return centerDistance(candidatePosition, categoryPosition) + nodeHalfDiagonal(node) + gap <= categoryRadius;
+}
+
+export function categoryOwnershipSatisfied(
+    candidatePosition,
+    node,
+    ownCategoryPosition,
+    ownCategoryRadius,
+    otherRegions = [],
+    gap = GRAPH_LAYOUT_RULES.preferredNodeGap
+) {
+    if (!categoryRegionContains(candidatePosition, node, ownCategoryPosition, ownCategoryRadius, gap)) return false;
+    const ownDistance = centerDistance(candidatePosition, ownCategoryPosition);
+    return otherRegions.filter(region => region?.position && Number.isFinite(region.radius)).every(region => {
+        const otherDistance = centerDistance(candidatePosition, region.position);
+        return otherDistance >= region.radius + nodeHalfDiagonal(node) + gap
+            && ownDistance < otherDistance;
+    });
+}
+
+export function hierarchyBandSatisfied(
+    node,
+    candidatePosition,
+    parentPosition,
+    categoryPosition,
+    kind,
+    gap = GRAPH_LAYOUT_RULES.preferredNodeGap
+) {
+    if (!candidatePosition || !parentPosition) return false;
+    const parentDistance = centerDistance(candidatePosition, parentPosition);
+    const minimum = Math.max(
+        (nodeDimensions(node).width + 188) / 2 + gap,
+        (nodeDimensions(node).height + 68) / 2 + gap
+    );
+    if (parentDistance < minimum) return false;
+    if (kind !== "item" || !categoryPosition) return true;
+
+    const parentVector = {
+        x: parentPosition.x - categoryPosition.x,
+        y: parentPosition.y - categoryPosition.y
+    };
+    const childVector = {
+        x: candidatePosition.x - parentPosition.x,
+        y: candidatePosition.y - parentPosition.y
+    };
+    const parentLength = Math.hypot(parentVector.x, parentVector.y);
+    if (!parentLength) return true;
+
+    const outwardProjection = (
+        childVector.x * parentVector.x + childVector.y * parentVector.y
+    ) / parentLength;
+    const minimumOutwardProjection = Math.min(
+        120,
+        Math.max(GRAPH_LAYOUT_RULES.minimumNodeGap, gap / 2)
+    );
+    return outwardProjection >= minimumOutwardProjection;
+}
+
 function angleOf(position, origin) {
     return Math.atan2(position.y - origin.y, position.x - origin.x);
 }
