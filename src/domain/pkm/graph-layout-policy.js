@@ -2,7 +2,7 @@ export const GRAPH_LAYOUT_RULES = Object.freeze({
     minimumNodeGap: 42,
     preferredNodeGap: 96,
     minimumCategoryCenterDistance: 420,
-    maximumCategoryRadiusOverlap: 49
+    maximumCategoryRadiusOverlap: 50
 });
 
 function dimension(node, key, fallback) {
