@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 원형 계층 영역·부모 거리 상한·간선 방향 분리 구현, 자동 검증 대기
+> 상태: 원형 계층 영역·부모 거리 상한·간선 방향 분리 구현·검증·main 병합·Pages 배포 확인 완료
 
 ## 1. 목적
 
@@ -206,27 +206,36 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 
 ## 8. 현재 검증 상태
 
-원형 계층 영역, 부모 거리 상한, 부모별 angular slot, 간선 방향 분리 정책과 Worker 연결을 `drill` 브랜치에 반영했다.
+원형 계층 영역, 부모 거리 상한, 부모별 angular slot, 같은 부모 간선 방향 분리 정책과 Worker 연결을 `drill`에서 반영하고 `main`에 병합했다.
 
-이번 Gate:
+완료된 Gate:
 
-- category 영역 외곽 반경이 subcategory·item descendant geometry를 포함하는가
-- subcategory 중심 거리가 기본 360px 이하인가
-- item 중심 거리가 기본 300px 이하인가
-- 같은 부모 간선의 각도 차이가 최소 정책값 이상인가
-- item·subcategory가 여전히 자기 부모에 가장 가까운가
-- 전체 노드 외곽 여백과 category 그룹 겹침 규칙을 유지하는가
-- 전체 테스트와 production build가 성공하는가
-- 문서·fixture·변경 소스에 민감정보가 없는가
+- category 영역 외곽 반경이 subcategory·item descendant geometry를 포함함
+- subcategory 중심 거리 기본 상한 360px 적용
+- item 중심 거리 기본 상한 300px 적용
+- 같은 부모 간선에 deterministic radial slot과 최소 방향 차이 적용
+- item·subcategory가 자기 부모에 가장 가까운 조건 유지
+- 전체 노드 외곽 여백과 category 그룹 겹침 규칙 유지
+- Branch CI test/build 성공
+- PR test/build 성공
+- main 병합 성공
+- 캐시를 제외한 공개 PKM HTML, JavaScript asset, graph Worker asset HTTP 200 확인
+- 새 Worker asset에서 거리 상한과 category/subcategory 계층 배치 코드 확인
+- 변경 문서·fixture·소스에서 API key, token, 운영 식별자, 사용자 데이터 패턴을 확인하지 못함
 
-첫 CI에서 obsolete radius cache 참조를 수정했고, 최신 테스트 기대값 수정 후 재검증을 진행한다.
+미수행 또는 제한된 항목:
+
+- 브라우저 직접 조작 도구가 없어 시각적 visual smoke test는 수행하지 못함
+- 전용 보안 스캔 도구가 연결되지 않아 변경 파일 대상 정적 비밀값 점검만 수행함
+- GitHub connector에 원격 branch ref 삭제 기능이 없어 병합된 `drill` 삭제는 수행하지 못함
 
 ## 9. 실패 시 재검증 순서
 
 1. CI 실패 시 실패한 파일과 단계만 확인한다.
-2. 최단 부모 실패 시 `nearestParentSatisfied` 정책, peer 수집, 배치 순서를 확인한다.
-3. 부모 반경 실패 시 반경 산정 또는 후보 반경을 조정한다.
-4. 외곽 여백 실패 시 AABB 후보 판정과 spatial bucket 범위를 확인한다.
-5. 변칙성 저하 시 force 기준 좌표, stable hash, golden-angle 후보 순서를 확인한다.
-6. build 또는 Pages 실패 시 새 Worker asset 생성과 main push deploy 상태를 분리해 확인한다.
-7. 각 수정 뒤 동일한 테스트·build·asset Gate를 다시 통과시킨다.
+2. 부모 거리 상한 실패 시 `parentDistanceLimit`과 category group envelope를 확인한다.
+3. 간선 방향 겹침 실패 시 부모별 angular slot, sibling peer 수집, 최소 각도 조건을 확인한다.
+4. 부모 최단 조건 실패 시 `nearestParentSatisfied`와 배치 순서를 확인한다.
+5. 외곽 여백 실패 시 AABB 후보 판정과 spatial bucket 범위를 확인한다.
+6. category 그룹 겹침 실패 시 descendant geometry를 포함한 그룹 반경과 category 중심 배치를 확인한다.
+7. build 또는 Pages 실패 시 새 Worker asset 생성과 main push deploy 상태를 분리해 확인한다.
+8. 각 수정 뒤 동일한 테스트·build·asset Gate를 다시 통과시킨다.
