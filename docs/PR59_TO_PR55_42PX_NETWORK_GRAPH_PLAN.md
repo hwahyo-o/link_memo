@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: PR #63·#64·#65 main 병합 및 Pages 배포 확인 완료
+> 상태: 2026-08-06 캔버스 중심 계층 재배치 작업 진행 중
 
 ## 1. 목표와 범위
 
@@ -182,3 +182,50 @@
 - PKM JavaScript·CSS·favicon asset: HTTP 200
 - 실제 브라우저 화면 screenshot은 생성하지 않았으며 화면 확인은 사용자에게 위임한다.
 - 기능 변경 대상은 그래프 정책·Worker·관련 테스트뿐이며 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
+
+## 16. 2026-08-06 캔버스 중심 계층 재배치 계획
+
+### 목적
+
+현재 구조를 유지하면서 그래프 좌표의 중심을 기준으로 계층 순서를 명확히 한다.
+- category는 캔버스 중심에 가장 가깝게 배치
+- subcategory는 category 다음 radial band
+- item은 subcategory 다음 radial band
+- subcategory는 모든 category 중 부모 category에 가장 가까움
+- item은 모든 subcategory 중 부모 subcategory에 가장 가까움
+- 기존 변칙 네트워크, 42px AABB, 실제 envelope compact packing, 전역 무겹침 유지
+
+### 구현 범위
+
+- graph-worker.js category 중심 우선 후보 순서
+- subcategory/item radial band 후보 조건
+- 모든 동급 부모 후보 대상 부모 최단 거리 검증
+- 최종 radial hierarchy 검증과 AABB 검증 결합
+- 화면·저장·인증·외부 서비스·의존성 변경 없음
+
+### Process Phase
+
+1. 문서를 먼저 갱신하고 drill에서 계획·Gate를 고정한다.
+2. Worker의 category 중심 우선, 계층 radial band, 전체 부모 후보 최단 검사를 최소 diff로 구현한다.
+3. 기존 무겹침·변칙성·대규모 테스트에 radial hierarchy fixture와 검증을 추가한다.
+4. CI와 production build를 통과시킨 뒤 draft PR에서 diff와 결과를 재검토한다.
+5. PR을 main에 병합하고 Pages 배포와 공개 asset 응답을 확인한다.
+6. 사용자 화면 확인은 사용자가 직접 수행하며 screenshot은 만들지 않는다.
+
+### Gate
+
+1. category 중심 반경 < subcategory 최소 반경
+2. subcategory 최대 반경 < item 최소 반경
+3. 모든 subcategory가 부모 category를 가장 가까운 category로 가짐
+4. 모든 item이 부모 subcategory를 가장 가까운 subcategory로 가짐
+5. 모든 노드가 실제 도형 기준 최소 42px 간격
+6. force seed/golden-angle/stable hash/대규모 테스트 유지
+7. 변경 범위가 graph policy, graph Worker, 관련 테스트, 인계 문서로 제한됨
+
+### 실패 시 재수정 Loop
+
+- radial band 실패: 중심 산정과 도형 외곽 여유를 확인하고 후보 floor만 조정한다.
+- 부모 최단 실패: 모든 같은 종류의 배치 완료 부모를 비교하는 조건과 부모별 배치 순서를 확인한다.
+- 무겹침 실패: AABB geometry와 spatial bucket을 확인하고 radial 조건과 함께 재검증한다.
+- category 분산 또는 변칙성 저하: 기존 force seed, stable hash, golden-angle 순서를 확인한다.
+- CI/build 실패: 실패한 테스트와 변경 계층만 재수정한 후 동일 Gate를 반복한다.
