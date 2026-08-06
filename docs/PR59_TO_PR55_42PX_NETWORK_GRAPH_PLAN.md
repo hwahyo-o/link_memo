@@ -446,3 +446,12 @@
 - secret scan 결과 공개 금지 정보는 문서와 diff에 기록되지 않았다.
 - screenshot은 생성하지 않았다.
 - 현재 PR #75 head는 `f7c54ad9e45e2d453c5280e7651dc7be50eb7be4`이며 merge 후 main push 배포와 branch 정리를 수행한다.
+
+
+## 30. 2026-08-06 최종 병합·배포 기록
+
+- PR #75는 main에 squash merge되었고 main commit은 bec98f1bbecb2e665b973038680006012c53e7a2이다.
+- deploy workflow는 main push에서 test/build를 통과한 뒤 GitHub Pages deploy job을 실행하도록 구성되어 있다.
+- PR Branch CI 612 및 Pages test/build 367은 성공했다.
+- main push의 live deployment run 상세와 실제 화면은 연결 도구에서 확인할 수 없어 검증 완료로 기록하지 않는다. 화면 확인은 사용자가 직접 수행한다.
+- 문서 최종화 PR #76 merge 후 drill을 삭제하고 main만 남긴다.
