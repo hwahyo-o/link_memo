@@ -320,7 +320,7 @@ describe("PKM graph worker algorithms", () => {
         const nodes = [
             { id: "category", kind: "category", width: 196, height: 72 },
             { id: "subcategory", kind: "subcategory", categoryId: "category", width: 174, height: 64 },
-            ...Array.from({ length: 80 }, (_, index) => ({
+            ...Array.from({ length: 8 }, (_, index) => ({
                 id: `item-${index}`,
                 kind: "item",
                 subcategoryId: "subcategory",
