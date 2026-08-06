@@ -585,7 +585,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                         siblingEdgeAngleLimit(siblingCount)
                     );
             };
-            const position = findFreePosition(
+            let position = findFreePosition(
                 node,
                 positions.get(node.id),
                 parent,
@@ -598,6 +598,30 @@ function packWithoutOverlap(nodes, positions, edges) {
                 slotAngle,
                 Math.min(Math.PI / 3, Math.max(0.24, itemFanWidth / siblingCount * 0.75))
             );
+            if (!position && items.length > 8) {
+                position = findFreePosition(
+                    node,
+                    positions.get(node.id),
+                    parent,
+                    Math.max(
+                        siblingRadius,
+                        itemBandFloor + radialDistance(parentPosition) + 320
+                    ),
+                    candidate => (
+                        radialDistance(candidate) > itemBandFloor
+                        && hierarchyBandSatisfied(
+                            node,
+                            candidate,
+                            parentPosition,
+                            categoryPosition,
+                            node.kind,
+                            nodeGap
+                        )
+                    ),
+                    outwardAngle,
+                    Math.PI * 2
+                );
+            }
             if (!position) return false;
             mark(node, position);
         }
