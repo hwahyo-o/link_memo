@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: PR #63 main 병합 완료, Pages 배포 확인 대기
+> 상태: PR #63·#64 main 병합 및 Pages 배포 확인 완료
 
 ## 1. 목표와 범위
 
@@ -111,7 +111,7 @@
 - Branch CI run 454: 재수정 성공
 - Test and Deploy GitHub Pages run 286, 287: 이전 변경 성공
 - Test and Deploy GitHub Pages run 295: 재수정 test/build 성공
-- main Pages 배포: 병합 후 workflow 확인 대기
+- main Pages workflow #300과 deploy job 성공
 - 공개 `https://hwahyo-o.github.io/link_memo/`와 `pkm.html`: HTTP 200
 - 공개 PKM JavaScript/CSS 및 외부 Cytoscape·CodeMirror asset: HTTP 200
 - secret pattern 검사: 발견 없음
@@ -170,3 +170,15 @@
 - 화면 screenshot은 생성하지 않았다.
 - 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
 - main Pages 배포 확인은 병합 후 workflow와 공개 asset 응답으로 별도 기록한다.
+
+
+## 15. 2026-08-06 최종 배포 기록
+
+- 문서 후속 PR #64 병합 커밋: `93b656d`
+- main Pages workflow #300: 성공
+- main Pages deploy job: 성공
+- 공개 root `https://hwahyo-o.github.io/link_memo/`: HTTP 200
+- 공개 `https://hwahyo-o.github.io/link_memo/pkm.html`: HTTP 200
+- PKM JavaScript·CSS·favicon asset: HTTP 200
+- 실제 브라우저 화면 screenshot은 생성하지 않았으며 화면 확인은 사용자에게 위임한다.
+- 기능 변경 대상은 그래프 정책·Worker·관련 테스트뿐이며 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
