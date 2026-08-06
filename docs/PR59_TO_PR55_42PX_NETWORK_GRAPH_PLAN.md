@@ -464,3 +464,4 @@
 - category < subcategory < item의 전역 radial band와 부모 subcategory nearest를 최종 bounds center 기준으로 검증한다.
 - AABB 최소 42px 검증을 유지하며, 실패한 item을 중심 fallback으로 반환하지 않는다.
 - 구현 후 mixed contentKind, dense item, orphan item, 기존 회귀 테스트와 production build를 다시 실행한다.
+\n\n## 32. 2026-08-06 구현 및 검증 결과\n\n- 모든 `kind: "item"`을 하나의 radial-band 정책으로 처리하고, dense item에서 category/subcategory band를 먼저 보정한 후 대칭 outer ring을 사용한다.\n- sparse item은 기존 parent-centered fan을 유지한다. item이 존재하는 레이아웃에서 무제약 전역 repack은 제거했다.\n- Branch CI 651 및 Pages test/build 385 성공, 48개 테스트 파일과 207개 테스트 통과.\n- 회귀 테스트는 mixed contentKind, orphan item, dense item, 42px AABB 간격, category < subcategory < item 순서를 포함한다.\n- PR #77 병합 전 상태이며, 병합 후 main push가 Pages 배포를 트리거한다. live URL 도착과 사용자의 실제 화면 확인은 자동 검증으로 주장하지 않는다.\n- 문서와 코드에는 비밀정보를 기록하지 않았다.\n
