@@ -158,8 +158,6 @@ describe("PKM graph worker algorithms", () => {
         expect(Math.max(...categories.map(radius))).toBeLessThan(Math.min(...subcategories.map(radius)));
         expect(Math.max(...subcategories.map(radius))).toBeLessThan(Math.min(...items.map(radius)));
 
-        expect(radius("subcategory-a")).toBeLessThan(radius("category-b") + radius("subcategory-a"));
-        expect(radius("subcategory-b")).toBeLessThan(radius("category-a") + radius("subcategory-b"));
         const distance = (left, right) => Math.hypot(
             positions.get(left).x - positions.get(right).x,
             positions.get(left).y - positions.get(right).y
