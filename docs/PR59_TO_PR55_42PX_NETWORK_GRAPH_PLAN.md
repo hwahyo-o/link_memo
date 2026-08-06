@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: 구현·검증·main 병합·Pages 배포·브랜치 정리 완료
+> 상태: 이미지 기반 재수정 구현·검증 완료, PR #63 main 병합 대기
 
 ## 1. 목표와 범위
 
@@ -105,15 +105,18 @@
 ## 8. 완료 결과
 
 - PR #61: `rollback: restore PR55 network graph with 42px spacing`
-- main 병합 커밋: `212b11a`
-- Branch CI run 433, 434: 성공
-- Test and Deploy GitHub Pages run 286, 287: 성공
-- main Pages run 288: test/build/deploy 성공
+- 기존 main 기준 커밋: `a4c1eeb`
+- PR #63 head: CI 검증 완료, main 병합 대기
+- Branch CI run 433, 434: 이전 변경 성공
+- Branch CI run 454: 재수정 성공
+- Test and Deploy GitHub Pages run 286, 287: 이전 변경 성공
+- Test and Deploy GitHub Pages run 295: 재수정 test/build 성공
+- main Pages 배포: PR 병합 후 수행 예정
 - 공개 `https://hwahyo-o.github.io/link_memo/`와 `pkm.html`: HTTP 200
 - 공개 PKM JavaScript/CSS 및 외부 Cytoscape·CodeMirror asset: HTTP 200
 - secret pattern 검사: 발견 없음
 - screenshot: 생성하지 않음. 화면은 사용자가 직접 확인
-- 원격 브랜치: `main`만 유지
+- 원격 브랜치: 병합 전까지 `main`과 `drill` 유지
 
 
 ## 13. 2026-08-06 이미지 기반 재수정 계획
