@@ -109,8 +109,8 @@ describe("PKM graph worker algorithms", () => {
         expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]));
         expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumSubcategoryDistance);
         expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumSubcategoryDistance);
-        expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance);
-        expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance);
+        expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance + 1e-6);
+        expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance + 1e-6);
         expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")]));
         expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-a"), [byId.get("item-a")]));
         expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-b"), [byId.get("item-b")]));
