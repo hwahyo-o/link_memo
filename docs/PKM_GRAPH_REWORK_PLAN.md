@@ -657,3 +657,13 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 구현 커밋 head: `f7c54ad9e45e2d453c5280e7651dc7be50eb7be4`
 - PR: #75, base `main`, merge 전 검토 상태.
 - 다음 단계: PR #75 merge → main push 배포 workflow 확인 → 원격 branch를 main만 남기도록 정리.
+
+
+## 30. 2026-08-06 main 병합·배포 인수인계
+
+- PR #75 squash merge 완료.
+- main merge commit: bec98f1bbecb2e665b973038680006012c53e7a2.
+- .github/workflows/deploy.yml의 push 대상이 main이고, test/build 성공 후 Pages deploy job이 실행되는 구조임을 확인했다.
+- PR 기준 Pages test/build run 367과 Branch CI run 612는 성공했다.
+- main push 배포 run의 상세 상태와 실제 서비스 화면은 연결 도구에서 제공되지 않아, live URL 도착 및 브라우저 화면은 검증 완료로 주장하지 않는다. 사용자가 화면을 직접 확인한다.
+- 다음 문서 커밋(PR #76) merge 후 원격 drill 삭제를 완료해 main만 유지한다.
