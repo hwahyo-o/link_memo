@@ -489,3 +489,17 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 화면, 저장, 인증, Firestore, 외부 서비스, 의존성, 앱 시작 계층은 변경하지 않는다.
 - screenshot은 생성하지 않는다.
 - 완료 후 이 문서에 실제 commit, CI, Pages, HTTP, branch 정리 결과를 기록한다.
+
+## 20. 2026-08-06 전역 중심 계층 재배치 검증 기록
+
+- PR #69에서 최종 도형 bounds center를 원점으로 정규화해 Cytoscape fit 중심과 layout center를 일치시켰다.
+- category보다 subcategory가 중심에 가까워지지 않도록 전역 radial floor를 검사한다.
+- category·subcategory보다 item이 중심에 가까워지지 않도록 전역 radial floor를 검사한다.
+- subcategory와 item은 모든 동일 종류 부모 후보와 strict nearest-parent 조건을 통과해야 한다.
+- 부모가 없는 subcategory/item도 해당 계층 band 바깥의 deterministic 후보로 배치한다.
+- 첫 Branch CI #496은 기존 orphan item 500px 분리 회귀로 실패했고, orphan item 외곽 floor를 보정했다.
+- 최종 Branch CI #498과 Pages test/build #315는 성공했다.
+- 변경 범위는 이 문서들, graph-worker.js, graph-worker.test.js로 제한했다.
+- 화면·저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
+- screenshot은 생성하지 않았다.
+- 현재 상태: PR #69 main 병합 대기.
