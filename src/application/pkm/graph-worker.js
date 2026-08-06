@@ -861,22 +861,13 @@ function packWithoutOverlap(nodes, positions, edges) {
                 : [];
             const siblingIndex = Math.max(0, siblings.findIndex(sibling => sibling.id === node.id));
             const siblingCount = Math.max(1, siblings.length);
-            const parentAngle = parentPosition
-                ? Math.atan2(parentPosition.y, parentPosition.x)
-                : 2.399963229728653 * index;
-            const fanWidth = Math.min(
-                Math.PI * 2,
-                Math.max(Math.PI * 1.1, siblingCount * siblingEdgeAngleLimit(siblingCount))
-            );
+            const slotsPerRing = Math.min(12, Math.max(1, items.length));
             let position = null;
             for (let ring = 0; ring < 48 && !position; ring += 1) {
                 const radius = floor + 180 + ring * 240;
-                const angle = parent
-                    ? parentAngle
-                        + (((siblingIndex + 0.5) / siblingCount) - 0.5) * fanWidth
-                        + ring * 0.17
-                    : 2.399963229728653 * (index + ring * Math.max(1, items.length))
-                        + hashSeed(node.id) * 0.5;
+                const slot = index % slotsPerRing;
+                const angle = (slot + 0.5) * Math.PI * 2 / slotsPerRing
+                    + (ring % 2) * Math.PI / slotsPerRing;
                 const candidate = {
                     x: Math.cos(angle) * radius,
                     y: Math.sin(angle) * radius
@@ -886,14 +877,6 @@ function packWithoutOverlap(nodes, positions, edges) {
                 const categoryPosition = category ? positions.get(category.id) : null;
                 const accept = nextPosition => (
                     radialDistance(nextPosition) > floor
-                    && (!category || hierarchyBandSatisfied(
-                        node,
-                        nextPosition,
-                        parentPosition,
-                        categoryPosition,
-                        node.kind,
-                        nodeGap
-                    ))
                     && (!parent || nearestParentSatisfied(
                         nextPosition,
                         parentPosition,
