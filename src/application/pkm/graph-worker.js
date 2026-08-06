@@ -688,16 +688,16 @@ function packWithoutOverlap(nodes, positions, edges) {
                     .filter(node => node.kind === "subcategory")
                     .map(node => radialDistanceFrom(positions.get(node.id), center))
             );
-            const parentRadius = radialDistanceFrom(parentPosition, center);
-            const targetRadius = Math.max(
-                subcategoryBand + radialBandGap + 1,
-                parentRadius + 232
-            );
             for (const node of items) {
                 const parent = byId.get(hierarchy.parents.get(node.id));
                 const category = byId.get(hierarchy.parents.get(parent.id));
                 const parentPosition = positions.get(parent.id);
                 const categoryPosition = positions.get(category.id);
+                const parentRadius = radialDistanceFrom(parentPosition, center);
+                const targetRadius = Math.max(
+                    subcategoryBand + radialBandGap + 1,
+                    parentRadius + 232
+                );
                 const direction = {
                     x: parentPosition.x - categoryPosition.x,
                     y: parentPosition.y - categoryPosition.y
