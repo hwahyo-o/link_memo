@@ -582,3 +582,14 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - item은 부모별 outward multi-ring과 strict nearest-parent 조건을 유지한다.
 - 공개 화면 확인은 사용자가 수행하며 screenshot은 생성하지 않는다.
 - 최종 원격 branch는 main만 유지한다.
+
+
+## 26. 2026-08-06 item-only post-compaction reflow 최종 기록
+
+- 첨부 이미지의 재현 문제를 기준으로 category·subcategory 좌표는 유지하고 연결된 item 좌표만 최종 재탐색하는 `reflowItemsOutward`를 `graph-worker.js`에 반영했다.
+- 재탐색은 subcategory band 바깥 radial floor, 부모 도형 외곽, 부모 nearest, 부모 기준 outward 방향, sibling edge angle, AABB 42px 검사를 모두 통과한 후보만 사용한다.
+- 다수 sibling item은 고정 fan 폭으로 실패하지 않도록 sibling 수와 최소 edge angle에 맞춰 fan 폭을 deterministic하게 확장한다.
+- 최종 canvas-center 정규화 후 radial 검증이 실패하면 item-only 재배치와 정규화를 최대 4회 반복하고, 기존 전역 fallback은 보존한다.
+- 변경 범위는 graph worker와 기존 worker 테스트이며 화면, 처리 외 계층의 저장·외부 서비스·의존성 연결은 변경하지 않았다.
+- 검증: Branch CI #552 성공, Pages test/build #338 성공. screenshot은 생성하지 않았다.
+- 상태: PR #73 main 병합 대기.
