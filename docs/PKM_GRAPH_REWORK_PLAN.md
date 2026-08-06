@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: PR #67 검증 완료·main 병합 대기
+> 상태: PR #67 main 병합 및 Pages 배포 확인 완료
 
 ## 1. 목적
 
@@ -432,3 +432,14 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - API key, token, secret, 운영 식별자, 사용자 데이터는 문서와 fixture에 기록하지 않았다.
 - screenshot은 생성하지 않았으며 실제 화면 확인은 사용자에게 위임한다.
 - 현재 상태: PR #67 main 병합 대기.
+
+## 18. 2026-08-06 최종 병합·배포 기록
+
+- PR #67은 `main`에 병합되었다.
+- 최종 main 병합 커밋: `17d3b0f48d8fae0c09f1c56d4914274d9883622d`.
+- PR Branch CI #482와 Pages test/build #308이 성공했다.
+- 공개 root와 PKM 페이지는 HTTP 200으로 확인했다.
+- 배포된 PKM JavaScript asset도 HTTP 200으로 확인했으며 화면 screenshot은 생성하지 않았다.
+- 변경 대상은 graph-worker.js, graph-worker.test.js, 계획·인계 문서이며 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
+- 최종 원격 branch는 `main`만 유지한다.
+- 실제 화면의 시각적 확인은 사용자에게 위임한다.
