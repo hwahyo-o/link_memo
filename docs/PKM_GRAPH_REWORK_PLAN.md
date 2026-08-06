@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: PR #61 main 병합 및 Pages 배포 완료; 42px 네트워크 그래프 정책 적용, 화면 직접 확인 대기
+> 상태: PR #63 구현 및 CI 검증 성공, main 병합 대기
 
 ## 1. 목적
 
@@ -18,8 +18,8 @@
 - category·subcategory·item을 포함한 category 영역 그룹의 외곽 겹침 깊이는 50px 미만이다.
 - 자식 노드는 부모 도형 내부에 들어가지 않는다.
 - 노드 간 여백은 노드 도형의 외곽 geometry를 기준으로 계산한다.
-- 대분류 중심점 간 거리는 최소 420px이다.
-- 대분류 영향 반경의 겹침 깊이는 50px 미만이다.
+- category group envelope 외곽 간격은 최소 42px이다.
+- category group envelope는 실제 descendant 도형을 포함해 서로 겹치지 않는다.
 - 모든 노드는 서로 겹치지 않고, 기본 외곽 여백은 42px이며, 노드 도형 내부 겹침을 허용하지 않는다.
 
 ## 2. 현재 구조와 변경 범위
@@ -102,12 +102,12 @@ IndexedDB, Firestore, Firebase Auth, Google Drive Worker, Cloudflare Backup Work
 
 ### 대분류 분리
 
-대분류 쌍마다 다음을 검사한다.
+category group 쌍마다 실제 descendant 도형을 포함한 envelope를 검사한다.
 
-- 중심점 거리 >= 420px
-- 두 영향 반경의 합과 중심점 거리로 계산한 겹침 깊이 < 50px
+- envelope 외곽 간격 >= 42px
+- category·subcategory·item 내부 AABB 충돌 없음
 
-배치가 부족하면 golden-angle 후보를 계속 탐색하고 전체 영역을 확장한다.
+배치가 부족하면 deterministic golden-angle 후보를 계속 탐색하고 group envelope를 확장한다.
 
 ## 4. 구현 내용
 
@@ -206,7 +206,7 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 
 ## 8. 현재 검증 상태
 
-원형 계층 영역, 부모 거리 상한, 부모별 angular slot, 같은 부모 간선 방향 분리 정책과 Worker 연결을 `drill`에서 반영하고 `main`에 병합했다.
+원형 계층 영역, 부모 거리 상한, 부모별 angular slot, 실제 category envelope compact packing, 전체 노드 무겹침 검증을 `drill`에 반영했다.
 
 완료된 Gate:
 
@@ -218,7 +218,8 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 전체 노드 외곽 여백과 category 그룹 겹침 규칙 유지
 - Branch CI test/build 성공
 - PR test/build 성공
-- main 병합 성공
+- Branch CI #454와 Pages test/build #295 성공
+- main 병합 대기
 - 캐시를 제외한 공개 PKM HTML, JavaScript asset, graph Worker asset HTTP 200 확인
 - 새 Worker asset에서 거리 상한과 category/subcategory 계층 배치 코드 확인
 - 변경 문서·fixture·소스에서 API key, token, 운영 식별자, 사용자 데이터 패턴을 확인하지 못함
@@ -303,4 +304,43 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - main 병합 커밋은 `212b11a`이며 공개 root와 `pkm.html`은 HTTP 200으로 확인했다.
 - 화면 screenshot은 생성하지 않았고, 실제 화면 확인은 사용자에게 위임했다.
 - 저장·인증·Firestore·Cloudflare·Drive·외부 API·의존성은 변경하지 않았다.
-- 원격 브랜치는 `main`만 남겼다.
+- 원격 브랜치는 `main`과 작업 중인 `drill`을 유지한다.
+
+
+## 13. 2026-08-06 이미지 기반 재수정 계획
+
+### 확인된 문제
+
+첨부 화면에서 category 노드가 실제 descendant 그룹보다 과도하게 멀리 분산되고, 다량의 item 노드가 같은 영역에서 서로 겹쳐 보인다. 이는 다음 두 조건을 동시에 만족하지 못한 상태다.
+
+- category, subcategory, item을 구분하지 않는 전역 도형 충돌 보장
+- 실제 descendant geometry를 사용한 조밀한 category group 배치
+
+현재 Worker는 자식 수가 많은 경우 부모 반경 안에서 후보를 모두 찾지 못해 부분 배치 좌표를 남길 수 있다. 또한 category 중심 거리와 큰 원형 영향 반경을 함께 강제해 category를 필요 이상으로 멀리 밀어낼 수 있다.
+
+### 수정 정책
+
+- 모든 category, subcategory, item 쌍을 실제 width·height의 AABB와 42px 외곽 여백으로 검사한다.
+- 배치 후보를 모두 소진하면 초기 겹친 좌표를 반환하지 않고 sibling ring을 확장해 재배치한다.
+- 많은 item은 단일 원형이 아니라 deterministic multi-ring으로 배치한다.
+- category group은 category·subcategory·item descendant의 실제 AABB envelope를 계산해 envelope 외곽 간 최소 42px으로 compact packing한다.
+- 기존 420px category 중심 거리 하드 제약은 제거하고, 실제 group envelope 분리를 하드 제약으로 사용한다.
+- force-directed seed, connected-component 구조, golden-angle 후보, stable hash, 부모 근접성, angular slot은 유지한다.
+- 화면·저장·인증·동기화·외부 서비스·의존성 계층은 변경하지 않는다.
+
+### Phase Gate
+
+1. domain 정책에 envelope와 ring 반경 계산을 추가하고 단위 테스트를 통과한다.
+2. Worker가 모든 노드 종류를 전역 충돌 버킷에서 검사하고 최종 충돌 검증을 통과한다.
+3. 다량 item fixture와 여러 category fixture에서 모든 AABB 간격이 42px 이상이다.
+4. category group envelope가 서로 겹치지 않으며 필요 이상으로 넓게 분산되지 않는다.
+5. 전체 test, build, diff check, secret pattern 점검과 Pages 배포가 성공한다.
+
+### 실패 Loop
+
+- 충돌 실패: geometry·bucket·candidate 범위를 확인하고 전역 재배치만 수정한다.
+- 다량 item 실패: sibling ring 반경과 ring count를 확장하고 부모 거리 규칙을 재검증한다.
+- category 분산 실패: envelope 배치 순서와 외곽 간격을 조정한다.
+- 변칙성 저하: force seed와 golden-angle 후보 순서를 확인한다.
+- 회귀: 그래프 정책·Worker·테스트 외 계층을 변경하지 않았는지 확인한다.
+

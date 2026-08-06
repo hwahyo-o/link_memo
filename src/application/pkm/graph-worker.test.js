@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph, parseMetadata } from "./graph-worker.js";
-import { GRAPH_LAYOUT_RULES, aabbSeparated, categoryOwnershipSatisfied, categoryRegionContains, categorySeparationSatisfied, deriveCategoryGroupRadius, deriveInfluenceRadius, hierarchyBandSatisfied } from "../../domain/pkm/graph-layout-policy.js";
+import { GRAPH_LAYOUT_RULES, aabbEnvelopeSeparated, aabbSeparated, categoryOwnershipSatisfied, categoryRegionContains, categorySeparationSatisfied, deriveCategoryGroupEnvelope, deriveCategoryGroupRadius, deriveInfluenceRadius, hierarchyBandSatisfied } from "../../domain/pkm/graph-layout-policy.js";
 
 describe("PKM graph worker algorithms", () => {
     it("extracts searchable metadata and resolved wiki links", () => {
@@ -86,36 +86,31 @@ describe("PKM graph worker algorithms", () => {
         const distance = (left, right) => Math.hypot(get(left).x - get(right).x, get(left).y - get(right).y);
         const byId = new Map(nodes.map(node => [node.id, node]));
 
-        expect(distance("category-a", "category-b")).toBeGreaterThanOrEqual(420);
-        expect(categorySeparationSatisfied(
+        const categoryEnvelopeA = deriveCategoryGroupEnvelope(
+            byId.get("category-a"),
+            [byId.get("subcategory-a"), byId.get("item-a")],
+            positions
+        );
+        const categoryEnvelopeB = deriveCategoryGroupEnvelope(
+            byId.get("category-b"),
+            [byId.get("subcategory-b"), byId.get("item-b")],
+            positions
+        );
+        expect(categoryEnvelopeA).not.toBeNull();
+        expect(categoryEnvelopeB).not.toBeNull();
+        expect(aabbEnvelopeSeparated(categoryEnvelopeA, categoryEnvelopeB)).toBe(true);
+        expect(aabbSeparated(
             byId.get("category-a"),
             byId.get("category-b"),
             get("category-a"),
-            get("category-b"),
-            deriveCategoryGroupRadius(
-                byId.get("category-a"),
-                [byId.get("subcategory-a")],
-                new Map([["subcategory-a", [byId.get("item-a")]]])
-            ),
-            deriveCategoryGroupRadius(
-                byId.get("category-b"),
-                [byId.get("subcategory-b")],
-                new Map([["subcategory-b", [byId.get("item-b")]]])
-            )
+            get("category-b")
         )).toBe(true);
-        expect(categorySeparationSatisfied(
-            byId.get("category-a"),
-            byId.get("category-b"),
-            get("category-a"),
-            get("category-b"),
-            deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]),
-            deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")])
-        )).toBe(true);
+
         expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-a"), [byId.get("subcategory-a")]));
         expect(distance("category-a", "subcategory-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumSubcategoryDistance);
         expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumSubcategoryDistance);
-        expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance);
-        expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance);
+        expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance + 1e-6);
+        expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(GRAPH_LAYOUT_RULES.maximumItemDistance + 1e-6);
         expect(distance("category-b", "subcategory-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("category-b"), [byId.get("subcategory-b")]));
         expect(distance("subcategory-a", "item-a")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-a"), [byId.get("item-a")]));
         expect(distance("subcategory-b", "item-b")).toBeLessThanOrEqual(deriveInfluenceRadius(byId.get("subcategory-b"), [byId.get("item-b")]));
@@ -228,6 +223,42 @@ describe("PKM graph worker algorithms", () => {
                 regionRadius,
                 [{ position: categoryB, radius: regionRadius }]
             )).toBe(true);
+        }
+    });
+
+    it("keeps a dense item family separated with geometry-aware multi-ring placement", () => {
+        const nodes = [
+            { id: "category", kind: "category", width: 196, height: 72 },
+            { id: "subcategory", kind: "subcategory", categoryId: "category", width: 174, height: 64 },
+            ...Array.from({ length: 120 }, (_, index) => ({
+                id: `item-${index}`,
+                kind: "item",
+                subcategoryId: "subcategory",
+                width: index % 2 ? 188 : 196,
+                height: index % 2 ? 68 : 72
+            }))
+        ];
+        const edges = [
+            { source: "category", target: "subcategory", kind: "category-membership" },
+            ...nodes.slice(2).map(node => ({
+                source: "subcategory",
+                target: node.id,
+                kind: "subcategory-membership"
+            }))
+        ];
+        const positions = new Map(layoutGraph(nodes, edges, 0).map(position => [position.id, position]));
+        expect([...positions.values()].every(position => (
+            Number.isFinite(position.x) && Number.isFinite(position.y)
+        ))).toBe(true);
+        for (let left = 0; left < nodes.length; left += 1) {
+            for (let right = left + 1; right < nodes.length; right += 1) {
+                expect(aabbSeparated(
+                    nodes[left],
+                    nodes[right],
+                    positions.get(nodes[left].id),
+                    positions.get(nodes[right].id)
+                )).toBe(true);
+            }
         }
     });
 

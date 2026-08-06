@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     GRAPH_LAYOUT_RULES,
+    aabbEnvelopeSeparated,
     aabbSeparated,
     categorySeparationSatisfied,
     deriveCategoryGroupRadius,
@@ -21,6 +22,17 @@ describe("graph layout policy", () => {
         const node = { width: 196, height: 72 };
         expect(aabbSeparated(node, node, { x: 0, y: 0 }, { x: 238, y: 0 }, 42)).toBe(true);
         expect(aabbSeparated(node, node, { x: 0, y: 0 }, { x: 237, y: 0 }, 42)).toBe(false);
+    });
+
+    it("separates descendant envelopes by their actual outer geometry", () => {
+        expect(aabbEnvelopeSeparated(
+            { minX: 0, minY: 0, maxX: 200, maxY: 200 },
+            { minX: 242, minY: 20, maxX: 442, maxY: 220 }
+        )).toBe(true);
+        expect(aabbEnvelopeSeparated(
+            { minX: 0, minY: 0, maxX: 200, maxY: 200 },
+            { minX: 199, minY: 20, maxX: 399, maxY: 220 }
+        )).toBe(false);
     });
 
     it("derives a parent-centered influence radius from child geometry", () => {

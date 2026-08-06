@@ -41,6 +41,15 @@ export function centerDistance(leftPosition, rightPosition) {
     );
 }
 
+
+export function aabbEnvelopeSeparated(left, right) {
+    if (!left || !right) return false;
+    return left.maxX <= right.minX
+        || right.maxX <= left.minX
+        || left.maxY <= right.minY
+        || right.maxY <= left.minY;
+}
+
 export function deriveInfluenceRadius(parent, children = [], gap = GRAPH_LAYOUT_RULES.preferredNodeGap, scale = 1) {
     const largestChild = children.reduce((largest, child) => Math.max(largest, nodeHalfDiagonal(child)), 0);
     const childSpread = children.length > 1
@@ -64,18 +73,68 @@ export function parentDistanceLimit(parent, child, kind, gap = GRAPH_LAYOUT_RULE
     return Math.max(minimum, maximum);
 }
 
+export function deriveParentPlacementRadius(parent, children = [], kind, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
+    if (!children.length) return nodeHalfDiagonal(parent) + gap;
+    const largestChild = children.reduce((largest, child) => Math.max(largest, nodeHalfDiagonal(child)), 0);
+    const minimum = children.reduce(
+        (radius, child) => Math.max(radius, parentDistanceLimit(parent, child, kind, gap)),
+        nodeHalfDiagonal(parent) + gap
+    );
+    const crowding = Math.sqrt(children.length) * Math.max(
+        220,
+        largestChild * 2 + gap
+    );
+    return Math.max(minimum, crowding);
+}
+
 export function deriveCategoryGroupRadius(category, subcategories = [], childrenByParent = new Map(), gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
+    const subcategoryRadius = deriveParentPlacementRadius(category, subcategories, "subcategory", gap);
     let radius = nodeHalfDiagonal(category) + gap;
+    radius = Math.max(
+        radius,
+        subcategoryRadius + subcategories.reduce(
+            (largest, subcategory) => Math.max(largest, nodeHalfDiagonal(subcategory)),
+            0
+        ) + gap
+    );
     for (const subcategory of subcategories) {
-        const subcategoryDistance = parentDistanceLimit(category, subcategory, "subcategory", gap);
-        radius = Math.max(radius, subcategoryDistance + nodeHalfDiagonal(subcategory) + gap);
         const items = childrenByParent.get(subcategory.id) || [];
-        for (const item of items) {
-            const itemDistance = parentDistanceLimit(subcategory, item, "item", gap);
-            radius = Math.max(radius, subcategoryDistance + itemDistance + nodeHalfDiagonal(item) + gap);
-        }
+        const itemRadius = deriveParentPlacementRadius(subcategory, items, "item", gap);
+        const largestItem = items.reduce(
+            (largest, item) => Math.max(largest, nodeHalfDiagonal(item)),
+            0
+        );
+        radius = Math.max(radius, subcategoryRadius + itemRadius + largestItem + gap);
     }
     return radius;
+}
+
+export function deriveCategoryGroupEnvelope(category, members = [], positions = new Map(), gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
+    const categoryPosition = positions.get(category.id);
+    if (!categoryPosition) return null;
+    const allMembers = [category, ...members.filter(member => member.id !== category.id)];
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const member of allMembers) {
+        const position = positions.get(member.id);
+        if (!position) continue;
+        const size = nodeDimensions(member);
+        minX = Math.min(minX, position.x - size.width / 2 - gap);
+        minY = Math.min(minY, position.y - size.height / 2 - gap);
+        maxX = Math.max(maxX, position.x + size.width / 2 + gap);
+        maxY = Math.max(maxY, position.y + size.height / 2 + gap);
+    }
+    if (!Number.isFinite(minX)) return null;
+    return {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        width: maxX - minX,
+        height: maxY - minY
+    };
 }
 
 export function categoryRegionContains(candidatePosition, node, categoryPosition, categoryRadius, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
@@ -92,12 +151,7 @@ export function categoryOwnershipSatisfied(
     gap = GRAPH_LAYOUT_RULES.preferredNodeGap
 ) {
     if (!categoryRegionContains(candidatePosition, node, ownCategoryPosition, ownCategoryRadius, gap)) return false;
-    const ownDistance = centerDistance(candidatePosition, ownCategoryPosition);
-    return otherRegions.filter(region => region?.position && Number.isFinite(region.radius)).every(region => {
-        const otherDistance = centerDistance(candidatePosition, region.position);
-        return otherDistance >= region.radius + nodeHalfDiagonal(node) + gap
-            && ownDistance < otherDistance;
-    });
+    return true;
 }
 
 export function hierarchyBandSatisfied(

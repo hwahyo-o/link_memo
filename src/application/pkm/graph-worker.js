@@ -1,11 +1,13 @@
 import { layoutIterationsFor, MAX_GRAPH_EDGES, MAX_GRAPH_NODES } from "../../domain/pkm/graph-limits.js";
 import {
     GRAPH_LAYOUT_RULES,
+    aabbEnvelopeSeparated,
     aabbSeparated,
-    categorySeparationSatisfied,
     categoryOwnershipSatisfied,
     centerDistance,
+    deriveCategoryGroupEnvelope,
     deriveCategoryGroupRadius,
+    deriveParentPlacementRadius,
     hierarchyBandSatisfied,
     nearestParentSatisfied,
     parentDistanceLimit,
@@ -129,6 +131,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const otherRoots = roots.filter(node => node.kind !== "category");
     const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
     const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
+    const orphanIds = new Set(orphans.map(node => node.id));
 
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
     const collides = (node, x, y) => {
@@ -143,12 +146,15 @@ function packWithoutOverlap(nodes, positions, edges) {
         }
         return false;
     };
-    const mark = (node, position) => {
-        positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
-        placed.add(node.id);
+    const addToBucket = (node, position) => {
         const key = bucketKey(position.x, position.y);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(node);
+    };
+    const mark = (node, position) => {
+        positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
+        placed.add(node.id);
+        addToBucket(node, position);
     };
     const findFreePosition = (
         node,
@@ -168,7 +174,13 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (valid(origin)) return origin;
 
         const goldenAngle = 2.399963229728653;
-        const minimumRadius = parent ? Math.max(120, Math.max(node.width || 188, parent.width || 188) + nodeGap) : 0;
+        const minimumRadius = parent
+            ? Math.max(
+                120,
+                ((Number(node.width) || 188) + (Number(parent.width) || 188)) / 2 + nodeGap,
+                ((Number(node.height) || 68) + (Number(parent.height) || 68)) / 2 + nodeGap
+            )
+            : 0;
         const ringStep = 180;
         const maxRing = parent ? Math.max(1, Math.ceil(Math.max(0, radius - minimumRadius) / ringStep)) : 200;
         for (let ring = parent ? 0 : 1; ring <= maxRing; ring += 1) {
@@ -202,18 +214,117 @@ function packWithoutOverlap(nodes, positions, edges) {
         return byId.get(current)?.kind === "category" ? current : null;
     };
 
-    const placeCategories = scale => {
+    const categoryMembers = new Map(categories.map(category => [category.id, [category]]));
+    for (const node of nodes) {
+        const categoryId = categoryAncestor(node.id);
+        if (categoryId && node.kind !== "category") categoryMembers.get(categoryId)?.push(node);
+    }
+
+    const nodeEnvelopeAt = (node, position) => {
+        const width = Number(node.width) || 188;
+        const height = Number(node.height) || 68;
+        return {
+            minX: position.x - width / 2 - nodeGap,
+            minY: position.y - height / 2 - nodeGap,
+            maxX: position.x + width / 2 + nodeGap,
+            maxY: position.y + height / 2 + nodeGap
+        };
+    };
+
+    const compactCategoryGroups = () => {
+        const groups = categories
+            .map(category => ({
+                category,
+                members: categoryMembers.get(category.id) || [category],
+                envelope: deriveCategoryGroupEnvelope(
+                    category,
+                    categoryMembers.get(category.id) || [category],
+                    positions,
+                    nodeGap
+                )
+            }))
+            .filter(group => group.envelope)
+            .sort((left, right) => (
+                right.envelope.width * right.envelope.height
+                - left.envelope.width * left.envelope.height
+                || left.category.id.localeCompare(right.category.id)
+            ));
+        if (groups.length < 2) return true;
+
+        const origin = groups.reduce((center, group) => {
+            const position = positions.get(group.category.id);
+            return {
+                x: center.x + position.x / groups.length,
+                y: center.y + position.y / groups.length
+            };
+        }, { x: 0, y: 0 });
+        const occupiedNodes = nodes
+            .filter(node => !orphanIds.has(node.id) && !categoryAncestor(node.id))
+            .map(node => ({ node, position: positions.get(node.id) }))
+            .filter(entry => entry.position);
+
+        const placedGroups = [];
+        for (const group of groups) {
+            const current = positions.get(group.category.id);
+            let selected = null;
+            for (let ring = 0; ring <= 160 && !selected; ring += 1) {
+                const count = ring === 0 ? 1 : Math.max(8, ring * 8);
+                for (let index = 0; index < count; index += 1) {
+                    const angle = ring === 0
+                        ? 0
+                        : 2.399963229728653 * (ring * count + index)
+                            + hashSeed(group.category.id) * 0.4;
+                    const radius = ring * 220;
+                    const candidate = {
+                        x: origin.x + Math.cos(angle) * radius,
+                        y: origin.y + Math.sin(angle) * radius
+                    };
+                    const delta = {
+                        x: candidate.x - current.x,
+                        y: candidate.y - current.y
+                    };
+                    const envelope = {
+                        minX: group.envelope.minX + delta.x,
+                        minY: group.envelope.minY + delta.y,
+                        maxX: group.envelope.maxX + delta.x,
+                        maxY: group.envelope.maxY + delta.y
+                    };
+                    if (!placedGroups.every(other => aabbEnvelopeSeparated(envelope, other.envelope))
+                        || !occupiedNodes.every(entry => aabbEnvelopeSeparated(
+                            envelope,
+                            nodeEnvelopeAt(entry.node, entry.position)
+                        ))) continue;
+                    selected = { candidate, envelope };
+                    break;
+                }
+            }
+            if (!selected) return false;
+            const delta = {
+                x: selected.candidate.x - current.x,
+                y: selected.candidate.y - current.y
+            };
+            for (const member of group.members) {
+                const position = positions.get(member.id);
+                if (position) {
+                    position.x += delta.x;
+                    position.y += delta.y;
+                }
+            }
+            placedGroups.push({ ...group, envelope: selected.envelope });
+        }
+
+        buckets.clear();
+        for (const node of nodes) {
+            if (orphanIds.has(node.id)) continue;
+            const position = positions.get(node.id);
+            if (position) addToBucket(node, position);
+        }
+        return true;
+    };
+
+    const placeCategories = () => {
         for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
-            const accept = candidate => categories.every(other => other.id === node.id || !placed.has(other.id)
-                || categorySeparationSatisfied(
-                    node,
-                    other,
-                    candidate,
-                    positions.get(other.id),
-                    getCategoryGroupRadius(node, scale),
-                    getCategoryGroupRadius(other, scale)
-                ));
-            const position = findFreePosition(node, positions.get(node.id), null, 0, accept);
+            const position = findFreePosition(node, positions.get(node.id));
             if (!position) return false;
             mark(node, position);
         }
@@ -243,6 +354,12 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .sort((left, right) => left.id.localeCompare(right.id));
             const siblingIndex = siblings.findIndex(sibling => sibling.id === node.id);
             const siblingCount = Math.max(1, siblings.length);
+            const siblingRadius = deriveParentPlacementRadius(
+                parent,
+                siblings,
+                node.kind,
+                nodeGap * scale
+            );
             const slotWidth = Math.PI * 2 / siblingCount;
             const baseSlotAngle = (siblingIndex + 0.5) * slotWidth
                 + hashSeed(parent.id) * slotWidth * 0.3;
@@ -302,7 +419,10 @@ function packWithoutOverlap(nodes, positions, edges) {
                 node,
                 positions.get(node.id),
                 parent,
-                parentDistanceLimit(parent, node, node.kind, nodeGap * scale),
+                Math.max(
+                    parentDistanceLimit(parent, node, node.kind, nodeGap * scale),
+                    siblingRadius
+                ),
                 accept,
                 slotAngle,
                 node.kind === "item"
@@ -315,10 +435,65 @@ function packWithoutOverlap(nodes, positions, edges) {
         return true;
     };
 
+    const validateNoOverlap = () => {
+        const validationBuckets = new Map();
+        const cellSize = 400;
+        const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
+        const collidesWithValidated = (node, position) => {
+            const cellX = Math.floor(position.x / cellSize);
+            const cellY = Math.floor(position.y / cellSize);
+            for (let bucketX = cellX - 1; bucketX <= cellX + 1; bucketX += 1) {
+                for (let bucketY = cellY - 1; bucketY <= cellY + 1; bucketY += 1) {
+                    for (const other of validationBuckets.get(`${bucketX},${bucketY}`) || []) {
+                        if (!aabbSeparated(
+                            node,
+                            other,
+                            position,
+                            positions.get(other.id),
+                            nodeGap
+                        )) return true;
+                    }
+                }
+            }
+            return false;
+        };
+        const ordered = nodes.slice().sort((left, right) => (
+            hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id)
+        ));
+        for (const node of ordered) {
+            const position = positions.get(node.id);
+            if (!position || collidesWithValidated(node, position)) return false;
+            const key = bucketKey(position.x, position.y);
+            if (!validationBuckets.has(key)) validationBuckets.set(key, []);
+            validationBuckets.get(key).push(node);
+        }
+        return true;
+    };
+
+    const repackGlobally = () => {
+        buckets.clear();
+        placed.clear();
+        const ordered = nodes.slice().sort((left, right) => (
+            (left.kind || "").localeCompare(right.kind || "")
+            || hashSeed(left.id) - hashSeed(right.id)
+            || left.id.localeCompare(right.id)
+        ));
+        for (const node of ordered) {
+            const position = findFreePosition(
+                node,
+                positions.get(node.id) || { x: 0, y: 0 }
+            );
+            if (!position) return false;
+            mark(node, position);
+        }
+        return validateNoOverlap();
+    };
+
     for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
         buckets.clear();
         placed.clear();
-        if (!placeCategories(scale) || !placeRoots() || !placeChildren(scale)) continue;
+        if (!placeCategories() || !placeRoots() || !placeChildren(scale)) continue;
+        if (!compactCategoryGroups()) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
             const position = findFreePosition(node, positions.get(node.id));
@@ -326,8 +501,10 @@ function packWithoutOverlap(nodes, positions, edges) {
             mark(node, position);
             return true;
         })) continue;
-        if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return;
+        if (!validateNoOverlap()) continue;
+        if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return true;
     }
+    return repackGlobally();
 }
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
     nodes = nodes.slice(0, MAX_GRAPH_NODES);
