@@ -5,6 +5,7 @@ export const GRAPH_LAYOUT_RULES = Object.freeze({
     maximumCategoryRadiusOverlap: 50,
     maximumSubcategoryDistance: 360,
     maximumItemDistance: 300,
+    minimumRadialBandGap: 42,
     minimumSiblingEdgeAngle: 0.17453292519943295
 });
 
