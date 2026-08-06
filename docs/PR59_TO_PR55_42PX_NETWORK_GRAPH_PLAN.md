@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: PR #63·#64 main 병합 및 Pages 배포 확인 완료
+> 상태: PR #63·#64·#65 main 병합 및 Pages 배포 확인 완료
 
 ## 1. 목표와 범위
 
@@ -116,7 +116,7 @@
 - 공개 PKM JavaScript/CSS 및 외부 Cytoscape·CodeMirror asset: HTTP 200
 - secret pattern 검사: 발견 없음
 - screenshot: 생성하지 않음. 화면은 사용자가 직접 확인
-- 원격 브랜치: 완료 정리 전까지 `main`과 문서 갱신용 `drill` 유지
+- 최종 원격 브랜치: `main`만 유지
 
 
 ## 13. 2026-08-06 이미지 기반 재수정 계획
