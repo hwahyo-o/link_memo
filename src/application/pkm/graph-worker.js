@@ -654,42 +654,24 @@ function packWithoutOverlap(nodes, positions, edges) {
     };
 
     const repackGlobally = () => {
-        for (const scale of [8, 12, 16]) {
-            buckets.clear();
-            placed.clear();
-            if (!placeCategories() || !placeRoots() || !placeChildren(scale)) continue;
-            if (!reflowItemsOutward()) continue;
-
-            const orderedOrphans = orphans
-                .slice()
-                .sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
-            if (!orderedOrphans.every(node => {
-                const centerOrdered = node.kind === "subcategory" || node.kind === "item";
-                const radialFloor = node.kind === "subcategory"
-                    ? categoryBandRadius
-                    : node.kind === "item"
-                        ? Math.max(subcategoryBandRadius + radialBandGap, 1200)
-                        : 0;
-                const origin = centerOrdered ? layoutCenter : positions.get(node.id);
-                const position = findFreePosition(
-                    node,
-                    origin,
-                    null,
-                    0,
-                    candidate => !centerOrdered || radialDistance(candidate) > radialFloor
-                );
-                if (!position) return false;
-                mark(node, position);
-                return true;
-            })) continue;
-
-            if (!normalizeToCanvasCenter()) continue;
-            for (let pass = 0; pass < 4 && !radialHierarchySatisfied(); pass += 1) {
-                if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
-            }
-            if (radialHierarchySatisfied() && validateNoOverlap()) return true;
+        buckets.clear();
+        placed.clear();
+        const ordered = nodes.slice().sort((left, right) => (
+            (left.kind || "").localeCompare(right.kind || "")
+            || hashSeed(left.id) - hashSeed(right.id)
+            || left.id.localeCompare(right.id)
+        ));
+        for (const node of ordered) {
+            const position = findFreePosition(
+                node,
+                positions.get(node.id) || { x: 0, y: 0 }
+            );
+            if (!position) return false;
+            mark(node, position);
         }
-        return false;
+        return normalizeToCanvasCenter()
+            && validateNoOverlap()
+            && radialHierarchySatisfied();
     };
 
     for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
