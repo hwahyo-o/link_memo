@@ -486,6 +486,31 @@ function packWithoutOverlap(nodes, positions, edges) {
         return true;
     };
 
+    const normalizeToCanvasCenter = () => {
+        const bounds = nodes.reduce((current, node) => {
+            const position = positions.get(node.id);
+            if (!position) return current;
+            const width = Number(node.width) || 188;
+            const height = Number(node.height) || 68;
+            return {
+                minX: Math.min(current.minX, position.x - width / 2),
+                minY: Math.min(current.minY, position.y - height / 2),
+                maxX: Math.max(current.maxX, position.x + width / 2),
+                maxY: Math.max(current.maxY, position.y + height / 2)
+            };
+        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+        if (!Number.isFinite(bounds.minX)) return false;
+        const delta = {
+            x: (bounds.minX + bounds.maxX) / 2,
+            y: (bounds.minY + bounds.maxY) / 2
+        };
+        for (const position of positions.values()) {
+            position.x -= delta.x;
+            position.y -= delta.y;
+        }
+        return true;
+    };
+
     const validateNoOverlap = () => {
         const validationBuckets = new Map();
         const cellSize = 400;
@@ -537,7 +562,9 @@ function packWithoutOverlap(nodes, positions, edges) {
             if (!position) return false;
             mark(node, position);
         }
-        return validateNoOverlap();
+        return normalizeToCanvasCenter()
+            && validateNoOverlap()
+            && radialHierarchySatisfied();
     };
 
     for (const scale of [1, 1.5, 2, 3, 4, 6, 8]) {
@@ -547,11 +574,25 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (!compactCategoryGroups()) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
-            const position = findFreePosition(node, positions.get(node.id));
+            const centerOrdered = node.kind === "subcategory" || node.kind === "item";
+            const radialFloor = node.kind === "subcategory"
+                ? categoryBandRadius
+                : node.kind === "item"
+                    ? Math.max(subcategoryBandRadius, 1200)
+                    : 0;
+            const origin = centerOrdered ? layoutCenter : positions.get(node.id);
+            const position = findFreePosition(
+                node,
+                origin,
+                null,
+                0,
+                candidate => !centerOrdered || radialDistance(candidate) > radialFloor
+            );
             if (!position) return false;
             mark(node, position);
             return true;
         })) continue;
+        if (!normalizeToCanvasCenter() || !radialHierarchySatisfied()) continue;
         if (!validateNoOverlap()) continue;
         if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return true;
     }
