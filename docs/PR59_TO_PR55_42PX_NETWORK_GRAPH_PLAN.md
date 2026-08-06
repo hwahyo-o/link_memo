@@ -370,3 +370,16 @@
 - 화면 구조, 저장, 인증, 동기화, 외부 서비스, 의존성, 앱 시작 계층은 변경하지 않는다.
 - screenshot은 생성하지 않는다.
 - 완료 결과와 검증 수치는 이 문서에 기록한다.
+
+## 23. 2026-08-06 radial band 강화 검증 기록
+
+- PR #71에서 category·subcategory·item radial band 사이에 최소 42px 여유를 추가했다.
+- subcategory는 category 최대 반경보다 42px 이상 바깥에서만 허용한다.
+- item은 subcategory 최대 반경보다 42px 이상 바깥에서만 허용한다.
+- parentless subcategory/item도 해당 band 바깥으로 배치한다.
+- 기존 category envelope compact packing, 실제 AABB 42px 무겹침, strict nearest-parent, deterministic multi-ring을 유지했다.
+- Branch CI #514와 Pages test/build #321이 성공했다.
+- 변경 범위는 문서, graph-layout-policy.js, graph-worker.js, 관련 테스트로 제한했다.
+- 저장·인증·동기화·외부 서비스·의존성·앱 시작 계층은 변경하지 않았다.
+- screenshot은 생성하지 않았다.
+- 현재 상태: PR #71 main 병합 대기.
