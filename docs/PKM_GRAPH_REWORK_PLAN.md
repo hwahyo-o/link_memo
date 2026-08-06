@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 이미지 기반 전체 노드 무겹침·카테고리 compact 재수정 진행 중
+> 상태: PR #63 구현 및 CI 검증 성공, main 병합 대기
 
 ## 1. 목적
 
@@ -102,12 +102,12 @@ IndexedDB, Firestore, Firebase Auth, Google Drive Worker, Cloudflare Backup Work
 
 ### 대분류 분리
 
-대분류 쌍마다 다음을 검사한다.
+category group 쌍마다 실제 descendant 도형을 포함한 envelope를 검사한다.
 
-- 중심점 거리 >= 420px
-- 두 영향 반경의 합과 중심점 거리로 계산한 겹침 깊이 < 50px
+- envelope 외곽 간격 >= 42px
+- category·subcategory·item 내부 AABB 충돌 없음
 
-배치가 부족하면 golden-angle 후보를 계속 탐색하고 전체 영역을 확장한다.
+배치가 부족하면 deterministic golden-angle 후보를 계속 탐색하고 group envelope를 확장한다.
 
 ## 4. 구현 내용
 
@@ -206,7 +206,7 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 
 ## 8. 현재 검증 상태
 
-원형 계층 영역, 부모 거리 상한, 부모별 angular slot, 같은 부모 간선 방향 분리 정책과 Worker 연결을 `drill`에서 반영하고 `main`에 병합했다.
+원형 계층 영역, 부모 거리 상한, 부모별 angular slot, 실제 category envelope compact packing, 전체 노드 무겹침 검증을 `drill`에 반영했다.
 
 완료된 Gate:
 
@@ -218,7 +218,8 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 전체 노드 외곽 여백과 category 그룹 겹침 규칙 유지
 - Branch CI test/build 성공
 - PR test/build 성공
-- main 병합 성공
+- Branch CI #454와 Pages test/build #295 성공
+- main 병합 대기
 - 캐시를 제외한 공개 PKM HTML, JavaScript asset, graph Worker asset HTTP 200 확인
 - 새 Worker asset에서 거리 상한과 category/subcategory 계층 배치 코드 확인
 - 변경 문서·fixture·소스에서 API key, token, 운영 식별자, 사용자 데이터 패턴을 확인하지 못함
@@ -303,7 +304,7 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - main 병합 커밋은 `212b11a`이며 공개 root와 `pkm.html`은 HTTP 200으로 확인했다.
 - 화면 screenshot은 생성하지 않았고, 실제 화면 확인은 사용자에게 위임했다.
 - 저장·인증·Firestore·Cloudflare·Drive·외부 API·의존성은 변경하지 않았다.
-- 원격 브랜치는 `main`만 남겼다.
+- 원격 브랜치는 `main`과 작업 중인 `drill`을 유지한다.
 
 
 ## 13. 2026-08-06 이미지 기반 재수정 계획
