@@ -423,3 +423,13 @@
 - 원격 branch는 main만 남겼다.
 - 공개 문서에 비밀 키·token·사용자 식별자를 기록하지 않았다.
 - 상태: main 병합 완료, 배포 workflow 트리거 확인 대기.
+
+
+## 28. 2026-08-06 모든 item 유형 공통 외곽 재배치 계획
+
+- 색상·콘텐츠 유형과 관계없이 projector의 `kind: "item"` 전체를 재배치 대상으로 확정한다.
+- category 및 subcategory 좌표 확정 후 item만 실제 canvas bounds center 기준 외곽 band로 재배치한다.
+- item 부모 subcategory nearest, category/subcategory보다 먼 radial band, 도형 외곽 기준 AABB 42px을 전 item에 적용한다.
+- 혼합 item 유형, 대량 item, orphan item을 별도 회귀 fixture로 검증한다.
+- 실패 시 item 후보 ring/fan만 조정하고 부모 계층·저장·외부 서비스 코드는 수정하지 않는다.
+- 승인 상태: 구현 시작 승인 완료.
