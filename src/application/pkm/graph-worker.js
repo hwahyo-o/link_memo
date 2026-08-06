@@ -520,9 +520,10 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .filter(node => node.kind === "subcategory")
                 .map(node => radialDistanceFrom(positions.get(node.id), center))
         );
-        const itemBandFloor = subcategoryBand
-            + radialBandGap
-            + Math.max(120, subcategoryBand * 0.5);
+        const denseItemBuffer = items.length > 8
+            ? Math.max(120, subcategoryBand * 0.5)
+            : 0;
+        const itemBandFloor = subcategoryBand + radialBandGap + denseItemBuffer;
 
         for (const node of items) {
             const parent = byId.get(hierarchy.parents.get(node.id));
