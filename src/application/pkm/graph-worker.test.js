@@ -316,6 +316,83 @@ describe("PKM graph worker algorithms", () => {
         }
     });
 
+    it("repositions every item type outside the subcategory band", () => {
+        const contentKinds = ["link", "image", "text", "file"];
+        const nodes = [
+            { id: "category-a", kind: "category", width: 196, height: 72 },
+            { id: "category-b", kind: "category", width: 196, height: 72 },
+            { id: "subcategory-a", kind: "subcategory", categoryId: "category-a", width: 174, height: 64 },
+            { id: "subcategory-b", kind: "subcategory", categoryId: "category-b", width: 174, height: 64 },
+            ...Array.from({ length: 48 }, (_, index) => ({
+                id: `item-${index}`,
+                kind: "item",
+                contentKind: contentKinds[index % contentKinds.length],
+                subcategoryId: index % 2 ? "subcategory-a" : "subcategory-b",
+                width: index % 3 ? 188 : 196,
+                height: index % 3 ? 68 : 72
+            }))
+        ];
+        const edges = [
+            { source: "category-a", target: "subcategory-a", kind: "category-membership" },
+            { source: "category-b", target: "subcategory-b", kind: "category-membership" },
+            ...nodes.slice(4).map(node => ({
+                source: node.subcategoryId,
+                target: node.id,
+                kind: "subcategory-membership"
+            }))
+        ];
+        const positions = new Map(layoutGraph(nodes, edges, 0).map(position => [position.id, position]));
+        const bounds = nodes.reduce((current, node) => {
+            const position = positions.get(node.id);
+            return {
+                minX: Math.min(current.minX, position.x - node.width / 2),
+                minY: Math.min(current.minY, position.y - node.height / 2),
+                maxX: Math.max(current.maxX, position.x + node.width / 2),
+                maxY: Math.max(current.maxY, position.y + node.height / 2)
+            };
+        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+        const center = {
+            x: (bounds.minX + bounds.maxX) / 2,
+            y: (bounds.minY + bounds.maxY) / 2
+        };
+        const radius = id => Math.hypot(
+            positions.get(id).x - center.x,
+            positions.get(id).y - center.y
+        );
+        const categoryBand = Math.max(radius("category-a"), radius("category-b"));
+        const subcategoryBand = Math.max(radius("subcategory-a"), radius("subcategory-b"));
+        const itemBand = Math.min(...nodes.slice(4).map(node => radius(node.id)));
+
+        expect(subcategoryBand).toBeGreaterThan(categoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
+        expect(itemBand).toBeGreaterThan(subcategoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
+
+        const byId = new Map(nodes.map(node => [node.id, node]));
+        for (const item of nodes.slice(4)) {
+            const parent = byId.get(item.subcategoryId);
+            const itemPosition = positions.get(item.id);
+            const parentPosition = positions.get(parent.id);
+            const otherParent = positions.get(parent.id === "subcategory-a" ? "subcategory-b" : "subcategory-a");
+            expect(Math.hypot(
+                itemPosition.x - parentPosition.x,
+                itemPosition.y - parentPosition.y
+            )).toBeLessThan(Math.hypot(
+                itemPosition.x - otherParent.x,
+                itemPosition.y - otherParent.y
+            ));
+        }
+
+        for (let left = 0; left < nodes.length; left += 1) {
+            for (let right = left + 1; right < nodes.length; right += 1) {
+                expect(aabbSeparated(
+                    nodes[left],
+                    nodes[right],
+                    positions.get(nodes[left].id),
+                    positions.get(nodes[right].id)
+                )).toBe(true);
+            }
+        }
+    });
+
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
         const nodes = Array.from({ length: 100_100 }, (_, index) => ({ id: `n${index}` }));
         expect(layoutGraph(nodes, [], 0)).toHaveLength(100_000);
