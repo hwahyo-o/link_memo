@@ -827,6 +827,7 @@ function packWithoutOverlap(nodes, positions, edges) {
         const items = nodes
             .filter(node => node.kind === "item")
             .sort((left, right) => left.id.localeCompare(right.id));
+        if (items.length <= 8) return false;
         buckets.clear();
         placed.clear();
         nodes
@@ -922,6 +923,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             if (!position) return false;
             mark(node, position);
         }
+        if (!normalizeToCanvasCenter()) return false;
         return true;
     };
 
