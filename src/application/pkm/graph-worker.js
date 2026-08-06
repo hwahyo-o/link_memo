@@ -839,7 +839,44 @@ function packWithoutOverlap(nodes, positions, edges) {
                     addToBucket(node, position);
                 }
             });
+        items.forEach(node => {
+            const position = positions.get(node.id);
+            if (position) {
+                position.x = 0;
+                position.y = 0;
+            }
+        });
         if (!normalizeToCanvasCenter()) return false;
+
+        for (let pass = 0; pass < 4; pass += 1) {
+            const categoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "category")
+                    .map(node => radialDistance(positions.get(node.id)))
+            );
+            const subcategoryFloor = categoryBand + radialBandGap + 1;
+            let changed = false;
+            for (const node of nodes.filter(candidate => candidate.kind === "subcategory")) {
+                const position = positions.get(node.id);
+                const distance = radialDistance(position);
+                if (distance > subcategoryFloor) continue;
+                const angle = Math.atan2(
+                    position.y || Math.sin(hashSeed(node.id) * Math.PI * 2),
+                    position.x || Math.cos(hashSeed(node.id) * Math.PI * 2)
+                );
+                const amount = subcategoryFloor - distance + 1;
+                position.x += Math.cos(angle) * amount;
+                position.y += Math.sin(angle) * amount;
+                changed = true;
+            }
+            if (!changed || !normalizeToCanvasCenter()) break;
+        }
+        buckets.clear();
+        for (const node of nodes.filter(candidate => candidate.kind !== "item")) {
+            const position = positions.get(node.id);
+            if (position) addToBucket(node, position);
+        }
 
         const subcategoryBand = Math.max(
             0,
