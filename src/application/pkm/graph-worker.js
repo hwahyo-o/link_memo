@@ -602,7 +602,13 @@ function packWithoutOverlap(nodes, positions, edges) {
                 slotAngle,
                 Math.min(Math.PI / 3, Math.max(0.24, itemFanWidth / siblingCount * 0.75))
             );
-       const deriveBoundsCenter = () => {
+            if (!position) return false;
+            mark(node, position);
+        }
+        return true;
+    };
+
+    const deriveBoundsCenter = () => {
         const bounds = nodes.reduce((current, node) => {
             const position = positions.get(node.id);
             if (!position) return current;
