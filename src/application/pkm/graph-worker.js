@@ -534,6 +534,11 @@ function packWithoutOverlap(nodes, positions, edges) {
             const itemFanWidth = Math.min(Math.PI * 1.1, Math.PI * 2);
             const slotAngle = outwardAngle
                 + (((siblingIndex + 0.5) / siblingCount) - 0.5) * itemFanWidth;
+            const outwardProjectionFactor = Math.max(0.5, Math.cos(itemFanWidth / 2));
+            const minimumItemParentRadius = Math.max(
+                0,
+                (itemBandFloor - radialDistance(parentPosition)) / outwardProjectionFactor + 1
+            );
             const peerPositions = siblings
                 .slice(0, Math.max(0, siblingIndex))
                 .map(sibling => positions.get(sibling.id))
@@ -569,7 +574,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                 Math.max(
                     parentDistanceLimit(parent, node, node.kind, nodeGap),
                     siblingRadius,
-                    itemBandFloor - radialDistance(parentPosition) + 1
+                    minimumItemParentRadius
                 ),
                 accept,
                 slotAngle,
