@@ -675,6 +675,50 @@ function packWithoutOverlap(nodes, positions, edges) {
     const repairItemRadialBand = () => {
         const items = nodes.filter(node => node.kind === "item");
         if (!items.length) return false;
+        const smallConnectedLayer = items.length <= 4 && items.every(node => {
+            const parent = byId.get(hierarchy.parents.get(node.id));
+            return parent?.kind === "subcategory"
+                && byId.get(hierarchy.parents.get(parent.id))?.kind === "category";
+        });
+        if (smallConnectedLayer) {
+            const center = deriveBoundsCenter();
+            const subcategoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "subcategory")
+                    .map(node => radialDistanceFrom(positions.get(node.id), center))
+            );
+            const targetRadius = subcategoryBand + radialBandGap + 240;
+            for (const node of items) {
+                const parent = byId.get(hierarchy.parents.get(node.id));
+                const category = byId.get(hierarchy.parents.get(parent.id));
+                const parentPosition = positions.get(parent.id);
+                const categoryPosition = positions.get(category.id);
+                const direction = {
+                    x: parentPosition.x - categoryPosition.x,
+                    y: parentPosition.y - categoryPosition.y
+                };
+                const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                const target = {
+                    x: center.x + direction.x / length * targetRadius,
+                    y: center.y + direction.y / length * targetRadius
+                };
+                const parentDistance = Math.hypot(
+                    target.x - parentPosition.x,
+                    target.y - parentPosition.y
+                );
+                if (parentDistance <= 300) {
+                    positions.get(node.id).x = target.x;
+                    positions.get(node.id).y = target.y;
+                }
+            }
+            const nextCenter = deriveBoundsCenter();
+            if (radialHierarchySatisfied(nextCenter)) {
+                translateToCenter(nextCenter);
+                if (radialHierarchySatisfied() && validateNoOverlap()) return true;
+            }
+        }
+
         for (let pass = 0; pass < 8; pass += 1) {
             const center = deriveBoundsCenter();
             const subcategoryBand = Math.max(
