@@ -146,12 +146,15 @@ function packWithoutOverlap(nodes, positions, edges) {
         }
         return false;
     };
-    const mark = (node, position) => {
-        positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
-        placed.add(node.id);
+    const addToBucket = (node, position) => {
         const key = bucketKey(position.x, position.y);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(node);
+    };
+    const mark = (node, position) => {
+        positions.set(node.id, { ...positions.get(node.id), x: position.x, y: position.y });
+        placed.add(node.id);
+        addToBucket(node, position);
     };
     const findFreePosition = (
         node,
