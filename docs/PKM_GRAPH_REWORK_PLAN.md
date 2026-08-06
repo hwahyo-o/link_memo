@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: PR #63 main 병합 완료, Pages 배포 확인 대기
+> 상태: PR #63·#64 main 병합 및 Pages 배포 확인 완료
 
 ## 1. 목적
 
@@ -357,4 +357,16 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 다량 item은 deterministic multi-ring과 최종 전역 충돌 검증을 사용한다.
 - 화면 screenshot은 생성하지 않았다.
 - 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
-- main Pages 배포 확인은 병합 후 workflow와 공개 asset 응답으로 별도 기록한다.
+- main Pages workflow #300 및 deploy job 성공, 공개 asset HTTP 200을 확인했다.
+
+
+## 15. 2026-08-06 최종 배포 기록
+
+- 문서 후속 PR #64 병합 커밋: `93b656d`
+- main Pages workflow #300: 성공
+- main Pages deploy job: 성공
+- 공개 root `https://hwahyo-o.github.io/link_memo/`: HTTP 200
+- 공개 `https://hwahyo-o.github.io/link_memo/pkm.html`: HTTP 200
+- PKM JavaScript·CSS·favicon asset: HTTP 200
+- 실제 브라우저 화면 screenshot은 생성하지 않았으며 화면 확인은 사용자에게 위임한다.
+- 기능 변경 대상은 그래프 정책·Worker·관련 테스트뿐이며 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
