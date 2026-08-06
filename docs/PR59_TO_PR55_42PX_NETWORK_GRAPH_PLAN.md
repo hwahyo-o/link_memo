@@ -6,7 +6,7 @@
 
 ## 1. 목표와 범위
 
-현재 `main`의 PR #59 compact category packing을 PR #55의 변칙 네트워크 그래프 배치 기준으로 되돌린다. 복원 뒤 노드 외곽 AABB 간 최소 여백을 42px로 적용한다.
+현재 그래프의 이미지 기반 문제를 수정한다. 변칙 네트워크 그래프를 유지하면서 category group은 실제 descendant envelope 기준으로 compact하게 배치하고, 모든 노드의 외곽 AABB 간 최소 여백을 42px로 적용한다.
 
 보존할 동작:
 
@@ -14,13 +14,13 @@
 - connected-component seed, golden-angle 후보 탐색, spatial bucket 충돌 탐색
 - category/subcategory/item 부모 관계, 부모 근접성, 부모 거리 제한
 - 같은 부모 간선의 방향 분리
-- category 중심 간격 420px 및 category region의 의미적 분리
+- 실제 category group envelope의 외곽 분리와 42px 최소 간격
 - 검색, 선택, tooltip, 파일 열기, 저장·동기화·외부 서비스 동작
 
 제거할 동작:
 
-- PR #59의 실제 descendant envelope 기반 category group compact packing
-- PR #59의 compact packing 이후 orphan 중앙 재배치 최적화
+- PR #59의 orphan 중앙 재배치 방식은 사용하지 않으며, 실제 envelope 기반 compact packing은 전역 무겹침 검증과 함께 재구성한다.
+- 대규모 sibling을 위한 deterministic multi-ring 배치와 최종 전역 충돌 검증
 
 ## 2. 계층 구조
 
@@ -114,3 +114,42 @@
 - secret pattern 검사: 발견 없음
 - screenshot: 생성하지 않음. 화면은 사용자가 직접 확인
 - 원격 브랜치: `main`만 유지
+
+
+## 13. 2026-08-06 이미지 기반 재수정 계획
+
+### 확인된 문제
+
+첨부 화면에서 category 노드가 실제 descendant 그룹보다 과도하게 멀리 분산되고, 다량의 item 노드가 같은 영역에서 서로 겹쳐 보인다. 이는 다음 두 조건을 동시에 만족하지 못한 상태다.
+
+- category, subcategory, item을 구분하지 않는 전역 도형 충돌 보장
+- 실제 descendant geometry를 사용한 조밀한 category group 배치
+
+현재 Worker는 자식 수가 많은 경우 부모 반경 안에서 후보를 모두 찾지 못해 부분 배치 좌표를 남길 수 있다. 또한 category 중심 거리와 큰 원형 영향 반경을 함께 강제해 category를 필요 이상으로 멀리 밀어낼 수 있다.
+
+### 수정 정책
+
+- 모든 category, subcategory, item 쌍을 실제 width·height의 AABB와 42px 외곽 여백으로 검사한다.
+- 배치 후보를 모두 소진하면 초기 겹친 좌표를 반환하지 않고 sibling ring을 확장해 재배치한다.
+- 많은 item은 단일 원형이 아니라 deterministic multi-ring으로 배치한다.
+- category group은 category·subcategory·item descendant의 실제 AABB envelope를 계산해 envelope 외곽 간 최소 42px으로 compact packing한다.
+- 기존 420px category 중심 거리 하드 제약은 제거하고, 실제 group envelope 분리를 하드 제약으로 사용한다.
+- force-directed seed, connected-component 구조, golden-angle 후보, stable hash, 부모 근접성, angular slot은 유지한다.
+- 화면·저장·인증·동기화·외부 서비스·의존성 계층은 변경하지 않는다.
+
+### Phase Gate
+
+1. domain 정책에 envelope와 ring 반경 계산을 추가하고 단위 테스트를 통과한다.
+2. Worker가 모든 노드 종류를 전역 충돌 버킷에서 검사하고 최종 충돌 검증을 통과한다.
+3. 다량 item fixture와 여러 category fixture에서 모든 AABB 간격이 42px 이상이다.
+4. category group envelope가 서로 겹치지 않으며 필요 이상으로 넓게 분산되지 않는다.
+5. 전체 test, build, diff check, secret pattern 점검과 Pages 배포가 성공한다.
+
+### 실패 Loop
+
+- 충돌 실패: geometry·bucket·candidate 범위를 확인하고 전역 재배치만 수정한다.
+- 다량 item 실패: sibling ring 반경과 ring count를 확장하고 부모 거리 규칙을 재검증한다.
+- category 분산 실패: envelope 배치 순서와 외곽 간격을 조정한다.
+- 변칙성 저하: force seed와 golden-angle 후보 순서를 확인한다.
+- 회귀: 그래프 정책·Worker·테스트 외 계층을 변경하지 않았는지 확인한다.
+
