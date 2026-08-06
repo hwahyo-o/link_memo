@@ -127,6 +127,49 @@ describe("PKM graph worker algorithms", () => {
         }
     });
 
+
+    it("keeps hierarchy levels ordered outward from the canvas center", () => {
+        const nodes = [
+            { id: "category-a", kind: "category", width: 196, height: 72 },
+            { id: "category-b", kind: "category", width: 196, height: 72 },
+            { id: "subcategory-a", kind: "subcategory", categoryId: "category-a", width: 174, height: 64 },
+            { id: "subcategory-b", kind: "subcategory", categoryId: "category-b", width: 174, height: 64 },
+            { id: "item-a", kind: "item", subcategoryId: "subcategory-a", width: 188, height: 68 },
+            { id: "item-b", kind: "item", subcategoryId: "subcategory-b", width: 188, height: 68 }
+        ];
+        const edges = [
+            { source: "category-a", target: "subcategory-a", kind: "category-membership" },
+            { source: "category-b", target: "subcategory-b", kind: "category-membership" },
+            { source: "subcategory-a", target: "item-a", kind: "subcategory-membership" },
+            { source: "subcategory-b", target: "item-b", kind: "subcategory-membership" }
+        ];
+        const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
+        const center = nodes.reduce((result, node) => ({
+            x: result.x + positions.get(node.id).x / nodes.length,
+            y: result.y + positions.get(node.id).y / nodes.length
+        }), { x: 0, y: 0 });
+        const radius = id => Math.hypot(
+            positions.get(id).x - center.x,
+            positions.get(id).y - center.y
+        );
+        const categories = ["category-a", "category-b"];
+        const subcategories = ["subcategory-a", "subcategory-b"];
+        const items = ["item-a", "item-b"];
+        expect(Math.max(...categories.map(radius))).toBeLessThan(Math.min(...subcategories.map(radius)));
+        expect(Math.max(...subcategories.map(radius))).toBeLessThan(Math.min(...items.map(radius)));
+
+        expect(radius("subcategory-a")).toBeLessThan(radius("category-b") + radius("subcategory-a"));
+        expect(radius("subcategory-b")).toBeLessThan(radius("category-a") + radius("subcategory-b"));
+        const distance = (left, right) => Math.hypot(
+            positions.get(left).x - positions.get(right).x,
+            positions.get(left).y - positions.get(right).y
+        );
+        expect(distance("subcategory-a", "category-a")).toBeLessThan(distance("subcategory-a", "category-b"));
+        expect(distance("subcategory-b", "category-b")).toBeLessThan(distance("subcategory-b", "category-a"));
+        expect(distance("item-a", "subcategory-a")).toBeLessThan(distance("item-a", "subcategory-b"));
+        expect(distance("item-b", "subcategory-b")).toBeLessThan(distance("item-b", "subcategory-a"));
+    });
+
     it("separates same-parent hierarchy edges into distinct radial directions", () => {
         const nodes = [
             { id: "category", kind: "category", width: 196, height: 72 },
