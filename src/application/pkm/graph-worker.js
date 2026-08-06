@@ -578,7 +578,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             const radialFloor = node.kind === "subcategory"
                 ? categoryBandRadius
                 : node.kind === "item"
-                    ? subcategoryBandRadius
+                    ? Math.max(subcategoryBandRadius, 1200)
                     : 0;
             const origin = centerOrdered ? layoutCenter : positions.get(node.id);
             const position = findFreePosition(
