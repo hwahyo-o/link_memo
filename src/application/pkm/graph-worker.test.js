@@ -166,8 +166,10 @@ describe("PKM graph worker algorithms", () => {
         const categories = ["category-a", "category-b"];
         const subcategories = ["subcategory-a", "subcategory-b"];
         const items = ["item-a", "item-b"];
-        expect(Math.max(...categories.map(radius))).toBeLessThan(Math.min(...subcategories.map(radius)));
-        expect(Math.max(...subcategories.map(radius))).toBeLessThan(Math.min(...items.map(radius)));
+        const categoryBand = Math.max(...categories.map(radius));
+        const subcategoryBand = Math.max(...subcategories.map(radius));
+        expect(subcategoryBand).toBeGreaterThan(categoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
+        expect(Math.min(...items.map(radius))).toBeGreaterThan(subcategoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
 
         const distance = (left, right) => Math.hypot(
             positions.get(left).x - positions.get(right).x,
