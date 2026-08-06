@@ -144,10 +144,7 @@ describe("PKM graph worker algorithms", () => {
             { source: "subcategory-b", target: "item-b", kind: "subcategory-membership" }
         ];
         const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
-        const center = nodes.reduce((result, node) => ({
-            x: result.x + positions.get(node.id).x / nodes.length,
-            y: result.y + positions.get(node.id).y / nodes.length
-        }), { x: 0, y: 0 });
+        const center = { x: 0, y: 0 };
         const radius = id => Math.hypot(
             positions.get(id).x - center.x,
             positions.get(id).y - center.y
