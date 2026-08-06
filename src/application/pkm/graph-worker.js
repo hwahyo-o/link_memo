@@ -132,6 +132,15 @@ function packWithoutOverlap(nodes, positions, edges) {
     const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
     const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
     const orphanIds = new Set(orphans.map(node => node.id));
+    const layoutCenter = nodes.reduce((center, node) => {
+        const position = positions.get(node.id);
+        return position
+            ? { x: center.x + position.x / nodes.length, y: center.y + position.y / nodes.length }
+            : center;
+    }, { x: 0, y: 0 });
+    const radialDistance = position => centerDistance(position, layoutCenter);
+    let categoryBandRadius = 0;
+    let subcategoryBandRadius = 0;
 
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
     const collides = (node, x, y) => {
@@ -181,7 +190,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                 ((Number(node.height) || 68) + (Number(parent.height) || 68)) / 2 + nodeGap
             )
             : 0;
-        const ringStep = 180;
+        const ringStep = parent ? 180 : 120;
         const maxRing = parent ? Math.max(1, Math.ceil(Math.max(0, radius - minimumRadius) / ringStep)) : 200;
         for (let ring = parent ? 0 : 1; ring <= maxRing; ring += 1) {
             const candidateRadius = parent ? Math.min(radius, minimumRadius + ring * ringStep) : ring * ringStep;
@@ -231,7 +240,32 @@ function packWithoutOverlap(nodes, positions, edges) {
         };
     };
 
+    const radialHierarchySatisfied = () => {
+        const categoryBand = Math.max(0, ...categories.map(category => radialDistance(positions.get(category.id))));
+        const subcategories = hierarchyNodes.filter(node => node.kind === "subcategory");
+        const items = hierarchyNodes.filter(node => node.kind === "item");
+        const subcategoryBand = Math.max(0, ...subcategories.map(node => radialDistance(positions.get(node.id))));
+        const nearestAssignedParent = node => {
+            const parent = byId.get(hierarchy.parents.get(node.id));
+            const parentPosition = positions.get(parent?.id);
+            if (!parent || !parentPosition) return false;
+            const peers = nodes
+                .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id)
+                .map(candidate => positions.get(candidate.id))
+                .filter(Boolean);
+            return nearestParentSatisfied(positions.get(node.id), parentPosition, peers);
+        };
+        return subcategories.every(node => radialDistance(positions.get(node.id)) > categoryBand)
+            && items.every(node => radialDistance(positions.get(node.id)) > subcategoryBand)
+            && subcategories.every(nearestAssignedParent)
+            && items.every(nearestAssignedParent);
+    };
+
     const compactCategoryGroups = () => {
+        const snapshot = new Map(nodes.map(node => {
+            const position = positions.get(node.id);
+            return [node.id, position ? { x: position.x, y: position.y } : null];
+        }));
         const groups = categories
             .map(category => ({
                 category,
@@ -251,13 +285,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             ));
         if (groups.length < 2) return true;
 
-        const origin = groups.reduce((center, group) => {
-            const position = positions.get(group.category.id);
-            return {
-                x: center.x + position.x / groups.length,
-                y: center.y + position.y / groups.length
-            };
-        }, { x: 0, y: 0 });
+        const origin = layoutCenter;
         const occupiedNodes = nodes
             .filter(node => !orphanIds.has(node.id) && !categoryAncestor(node.id))
             .map(node => ({ node, position: positions.get(node.id) }))
@@ -313,6 +341,15 @@ function packWithoutOverlap(nodes, positions, edges) {
             placedGroups.push({ ...group, envelope: selected.envelope });
         }
 
+        if (!radialHierarchySatisfied()) {
+            for (const [id, snapshotPosition] of snapshot) {
+                const position = positions.get(id);
+                if (position && snapshotPosition) {
+                    position.x = snapshotPosition.x;
+                    position.y = snapshotPosition.y;
+                }
+            }
+        }
         buckets.clear();
         for (const node of nodes) {
             if (orphanIds.has(node.id)) continue;
@@ -324,10 +361,12 @@ function packWithoutOverlap(nodes, positions, edges) {
 
     const placeCategories = () => {
         for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
-            const position = findFreePosition(node, positions.get(node.id));
+            const position = findFreePosition(node, layoutCenter);
             if (!position) return false;
             mark(node, position);
         }
+        categoryBandRadius = Math.max(0, ...categories.map(node => radialDistance(positions.get(node.id))));
+        subcategoryBandRadius = categoryBandRadius;
         return true;
     };
 
@@ -386,6 +425,11 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .slice(0, Math.max(0, siblingIndex))
                 .map(sibling => positions.get(sibling.id))
                 .filter(Boolean);
+            const parentPeerPositions = nodes
+                .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id && placed.has(candidate.id))
+                .map(candidate => positions.get(candidate.id))
+                .filter(Boolean);
+            const radialFloor = node.kind === "subcategory" ? categoryBandRadius : subcategoryBandRadius;
             const accept = candidate => {
                 const regionSatisfied = !category
                     || categoryOwnershipSatisfied(
@@ -407,7 +451,8 @@ function packWithoutOverlap(nodes, positions, edges) {
                     );
                 return regionSatisfied
                     && hierarchySatisfied
-                    && nearestParentSatisfied(candidate, parentPosition, peerPositions)
+                    && radialDistance(candidate) > radialFloor
+                    && nearestParentSatisfied(candidate, parentPosition, parentPeerPositions)
                     && parentEdgeAngleSeparated(
                         candidate,
                         parentPosition,
@@ -421,16 +466,18 @@ function packWithoutOverlap(nodes, positions, edges) {
                 parent,
                 Math.max(
                     parentDistanceLimit(parent, node, node.kind, nodeGap * scale),
-                    siblingRadius
+                    siblingRadius,
+                    radialFloor - radialDistance(parentPosition) + 1
                 ),
                 accept,
                 slotAngle,
                 node.kind === "item"
                     ? Math.min(Math.PI / 3, Math.max(0.24, itemFanWidth / siblingCount * 0.75))
-                    : Math.min(Math.PI / 2, slotWidth * 0.7)
+                    : Math.max(Math.PI, Math.min(Math.PI / 2, slotWidth * 0.7))
             );
             if (!position) return false;
             mark(node, position);
+            if (node.kind === "subcategory") subcategoryBandRadius = Math.max(subcategoryBandRadius, radialDistance(position));
         }
         return true;
     };
