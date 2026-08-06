@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: PR #63 구현 및 CI 검증 성공, main 병합 대기
+> 상태: PR #63 main 병합 완료, Pages 배포 확인 대기
 
 ## 1. 목적
 
@@ -219,7 +219,7 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - Branch CI test/build 성공
 - PR test/build 성공
 - Branch CI #454와 Pages test/build #295 성공
-- main 병합 대기
+- PR #63 main 병합 완료
 - 캐시를 제외한 공개 PKM HTML, JavaScript asset, graph Worker asset HTTP 200 확인
 - 새 Worker asset에서 거리 상한과 category/subcategory 계층 배치 코드 확인
 - 변경 문서·fixture·소스에서 API key, token, 운영 식별자, 사용자 데이터 패턴을 확인하지 못함
@@ -304,7 +304,7 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - main 병합 커밋은 `212b11a`이며 공개 root와 `pkm.html`은 HTTP 200으로 확인했다.
 - 화면 screenshot은 생성하지 않았고, 실제 화면 확인은 사용자에게 위임했다.
 - 저장·인증·Firestore·Cloudflare·Drive·외부 API·의존성은 변경하지 않았다.
-- 원격 브랜치는 `main`과 작업 중인 `drill`을 유지한다.
+- 원격 브랜치는 완료 정리 전까지 `main`과 문서 갱신용 `drill`을 유지한다.
 
 
 ## 13. 2026-08-06 이미지 기반 재수정 계획
@@ -344,3 +344,17 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 변칙성 저하: force seed와 golden-angle 후보 순서를 확인한다.
 - 회귀: 그래프 정책·Worker·테스트 외 계층을 변경하지 않았는지 확인한다.
 
+
+
+## 14. 2026-08-06 PR #63 완료 기록
+
+- PR #63은 main에 병합되었다.
+- 기능 병합 커밋은 `1130f54`이다.
+- Branch CI #454와 Pages test/build #295가 성공했다.
+- 이전 오류 Loop에서 orphan bucket 연결 오류와 부동소수점 테스트 오차를 수정했고, 최종 Branch CI #458과 Pages test/build #297도 성공했다.
+- category group은 실제 descendant envelope 기반으로 compact 배치한다.
+- category·subcategory·item 전체는 실제 AABB 기준 최소 42px 외곽 간격을 사용한다.
+- 다량 item은 deterministic multi-ring과 최종 전역 충돌 검증을 사용한다.
+- 화면 screenshot은 생성하지 않았다.
+- 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
+- main Pages 배포 확인은 병합 후 workflow와 공개 asset 응답으로 별도 기록한다.
