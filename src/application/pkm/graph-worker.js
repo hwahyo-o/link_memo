@@ -682,40 +682,53 @@ function packWithoutOverlap(nodes, positions, edges) {
         });
         if (smallConnectedLayer) {
             const center = deriveBoundsCenter();
+            const subcategories = nodes.filter(node => node.kind === "subcategory");
+            const targetSubcategoryRadius = Math.max(
+                0,
+                ...subcategories.map(node => radialDistanceFrom(positions.get(node.id), center))
+            );
+            for (const node of subcategories) {
+                const position = positions.get(node.id);
+                const category = byId.get(hierarchy.parents.get(node.id));
+                const categoryPosition = positions.get(category?.id);
+                if (!position || !categoryPosition) continue;
+                const direction = {
+                    x: position.x - center.x || categoryPosition.x - center.x,
+                    y: position.y - center.y || categoryPosition.y - center.y
+                };
+                const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                if (radialDistanceFrom(position, center) < targetSubcategoryRadius) {
+                    position.x = center.x + direction.x / length * (targetSubcategoryRadius + 1);
+                    position.y = center.y + direction.y / length * (targetSubcategoryRadius + 1);
+                }
+            }
+
             const subcategoryBand = Math.max(
                 0,
-                ...nodes
-                    .filter(node => node.kind === "subcategory")
-                    .map(node => radialDistanceFrom(positions.get(node.id), center))
+                ...subcategories.map(node => radialDistanceFrom(positions.get(node.id), center))
             );
+            const itemTargetRadius = subcategoryBand + radialBandGap + 240;
             for (const node of items) {
                 const parent = byId.get(hierarchy.parents.get(node.id));
-                const category = byId.get(hierarchy.parents.get(parent.id));
-                const parentPosition = positions.get(parent.id);
-                const categoryPosition = positions.get(category.id);
-                const parentRadius = radialDistanceFrom(parentPosition, center);
-                const targetRadius = Math.max(
-                    subcategoryBand + radialBandGap + 1,
-                    parentRadius + 232
-                );
+                const category = byId.get(hierarchy.parents.get(parent?.id));
+                const parentPosition = positions.get(parent?.id);
+                const categoryPosition = positions.get(category?.id);
+                if (!parent || !category || !parentPosition || !categoryPosition) continue;
                 const direction = {
                     x: parentPosition.x - categoryPosition.x,
                     y: parentPosition.y - categoryPosition.y
                 };
                 const length = Math.max(1, Math.hypot(direction.x, direction.y));
                 const target = {
-                    x: center.x + direction.x / length * targetRadius,
-                    y: center.y + direction.y / length * targetRadius
+                    x: center.x + direction.x / length * itemTargetRadius,
+                    y: center.y + direction.y / length * itemTargetRadius
                 };
-                const parentDistance = Math.hypot(
-                    target.x - parentPosition.x,
-                    target.y - parentPosition.y
-                );
-                if (parentDistance <= 300) {
+                if (Math.hypot(target.x - parentPosition.x, target.y - parentPosition.y) <= 300) {
                     positions.get(node.id).x = target.x;
                     positions.get(node.id).y = target.y;
                 }
             }
+
             const nextCenter = deriveBoundsCenter();
             if (radialHierarchySatisfied(nextCenter)) {
                 translateToCenter(nextCenter);
