@@ -586,7 +586,18 @@ function packWithoutOverlap(nodes, positions, edges) {
                     siblingEdgeAngleLimit(siblingCount)
                 )
             );
-            const position = findFreePosition(
+            const globalAccept = candidate => (
+                aabbSeparated(node, parent, candidate, parentPosition, nodeGap)
+                && accept(candidate)
+            );
+            const globalPosition = findFreePosition(
+                node,
+                center,
+                null,
+                0,
+                globalAccept
+            );
+            const position = globalPosition || findFreePosition(
                 node,
                 positions.get(node.id) || center,
                 parent,
