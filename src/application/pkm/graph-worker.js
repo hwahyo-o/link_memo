@@ -778,6 +778,39 @@ function packWithoutOverlap(nodes, positions, edges) {
             }
             if (!changed) break;
         }
+
+        if (smallConnectedLayer) {
+            for (let pass = 0; pass < 8; pass += 1) {
+                const center = deriveBoundsCenter();
+                const subcategoryBand = Math.max(
+                    0,
+                    ...nodes
+                        .filter(node => node.kind === "subcategory")
+                        .map(node => radialDistanceFrom(positions.get(node.id), center))
+                );
+                const floor = subcategoryBand + radialBandGap + 1;
+                let changed = false;
+                for (const node of items) {
+                    const position = positions.get(node.id);
+                    const distance = radialDistanceFrom(position, center);
+                    if (distance > floor) continue;
+                    const parent = byId.get(hierarchy.parents.get(node.id));
+                    const parentPosition = positions.get(parent?.id);
+                    const direction = {
+                        x: position.x - center.x || (parentPosition?.x || 0) - center.x || Math.cos(hashSeed(node.id) * Math.PI * 2),
+                        y: position.y - center.y || (parentPosition?.y || 0) - center.y || Math.sin(hashSeed(node.id) * Math.PI * 2)
+                    };
+                    const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                    const amount = floor - distance + 2;
+                    position.x += direction.x / length * amount;
+                    position.y += direction.y / length * amount;
+                    changed = true;
+                }
+                translateToCenter(deriveBoundsCenter());
+                if (!changed) break;
+            }
+            if (radialHierarchySatisfied() && validateNoOverlap()) return true;
+        }
         return false;
     };
 
