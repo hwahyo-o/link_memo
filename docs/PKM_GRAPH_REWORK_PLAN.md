@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: PR #67 main 병합 및 Pages 배포 확인 완료
+> 상태: 2026-08-06 전역 중심 계층 재배치 작업 진행 중
 
 ## 1. 목적
 
@@ -443,3 +443,49 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 변경 대상은 graph-worker.js, graph-worker.test.js, 계획·인계 문서이며 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
 - 최종 원격 branch는 `main`만 유지한다.
 - 실제 화면의 시각적 확인은 사용자에게 위임한다.
+
+## 19. 2026-08-06 전역 중심 계층 재배치 계획
+
+### 요청 규칙
+
+- category 노드는 캔버스 중심에 가장 가까운 radial band에 배치한다.
+- subcategory 노드는 모든 category보다 캔버스 중심에서 멀리 배치한다.
+- 각 subcategory는 모든 category 중 자신의 부모 category가 가장 가까워야 한다.
+- item 노드는 모든 category·subcategory보다 캔버스 중심에서 멀리 배치한다.
+- 각 item은 모든 subcategory 중 자신의 부모 subcategory가 가장 가까워야 한다.
+- 모든 노드는 실제 도형 AABB 기준 최소 42px 외곽 간격을 유지한다.
+
+### Process Phase
+
+1. 현재 main에서 drill을 만들고 이 계획을 먼저 기록한다.
+2. Worker의 layout center와 화면 fit center를 일치시키는 좌표 계약을 확인한다.
+3. category를 먼저 배치하고 category radial band를 고정한다.
+4. subcategory를 category band 밖에서 배치하고 모든 category 부모 후보와 최단 조건을 검사한다.
+5. item을 subcategory band 밖에서 배치하고 모든 subcategory 부모 후보와 최단 조건을 검사한다.
+6. category envelope compact packing 이후에도 전역 radial 순서와 AABB 무겹침을 재검증한다.
+7. 실패한 조건만 최소 수정하고 동일 Gate를 반복한다.
+
+### Phase Gate
+
+- Gate A: 변경 전 main·drill ref와 변경 파일 범위를 확인한다.
+- Gate B: 문서에 API key, token, 운영 식별자, 사용자 데이터가 없다.
+- Gate C: category radius < subcategory radius < item radius를 모든 계층 노드에 대해 통과한다.
+- Gate D: subcategory와 item의 부모가 각각 모든 동일 계층 후보 중 엄격히 최단이다.
+- Gate E: 모든 노드가 AABB 기준 42px 이상 떨어지고 기존 force·golden-angle·stable hash가 유지된다.
+- Gate F: 전체 test, production build, CI, Pages 배포, 공개 asset 응답이 성공한다.
+- Gate G: main 병합 후 원격 branch는 main만 남는다.
+
+### 실패 시 재수정 Loop
+
+- 중심 순서 실패: Worker center와 화면 fit center의 좌표 계약 및 최종 recenter 순서를 확인한다.
+- 부모 최단 실패: 모든 배치 완료 부모 후보 수집과 strict distance 비교를 확인한다.
+- 무겹침 실패: 실제 node geometry, spatial bucket, candidate ring을 확인한다.
+- category 분산 실패: envelope 이동을 취소하거나 category ring 반경만 최소 조정한다.
+- 변칙성·성능 회귀: force seed, golden-angle, stable hash, 대규모 반복 상한을 확인한다.
+- CI/build 실패: 실패 로그에 해당하는 계층만 수정하고 동일 Gate를 다시 수행한다.
+
+### 변경 제한
+
+- 화면, 저장, 인증, Firestore, 외부 서비스, 의존성, 앱 시작 계층은 변경하지 않는다.
+- screenshot은 생성하지 않는다.
+- 완료 후 이 문서에 실제 commit, CI, Pages, HTTP, branch 정리 결과를 기록한다.
