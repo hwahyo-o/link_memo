@@ -822,7 +822,39 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
         if (radialHierarchySatisfied() && validateNoOverlap()) return true;
     }
-    return false;
+
+    const forceItemsOutward = () => {
+        const items = nodes.filter(node => node.kind === "item");
+        for (let pass = 0; pass < 24; pass += 1) {
+            if (!normalizeToCanvasCenter()) return false;
+            const subcategoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "subcategory")
+                    .map(node => radialDistance(positions.get(node.id)))
+            );
+            const floor = subcategoryBand + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
+            let moved = false;
+            for (const node of items) {
+                const position = positions.get(node.id);
+                const distance = radialDistance(position);
+                if (distance > floor) continue;
+                const angle = Math.atan2(
+                    position.y || Math.sin(hashSeed(node.id) * Math.PI * 2),
+                    position.x || Math.cos(hashSeed(node.id) * Math.PI * 2)
+                );
+                const amount = floor - distance + 1;
+                position.x += Math.cos(angle) * amount;
+                position.y += Math.sin(angle) * amount;
+                moved = true;
+            }
+            if (radialHierarchySatisfied() && validateNoOverlap()) return true;
+            if (!moved) break;
+        }
+        return radialHierarchySatisfied() && validateNoOverlap();
+    };
+
+    return forceItemsOutward();
 }
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
     nodes = nodes.slice(0, MAX_GRAPH_NODES);
