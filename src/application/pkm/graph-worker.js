@@ -358,7 +358,7 @@ function packWithoutOverlap(nodes, positions, edges) {
         const ordered = categories.slice().sort((left, right) => left.id.localeCompare(right.id));
         const categoryRadius = ordered.length === 1
             ? 0
-            : Math.max(240, ordered.length * 260 / (Math.PI * 2));
+            : Math.max(420, ordered.length * 260 / (Math.PI * 2));
         for (const [index, node] of ordered.entries()) {
             const angle = index * Math.PI * 2 / ordered.length + (hashSeed(node.id) - 0.5) * 0.18;
             const origin = {
