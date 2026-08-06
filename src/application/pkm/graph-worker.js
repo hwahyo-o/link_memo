@@ -543,15 +543,6 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .map(candidate => positions.get(candidate.id))
                 .filter(Boolean);
             const accept = candidate => {
-                const regionSatisfied = !category
-                    || categoryOwnershipSatisfied(
-                        candidate,
-                        node,
-                        categoryPosition,
-                        categoryRadius,
-                        otherRegions,
-                        nodeGap
-                    );
                 const hierarchySatisfied = !category
                     || hierarchyBandSatisfied(
                         node,
@@ -561,8 +552,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                         node.kind,
                         nodeGap
                     );
-                return regionSatisfied
-                    && hierarchySatisfied
+                return hierarchySatisfied
                     && radialDistance(candidate) > itemBandFloor
                     && nearestParentSatisfied(candidate, parentPosition, parentPeerPositions)
                     && parentEdgeAngleSeparated(
