@@ -854,13 +854,6 @@ function packWithoutOverlap(nodes, positions, edges) {
         for (const [index, node] of items.entries()) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
-            const siblings = parent
-                ? (childrenByParent.get(parent.id) || [])
-                    .filter(sibling => sibling.kind === "item")
-                    .sort((left, right) => left.id.localeCompare(right.id))
-                : [];
-            const siblingIndex = Math.max(0, siblings.findIndex(sibling => sibling.id === node.id));
-            const siblingCount = Math.max(1, siblings.length);
             const slotsPerRing = Math.min(12, Math.max(1, items.length));
             let position = null;
             for (let ring = 0; ring < 48 && !position; ring += 1) {
@@ -872,9 +865,6 @@ function packWithoutOverlap(nodes, positions, edges) {
                     x: Math.cos(angle) * radius,
                     y: Math.sin(angle) * radius
                 };
-                const categoryId = categoryAncestor(node.id);
-                const category = categoryId ? byId.get(categoryId) : null;
-                const categoryPosition = category ? positions.get(category.id) : null;
                 const accept = nextPosition => (
                     radialDistance(nextPosition) > floor
                     && (!parent || nearestParentSatisfied(
