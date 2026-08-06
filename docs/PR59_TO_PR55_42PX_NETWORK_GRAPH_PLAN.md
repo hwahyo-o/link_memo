@@ -433,3 +433,16 @@
 - 혼합 item 유형, 대량 item, orphan item을 별도 회귀 fixture로 검증한다.
 - 실패 시 item 후보 ring/fan만 조정하고 부모 계층·저장·외부 서비스 코드는 수정하지 않는다.
 - 승인 상태: 구현 시작 승인 완료.
+
+
+## 29. 2026-08-06 구현·검증 인수인계
+
+- 모든 `kind: "item"` 노드는 contentKind와 색상에 관계없이 동일한 outer reflow 대상이다.
+- 부모 subcategory가 있으면 parent-nearest/outward/sibling fan 후보를 우선 사용하고, dense 실패 시 bounded outer retry를 사용한다.
+- 부모가 없는 item도 중앙 fallback 대신 외곽 ring 후보를 사용한다.
+- 기존 화면, 처리 외 계층, 핵심 규칙 파일, 저장·외부 서비스, 의존성 연결, 앱 시작 계층은 변경하지 않았다. 그래프 배치 application 계층과 회귀 fixture 및 계획 문서만 변경했다.
+- 기준 여백은 기존 정책의 42px이다. 모든 최종 후보는 기존 AABB no-overlap 검증을 통과해야 한다.
+- 검증 결과: 전체 206 tests passed, Branch CI 612 success, Pages test/build 367 success.
+- secret scan 결과 공개 금지 정보는 문서와 diff에 기록되지 않았다.
+- screenshot은 생성하지 않았다.
+- 현재 PR #75 head는 `f7c54ad9e45e2d453c5280e7651dc7be50eb7be4`이며 merge 후 main push 배포와 branch 정리를 수행한다.
