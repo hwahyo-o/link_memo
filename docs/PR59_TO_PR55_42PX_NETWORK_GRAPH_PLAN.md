@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: 이미지 기반 재수정 구현·검증 완료, PR #63 main 병합 대기
+> 상태: PR #63 main 병합 완료, Pages 배포 확인 대기
 
 ## 1. 목표와 범위
 
@@ -106,17 +106,17 @@
 
 - PR #61: `rollback: restore PR55 network graph with 42px spacing`
 - 기존 main 기준 커밋: `a4c1eeb`
-- PR #63 head: CI 검증 완료, main 병합 대기
+- PR #63 head: CI 검증 및 main 병합 완료
 - Branch CI run 433, 434: 이전 변경 성공
 - Branch CI run 454: 재수정 성공
 - Test and Deploy GitHub Pages run 286, 287: 이전 변경 성공
 - Test and Deploy GitHub Pages run 295: 재수정 test/build 성공
-- main Pages 배포: PR 병합 후 수행 예정
+- main Pages 배포: 병합 후 workflow 확인 대기
 - 공개 `https://hwahyo-o.github.io/link_memo/`와 `pkm.html`: HTTP 200
 - 공개 PKM JavaScript/CSS 및 외부 Cytoscape·CodeMirror asset: HTTP 200
 - secret pattern 검사: 발견 없음
 - screenshot: 생성하지 않음. 화면은 사용자가 직접 확인
-- 원격 브랜치: 병합 전까지 `main`과 `drill` 유지
+- 원격 브랜치: 완료 정리 전까지 `main`과 문서 갱신용 `drill` 유지
 
 
 ## 13. 2026-08-06 이미지 기반 재수정 계획
@@ -156,3 +156,17 @@
 - 변칙성 저하: force seed와 golden-angle 후보 순서를 확인한다.
 - 회귀: 그래프 정책·Worker·테스트 외 계층을 변경하지 않았는지 확인한다.
 
+
+
+## 14. 2026-08-06 PR #63 완료 기록
+
+- PR #63은 main에 병합되었다.
+- 기능 병합 커밋은 `1130f54`이다.
+- Branch CI #454와 Pages test/build #295가 성공했다.
+- 이전 오류 Loop에서 orphan bucket 연결 오류와 부동소수점 테스트 오차를 수정했고, 최종 Branch CI #458과 Pages test/build #297도 성공했다.
+- category group은 실제 descendant envelope 기반으로 compact 배치한다.
+- category·subcategory·item 전체는 실제 AABB 기준 최소 42px 외곽 간격을 사용한다.
+- 다량 item은 deterministic multi-ring과 최종 전역 충돌 검증을 사용한다.
+- 화면 screenshot은 생성하지 않았다.
+- 저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
+- main Pages 배포 확인은 병합 후 workflow와 공개 asset 응답으로 별도 기록한다.
