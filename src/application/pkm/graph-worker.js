@@ -743,6 +743,18 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (!validateNoOverlap()) continue;
         if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return true;
     }
+    const denseItems = nodes.filter(node => node.kind === "item");
+    if (denseItems.length > 8) {
+        for (let pass = 0; pass < 4; pass += 1) {
+            buckets.clear();
+            placed.clear();
+            nodes
+                .filter(node => node.kind !== "item")
+                .forEach(node => placed.add(node.id));
+            if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+            if (validateNoOverlap() && radialHierarchySatisfied()) return true;
+        }
+    }
     return repackGlobally();
 }
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
