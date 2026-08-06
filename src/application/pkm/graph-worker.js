@@ -237,14 +237,15 @@ function packWithoutOverlap(nodes, positions, edges) {
     };
 
     const radialHierarchySatisfied = () => {
-        const categoryBand = Math.max(0, ...categories.map(category => radialDistance(positions.get(category.id))));
-        const subcategories = hierarchyNodes.filter(node => node.kind === "subcategory");
-        const items = hierarchyNodes.filter(node => node.kind === "item");
+        const categoryNodes = nodes.filter(node => node.kind === "category");
+        const subcategories = nodes.filter(node => node.kind === "subcategory");
+        const items = nodes.filter(node => node.kind === "item");
+        const categoryBand = Math.max(0, ...categoryNodes.map(node => radialDistance(positions.get(node.id))));
         const subcategoryBand = Math.max(0, ...subcategories.map(node => radialDistance(positions.get(node.id))));
         const nearestAssignedParent = node => {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
-            if (!parent || !parentPosition) return false;
+            if (!parent || !parentPosition) return true;
             const peers = nodes
                 .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id)
                 .map(candidate => positions.get(candidate.id))
@@ -510,7 +511,15 @@ function packWithoutOverlap(nodes, positions, edges) {
             if (position) addToBucket(node, position);
         }
 
-        const itemBandFloor = subcategoryBandRadius + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
+        const currentSubcategoryBand = Math.max(
+            0,
+            ...nodes
+                .filter(node => node.kind === "subcategory")
+                .map(node => radialDistance(positions.get(node.id)))
+        );
+        const itemBandFloor = (items.length > 8 ? currentSubcategoryBand : subcategoryBandRadius)
+            + radialBandGap
+            + GRAPH_LAYOUT_RULES.preferredNodeGap;
         for (const node of items) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
@@ -803,7 +812,117 @@ function packWithoutOverlap(nodes, positions, edges) {
         }
         if (validateNoOverlap() && radialHierarchySatisfied()) return true;
     }
-    return repackGlobally();
+    if (!nodes.some(node => node.kind === "item")) return repackGlobally();
+    buckets.clear();
+    placed.clear();
+    nodes
+        .filter(node => node.kind !== "item")
+        .forEach(node => placed.add(node.id));
+    for (let pass = 0; pass < 8; pass += 1) {
+        if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+        if (radialHierarchySatisfied() && validateNoOverlap()) return true;
+    }
+
+    const forceItemsOutward = () => {
+        const items = nodes
+            .filter(node => node.kind === "item")
+            .sort((left, right) => left.id.localeCompare(right.id));
+        if (items.length <= 8) return false;
+        buckets.clear();
+        placed.clear();
+        nodes
+            .filter(node => node.kind !== "item")
+            .forEach(node => {
+                const position = positions.get(node.id);
+                if (position) {
+                    placed.add(node.id);
+                    addToBucket(node, position);
+                }
+            });
+        items.forEach(node => {
+            const position = positions.get(node.id);
+            if (position) {
+                position.x = 0;
+                position.y = 0;
+            }
+        });
+        if (!normalizeToCanvasCenter()) return false;
+
+        for (let pass = 0; pass < 4; pass += 1) {
+            const categoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "category")
+                    .map(node => radialDistance(positions.get(node.id)))
+            );
+            const subcategoryFloor = categoryBand + radialBandGap + 1;
+            let changed = false;
+            for (const node of nodes.filter(candidate => candidate.kind === "subcategory")) {
+                const position = positions.get(node.id);
+                const distance = radialDistance(position);
+                if (distance > subcategoryFloor) continue;
+                const angle = Math.atan2(
+                    position.y || Math.sin(hashSeed(node.id) * Math.PI * 2),
+                    position.x || Math.cos(hashSeed(node.id) * Math.PI * 2)
+                );
+                const amount = subcategoryFloor - distance + 1;
+                position.x += Math.cos(angle) * amount;
+                position.y += Math.sin(angle) * amount;
+                changed = true;
+            }
+            if (!changed || !normalizeToCanvasCenter()) break;
+        }
+        buckets.clear();
+        for (const node of nodes.filter(candidate => candidate.kind !== "item")) {
+            const position = positions.get(node.id);
+            if (position) addToBucket(node, position);
+        }
+
+        const subcategoryBand = Math.max(
+            0,
+            ...nodes
+                .filter(node => node.kind === "subcategory")
+                .map(node => radialDistance(positions.get(node.id)))
+        );
+        const floor = subcategoryBand
+            + radialBandGap
+            + GRAPH_LAYOUT_RULES.preferredNodeGap
+            + 240;
+        for (const [index, node] of items.entries()) {
+            const parent = byId.get(hierarchy.parents.get(node.id));
+            const parentPosition = positions.get(parent?.id);
+            const slotsPerRing = Math.min(12, Math.max(1, items.length));
+            let position = null;
+            for (let ring = 0; ring < 48 && !position; ring += 1) {
+                const radius = floor + 180 + ring * 240;
+                const slot = index % slotsPerRing;
+                const angle = (slot + 0.5) * Math.PI * 2 / slotsPerRing
+                    + (ring % 2) * Math.PI / slotsPerRing;
+                const candidate = {
+                    x: Math.cos(angle) * radius,
+                    y: Math.sin(angle) * radius
+                };
+                const parentSeparated = !parent || aabbSeparated(
+                    node,
+                    parent,
+                    candidate,
+                    parentPosition,
+                    nodeGap
+                );
+                if (radialDistance(candidate) > floor
+                    && parentSeparated
+                    && !collides(node, candidate.x, candidate.y)) {
+                    position = candidate;
+                }
+            }
+            if (!position) return false;
+            mark(node, position);
+        }
+        if (!normalizeToCanvasCenter()) return false;
+        return true;
+    };
+
+    return forceItemsOutward();
 }
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
     nodes = nodes.slice(0, MAX_GRAPH_NODES);

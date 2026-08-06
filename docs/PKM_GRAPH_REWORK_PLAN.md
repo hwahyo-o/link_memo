@@ -667,3 +667,51 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - PR 기준 Pages test/build run 367과 Branch CI run 612는 성공했다.
 - main push 배포 run의 상세 상태와 실제 서비스 화면은 연결 도구에서 제공되지 않아, live URL 도착 및 브라우저 화면은 검증 완료로 주장하지 않는다. 사용자가 화면을 직접 확인한다.
 - 다음 문서 커밋(PR #76) merge 후 원격 drill 삭제를 완료해 main만 유지한다.
+
+
+## 31. 2026-08-06 item 중심 잔류 재수정 계획
+
+### 추가 문제
+
+실제 그래프에서 다양한 contentKind의 item이 category/subcategory보다 캔버스 중심에 가까운 위치에 남는 사례가 재확인되었다. 기존 dense retry가 실패한 뒤 global repack으로 되돌아가면서 item outer-band 보장이 사라질 수 있다.
+
+### 수정 원칙
+
+- 모든 kind item을 색상·contentKind와 무관하게 단일 outer-band 대상으로 유지한다.
+- category와 subcategory의 확정 좌표를 item 재배치 중 이동시키지 않는다.
+- item 후보가 부족하면 global center repack을 사용하지 않고 item ring/fan만 확장한다.
+- 최종 bounds center를 다시 계산한 뒤 모든 item의 최소 반경을 재검증한다.
+- 실패 시 bounded retry를 반복하고, 검증되지 않은 좌표를 성공 결과로 반환하지 않는다.
+
+### Gate 및 Loop
+
+- Gate A: category max radius + 42px < subcategory min radius.
+- Gate B: subcategory max radius + 42px < every item radius.
+- Gate C: 각 item이 모든 subcategory 중 자신의 부모와 가장 가깝다.
+- Gate D: 모든 node AABB가 42px 여백으로 분리된다.
+- Gate 실패 시 item-only ring 확장 → bounds center 재계산 → 전체 검증 순서로 반복한다.
+- 기존 네트워크·저장·외부 서비스·앱 시작 계층은 수정하지 않는다.
+
+
+## 32. 2026-08-06 구현 및 검증 결과
+
+### 구현
+
+- `kind: "item"` 전체를 contentKind, 색상, 계층 메타데이터 유무와 관계없이 item 재배치 대상으로 통합했다.
+- bounds center 재정렬 후 dense item의 radial floor를 현재 subcategory 좌표에서 다시 계산하도록 했다.
+- item이 8개 이하이면 기존 부모 중심 fan 배치를 유지하고, 8개를 초과하면 category/subcategory band를 먼저 복구한 뒤 item을 12-slot 대칭 outer ring으로 배치한다.
+- item이 포함된 레이아웃에는 무제약 `repackGlobally()`를 fallback으로 사용하지 않는다.
+- 노드 AABB 충돌 검사와 기존 부모 외곽·nearest-parent 검사를 유지한다.
+
+### 검증
+
+- Branch CI run 651: success.
+- Pages test/build run 385: success. PR 환경이므로 deploy job은 실행 대상이 아니며, live URL 및 브라우저 화면은 별도 확인 대상이다.
+- 전체 테스트: 48개 파일, 207개 테스트 통과.
+- 회귀 fixture: link/image/text/file contentKind와 부모 연결이 없는 item을 함께 포함하고, category < subcategory < every item 및 모든 노드 AABB 42px 분리를 확인한다.
+- 임시 계측 코드와 화면 캡처는 저장소에 포함하지 않았다.
+
+### 전달 상태
+
+- 구현 PR: #77. 검증 성공 후 main 병합 및 Pages 배포 트리거를 진행한다.
+- 공개 문서에는 API key, token, 내부 ID, 인증 정보 및 배포 비밀값을 기록하지 않는다.

@@ -366,6 +366,87 @@ describe("PKM graph worker algorithms", () => {
         expect(itemBand).toBeGreaterThan(subcategoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
     });
 
+    it("keeps every item type in the outer band, including unparented items", () => {
+        const contentKinds = ["link", "image", "text", "file"];
+        const nodes = [
+            ...Array.from({ length: 3 }, (_, index) => ({
+                id: `category-${index}`,
+                kind: "category",
+                width: 196,
+                height: 72
+            })),
+            ...Array.from({ length: 6 }, (_, index) => ({
+                id: `subcategory-${index}`,
+                kind: "subcategory",
+                categoryId: `category-${Math.floor(index / 2)}`,
+                width: 174,
+                height: 64
+            })),
+            ...Array.from({ length: 36 }, (_, index) => ({
+                id: `item-${index}`,
+                kind: "item",
+                contentKind: contentKinds[index % contentKinds.length],
+                ...(index < 24 ? { subcategoryId: `subcategory-${index % 6}` } : {}),
+                width: 188,
+                height: 68
+            }))
+        ];
+        const edges = [
+            ...nodes
+                .filter(node => node.kind === "subcategory")
+                .map(node => ({
+                    source: node.categoryId,
+                    target: node.id,
+                    kind: "category-membership"
+                })),
+            ...nodes
+                .filter(node => node.kind === "item" && node.subcategoryId)
+                .map(node => ({
+                    source: node.subcategoryId,
+                    target: node.id,
+                    kind: "subcategory-membership"
+                }))
+        ];
+        const positions = new Map(layoutGraph(nodes, edges, 0).map(position => [position.id, position]));
+        const bounds = nodes.reduce((current, node) => {
+            const position = positions.get(node.id);
+            return {
+                minX: Math.min(current.minX, position.x - node.width / 2),
+                minY: Math.min(current.minY, position.y - node.height / 2),
+                maxX: Math.max(current.maxX, position.x + node.width / 2),
+                maxY: Math.max(current.maxY, position.y + node.height / 2)
+            };
+        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+        const center = {
+            x: (bounds.minX + bounds.maxX) / 2,
+            y: (bounds.minY + bounds.maxY) / 2
+        };
+        const radius = id => Math.hypot(
+            positions.get(id).x - center.x,
+            positions.get(id).y - center.y
+        );
+        const categories = nodes.filter(node => node.kind === "category");
+        const subcategories = nodes.filter(node => node.kind === "subcategory");
+        const items = nodes.filter(node => node.kind === "item");
+        const categoryBand = Math.max(...categories.map(node => radius(node.id)));
+        const subcategoryBand = Math.max(...subcategories.map(node => radius(node.id)));
+        expect(subcategoryBand).toBeGreaterThan(categoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
+        expect(Math.min(...items.map(node => radius(node.id)))).toBeGreaterThan(
+            subcategoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap
+        );
+
+        for (let left = 0; left < nodes.length; left += 1) {
+            for (let right = left + 1; right < nodes.length; right += 1) {
+                expect(aabbSeparated(
+                    nodes[left],
+                    nodes[right],
+                    positions.get(nodes[left].id),
+                    positions.get(nodes[right].id)
+                )).toBe(true);
+            }
+        }
+    });
+
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
         const nodes = Array.from({ length: 100_100 }, (_, index) => ({ id: `n${index}` }));
         expect(layoutGraph(nodes, [], 0)).toHaveLength(100_000);

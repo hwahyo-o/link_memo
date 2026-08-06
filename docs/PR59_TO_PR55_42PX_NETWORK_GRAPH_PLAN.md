@@ -455,3 +455,22 @@
 - PR Branch CI 612 및 Pages test/build 367은 성공했다.
 - main push의 live deployment run 상세와 실제 화면은 연결 도구에서 확인할 수 없어 검증 완료로 기록하지 않는다. 화면 확인은 사용자가 직접 수행한다.
 - 문서 최종화 PR #76 merge 후 drill을 삭제하고 main만 남긴다.
+
+
+## 31. 2026-08-06 item 중심 잔류 재수정 계획
+
+- 실제 그래프에서 item outer band가 무너지는 원인을 기존 global repack fallback 및 최종 중심 재계산 경로로 재점검한다.
+- 모든 item을 공통 대상으로 유지하고 category/subcategory 좌표를 고정한 상태에서 item만 deterministic하게 재배치한다.
+- category < subcategory < item의 전역 radial band와 부모 subcategory nearest를 최종 bounds center 기준으로 검증한다.
+- AABB 최소 42px 검증을 유지하며, 실패한 item을 중심 fallback으로 반환하지 않는다.
+- 구현 후 mixed contentKind, dense item, orphan item, 기존 회귀 테스트와 production build를 다시 실행한다.
+
+
+## 32. 2026-08-06 구현 및 검증 결과
+
+- 모든 `kind: "item"`을 하나의 radial-band 정책으로 처리하고, dense item에서 category/subcategory band를 먼저 보정한 후 대칭 outer ring을 사용한다.
+- sparse item은 기존 parent-centered fan을 유지한다. item이 존재하는 레이아웃에서 무제약 전역 repack은 제거했다.
+- Branch CI 651 및 Pages test/build 385 성공, 48개 테스트 파일과 207개 테스트 통과.
+- 회귀 테스트는 mixed contentKind, orphan item, dense item, 42px AABB 간격, category < subcategory < item 순서를 포함한다.
+- PR #77 병합 전 상태이며, 병합 후 main push가 Pages 배포를 트리거한다. live URL 도착과 사용자의 실제 화면 확인은 자동 검증으로 주장하지 않는다.
+- 문서와 코드에는 비밀정보를 기록하지 않았다.
