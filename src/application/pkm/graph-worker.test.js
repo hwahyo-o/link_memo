@@ -144,7 +144,21 @@ describe("PKM graph worker algorithms", () => {
             { source: "subcategory-b", target: "item-b", kind: "subcategory-membership" }
         ];
         const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
-        const center = { x: 0, y: 0 };
+        const bounds = nodes.reduce((current, node) => {
+            const position = positions.get(node.id);
+            return {
+                minX: Math.min(current.minX, position.x - node.width / 2),
+                minY: Math.min(current.minY, position.y - node.height / 2),
+                maxX: Math.max(current.maxX, position.x + node.width / 2),
+                maxY: Math.max(current.maxY, position.y + node.height / 2)
+            };
+        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+        const center = {
+            x: (bounds.minX + bounds.maxX) / 2,
+            y: (bounds.minY + bounds.maxY) / 2
+        };
+        expect(center.x).toBeCloseTo(0, 5);
+        expect(center.y).toBeCloseTo(0, 5);
         const radius = id => Math.hypot(
             positions.get(id).x - center.x,
             positions.get(id).y - center.y
