@@ -775,6 +775,33 @@ function packWithoutOverlap(nodes, positions, edges) {
             normalizeToCanvasCenter();
             if (validateNoOverlap() && radialHierarchySatisfied()) return true;
         }
+        for (let pass = 0; pass < 8; pass += 1) {
+            const subcategoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "subcategory")
+                    .map(node => radialDistance(positions.get(node.id)))
+            );
+            const floor = subcategoryBand + radialBandGap + 80;
+            let changed = false;
+            for (const node of denseItems) {
+                const position = positions.get(node.id);
+                const distance = radialDistance(position);
+                if (distance > floor) continue;
+                const direction = {
+                    x: position.x || Math.cos(hashSeed(node.id) * Math.PI * 2),
+                    y: position.y || Math.sin(hashSeed(node.id) * Math.PI * 2)
+                };
+                const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                const amount = floor - distance + 1;
+                position.x += direction.x / length * amount;
+                position.y += direction.y / length * amount;
+                changed = true;
+            }
+            normalizeToCanvasCenter();
+            if (!changed) break;
+        }
+        if (validateNoOverlap() && radialHierarchySatisfied()) return true;
     }
     return repackGlobally();
 }
