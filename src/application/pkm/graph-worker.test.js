@@ -431,9 +431,9 @@ describe("PKM graph worker algorithms", () => {
         const categoryBand = Math.max(...categories.map(node => radius(node.id)));
         const subcategoryBand = Math.max(...subcategories.map(node => radius(node.id)));
         expect(subcategoryBand).toBeGreaterThan(categoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
-        expect(Math.min(...items.map(node => radius(node.id))).toBeGreaterThan(
+        expect(Math.min(...items.map(node => radius(node.id)))).toBeGreaterThan(
             subcategoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap
-        ));
+        );
 
         for (let left = 0; left < nodes.length; left += 1) {
             for (let right = left + 1; right < nodes.length; right += 1) {
