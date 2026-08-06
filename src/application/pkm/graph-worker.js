@@ -506,7 +506,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             if (position) addToBucket(node, position);
         }
 
-        const itemBandFloor = subcategoryBandRadius + radialBandGap;
+        const itemBandFloor = subcategoryBandRadius + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
         for (const node of items) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
