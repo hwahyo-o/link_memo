@@ -133,7 +133,8 @@ function packWithoutOverlap(nodes, positions, edges) {
     const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
     const orphanIds = new Set(orphans.map(node => node.id));
     const layoutCenter = { x: 0, y: 0 };
-    const radialDistance = position => centerDistance(position, layoutCenter);
+    const radialDistanceFrom = (position, center = layoutCenter) => centerDistance(position, center);
+    const radialDistance = position => radialDistanceFrom(position, layoutCenter);
     const radialBandGap = GRAPH_LAYOUT_RULES.minimumRadialBandGap;
     let categoryBandRadius = 0;
     let subcategoryBandRadius = 0;
@@ -236,23 +237,24 @@ function packWithoutOverlap(nodes, positions, edges) {
         };
     };
 
-    const radialHierarchySatisfied = () => {
-        const categoryBand = Math.max(0, ...categories.map(category => radialDistance(positions.get(category.id))));
-        const subcategories = hierarchyNodes.filter(node => node.kind === "subcategory");
-        const items = hierarchyNodes.filter(node => node.kind === "item");
-        const subcategoryBand = Math.max(0, ...subcategories.map(node => radialDistance(positions.get(node.id))));
+    const radialHierarchySatisfied = (center = layoutCenter) => {
+        const categoryNodes = nodes.filter(node => node.kind === "category");
+        const subcategories = nodes.filter(node => node.kind === "subcategory");
+        const items = nodes.filter(node => node.kind === "item");
+        const categoryBand = Math.max(0, ...categoryNodes.map(node => radialDistanceFrom(positions.get(node.id), center)));
+        const subcategoryBand = Math.max(0, ...subcategories.map(node => radialDistanceFrom(positions.get(node.id), center)));
         const nearestAssignedParent = node => {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
-            if (!parent || !parentPosition) return false;
+            if (!parent || !parentPosition) return true;
             const peers = nodes
                 .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id)
                 .map(candidate => positions.get(candidate.id))
                 .filter(Boolean);
             return nearestParentSatisfied(positions.get(node.id), parentPosition, peers);
         };
-        return subcategories.every(node => radialDistance(positions.get(node.id)) > categoryBand + radialBandGap)
-            && items.every(node => radialDistance(positions.get(node.id)) > subcategoryBand + radialBandGap)
+        return subcategories.every(node => radialDistanceFrom(positions.get(node.id), center) > categoryBand + radialBandGap)
+            && items.every(node => radialDistanceFrom(positions.get(node.id), center) > subcategoryBand + radialBandGap)
             && subcategories.every(nearestAssignedParent)
             && items.every(nearestAssignedParent);
     };
@@ -383,7 +385,9 @@ function packWithoutOverlap(nodes, positions, edges) {
     });
 
     const placeChildren = scale => {
-        const ordered = hierarchyNodes.slice().sort((left, right) => {
+        const ordered = hierarchyNodes
+            .filter(node => node.kind === "subcategory")
+            .sort((left, right) => {
             const rank = node => node.kind === "subcategory" ? 0 : 1;
             const leftParent = hierarchy.parents.get(left.id);
             const rightParent = hierarchy.parents.get(right.id);
@@ -493,8 +497,8 @@ function packWithoutOverlap(nodes, positions, edges) {
         return true;
     };
 
-    const reflowItemsOutward = () => {
-        const items = hierarchyNodes
+    const reflowItemsOutward = (center = layoutCenter) => {
+        const items = nodes
             .filter(node => node.kind === "item")
             .sort((left, right) => {
                 const leftParent = hierarchy.parents.get(left.id);
@@ -505,16 +509,36 @@ function packWithoutOverlap(nodes, positions, edges) {
 
         buckets.clear();
         for (const node of nodes) {
-            if (node.kind === "item" || orphanIds.has(node.id)) continue;
+            if (node.kind === "item") continue;
             const position = positions.get(node.id);
             if (position) addToBucket(node, position);
         }
 
-        const itemBandFloor = subcategoryBandRadius + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
+        const subcategoryBand = Math.max(
+            0,
+            ...nodes
+                .filter(node => node.kind === "subcategory")
+                .map(node => radialDistanceFrom(positions.get(node.id), center))
+        );
+        const itemBandFloor = subcategoryBand
+            + radialBandGap
+            + Math.max(120, subcategoryBand * 0.5);
+
         for (const node of items) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
-            if (!parent || !parentPosition || !placed.has(parent.id)) return false;
+            if (!parent || !parentPosition || !placed.has(parent.id)) {
+                const position = findFreePosition(
+                    node,
+                    center,
+                    null,
+                    0,
+                    candidate => radialDistanceFrom(candidate, center) > itemBandFloor
+                );
+                if (!position) return false;
+                mark(node, position);
+                continue;
+            }
 
             const siblings = (childrenByParent.get(parent.id) || [])
                 .filter(sibling => sibling.kind === "item")
@@ -525,16 +549,9 @@ function packWithoutOverlap(nodes, positions, edges) {
             const categoryId = categoryAncestor(node.id);
             const category = categoryId ? byId.get(categoryId) : null;
             const categoryPosition = category ? positions.get(category.id) : null;
-            const categoryRadius = category ? getCategoryGroupRadius(category, 1) : null;
-            const otherRegions = categories
-                .filter(other => other.id !== categoryId && positions.get(other.id))
-                .map(other => ({
-                    position: positions.get(other.id),
-                    radius: getCategoryGroupRadius(other, 1)
-                }));
             const outwardAngle = categoryPosition
                 ? Math.atan2(parentPosition.y - categoryPosition.y, parentPosition.x - categoryPosition.x)
-                : Math.atan2(parentPosition.y, parentPosition.x);
+                : Math.atan2(parentPosition.y - center.y, parentPosition.x - center.x);
             const itemFanWidth = Math.min(
                 Math.PI * 2,
                 Math.max(Math.PI * 1.1, siblingCount * siblingEdgeAngleLimit(siblingCount))
@@ -544,7 +561,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             const outwardProjectionFactor = Math.max(0.5, Math.cos(itemFanWidth / 2));
             const minimumItemParentRadius = Math.max(
                 0,
-                (itemBandFloor - radialDistance(parentPosition)) / outwardProjectionFactor + 1
+                (itemBandFloor - radialDistanceFrom(parentPosition, center)) / outwardProjectionFactor + 1
             );
             const peerPositions = siblings
                 .slice(0, Math.max(0, siblingIndex))
@@ -554,29 +571,27 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id)
                 .map(candidate => positions.get(candidate.id))
                 .filter(Boolean);
-            const accept = candidate => {
-                const hierarchySatisfied = !category
-                    || hierarchyBandSatisfied(
-                        node,
-                        candidate,
-                        parentPosition,
-                        categoryPosition,
-                        node.kind,
-                        nodeGap
-                    );
-                return hierarchySatisfied
-                    && radialDistance(candidate) > itemBandFloor
-                    && nearestParentSatisfied(candidate, parentPosition, parentPeerPositions)
-                    && parentEdgeAngleSeparated(
-                        candidate,
-                        parentPosition,
-                        peerPositions,
-                        siblingEdgeAngleLimit(siblingCount)
-                    );
-            };
+            const accept = candidate => (
+                hierarchyBandSatisfied(
+                    node,
+                    candidate,
+                    parentPosition,
+                    categoryPosition,
+                    node.kind,
+                    nodeGap
+                )
+                && radialDistanceFrom(candidate, center) > itemBandFloor
+                && nearestParentSatisfied(candidate, parentPosition, parentPeerPositions)
+                && parentEdgeAngleSeparated(
+                    candidate,
+                    parentPosition,
+                    peerPositions,
+                    siblingEdgeAngleLimit(siblingCount)
+                )
+            );
             const position = findFreePosition(
                 node,
-                positions.get(node.id),
+                positions.get(node.id) || center,
                 parent,
                 Math.max(
                     parentDistanceLimit(parent, node, node.kind, nodeGap),
@@ -587,13 +602,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                 slotAngle,
                 Math.min(Math.PI / 3, Math.max(0.24, itemFanWidth / siblingCount * 0.75))
             );
-            if (!position) return false;
-            mark(node, position);
-        }
-        return true;
-    };
-
-    const normalizeToCanvasCenter = () => {
+       const deriveBoundsCenter = () => {
         const bounds = nodes.reduce((current, node) => {
             const position = positions.get(node.id);
             if (!position) return current;
@@ -606,17 +615,20 @@ function packWithoutOverlap(nodes, positions, edges) {
                 maxY: Math.max(current.maxY, position.y + height / 2)
             };
         }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-        if (!Number.isFinite(bounds.minX)) return false;
-        const delta = {
-            x: (bounds.minX + bounds.maxX) / 2,
-            y: (bounds.minY + bounds.maxY) / 2
-        };
+        if (!Number.isFinite(bounds.minX)) return null;
+        return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+    };
+
+    const translateToCenter = center => {
+        if (!center) return false;
         for (const position of positions.values()) {
-            position.x -= delta.x;
-            position.y -= delta.y;
+            position.x -= center.x;
+            position.y -= center.y;
         }
         return true;
     };
+
+    const normalizeToCanvasCenter = () => translateToCenter(deriveBoundsCenter());
 
     const validateNoOverlap = () => {
         const validationBuckets = new Map();
@@ -700,13 +712,15 @@ function packWithoutOverlap(nodes, positions, edges) {
             mark(node, position);
             return true;
         })) continue;
-        if (!normalizeToCanvasCenter()) continue;
-        for (let pass = 0; pass < 4 && !radialHierarchySatisfied(); pass += 1) {
-            if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+        for (let pass = 0; pass < 8; pass += 1) {
+            const center = deriveBoundsCenter();
+            if (!reflowItemsOutward(center)) break;
+            const nextCenter = deriveBoundsCenter();
+            if (radialHierarchySatisfied(nextCenter)) {
+                translateToCenter(nextCenter);
+                if (radialHierarchySatisfied() && validateNoOverlap()) return true;
+            }
         }
-        if (!radialHierarchySatisfied()) continue;
-        if (!validateNoOverlap()) continue;
-        if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return true;
     }
     return repackGlobally();
 }
