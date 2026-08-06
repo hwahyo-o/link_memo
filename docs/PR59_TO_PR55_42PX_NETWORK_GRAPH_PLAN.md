@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: 전역 중심 계층 재배치 및 배포 완료
+> 상태: 2026-08-06 계층별 radial band 강화 작업 진행 중
 
 ## 1. 목표와 범위
 
@@ -326,3 +326,47 @@
 - 실제 화면 screenshot은 생성하지 않았다.
 - 최종 원격 branch는 `main`만 유지한다.
 - 변경하지 않은 계층: 화면 구조 외 저장·인증·동기화·외부 서비스·의존성·앱 시작.
+
+## 22. 2026-08-06 계층별 radial band 강화 계획
+
+### 추가 요청 규칙
+
+- category는 캔버스 중심에 가장 가까운 조밀한 중심 band를 유지한다.
+- subcategory는 모든 category보다 중심에서 멀리 있어야 하며, 부모 category가 모든 category 중 가장 가까워야 한다.
+- item은 모든 category·subcategory보다 중심에서 멀리 있어야 하며, 부모 subcategory가 모든 subcategory 중 가장 가까워야 한다.
+- item band는 subcategory band보다 추가 radial 여유를 둔 외곽 band로 배치한다.
+- item은 부모별 deterministic outward multi-ring으로 분산해 한 지점에 과도하게 밀집하지 않는다.
+- category·subcategory·item 전체는 실제 도형 AABB 기준 최소 42px 간격을 유지한다.
+
+### 전역 Gate
+
+- category 최대 반경 < subcategory 최소 반경
+- subcategory 최대 반경 + radial 여유 < item 최소 반경
+- category 반경 분산을 필요한 envelope 범위 안에서 최소화한다.
+- 각 subcategory의 부모 category가 모든 category 중 strict nearest이다.
+- 각 item의 부모 subcategory가 모든 subcategory 중 strict nearest이다.
+- 실제 fit bounds center를 layout center로 사용한다.
+
+### Process Phase
+
+1. drill을 main에서 생성하고 이 규칙을 문서에 먼저 고정한다.
+2. 현재 category ring과 subcategory band를 보존하면서 item 전역 외곽 floor를 계산한다.
+3. item 부모별 outward multi-ring 후보에 전역 item floor, 부모 최단, AABB, 간선 방향 조건을 함께 적용한다.
+4. category compact packing 후 category 밀집도와 전체 radial band를 다시 검증한다.
+5. 실패 시 radial floor·ring 반경·category ring만 최소 수정한다.
+6. 테스트·build·CI·Pages·공개 응답을 확인하고 main에 병합한다.
+
+### 실패 시 재수정 Loop
+
+- item이 안쪽이면 subcategory 최대 반경 산정과 item floor를 확인한다.
+- item이 부모에서 과도하게 멀면 outward ring 수와 부모 후보 각도만 조정한다.
+- category가 흩어지면 envelope compact packing과 category ring 반경을 확인한다.
+- 부모 최단 실패면 모든 동일 계층 부모 후보 수집을 확인한다.
+- 무겹침 실패면 실제 geometry AABB와 spatial bucket을 확인한다.
+- 기존 네트워크성이 저하되면 force seed, golden-angle, stable hash를 복원한다.
+
+### 변경 제한
+
+- 화면 구조, 저장, 인증, 동기화, 외부 서비스, 의존성, 앱 시작 계층은 변경하지 않는다.
+- screenshot은 생성하지 않는다.
+- 완료 결과와 검증 수치는 이 문서에 기록한다.
