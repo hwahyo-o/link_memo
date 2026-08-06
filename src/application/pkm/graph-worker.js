@@ -865,35 +865,17 @@ function packWithoutOverlap(nodes, positions, edges) {
                     x: Math.cos(angle) * radius,
                     y: Math.sin(angle) * radius
                 };
-                const accept = nextPosition => (
-                    radialDistance(nextPosition) > floor
-                    && (!parent || nearestParentSatisfied(
-                        nextPosition,
-                        parentPosition,
-                        nodes
-                            .filter(candidateNode => (
-                                candidateNode.kind === parent.kind
-                                && candidateNode.id !== parent.id
-                            ))
-                            .map(candidateNode => positions.get(candidateNode.id))
-                            .filter(Boolean)
-                    ))
+                const parentSeparated = !parent || aabbSeparated(
+                    node,
+                    parent,
+                    candidate,
+                    parentPosition,
+                    nodeGap
                 );
-                if (parent) {
-                    position = findFreePosition(
-                        node,
-                        candidate,
-                        parent,
-                        Math.max(
-                            parentDistanceLimit(parent, node, node.kind, nodeGap),
-                            centerDistance(candidate, parentPosition) + nodeGap
-                        ),
-                        accept,
-                        angle,
-                        Math.PI * 2
-                    );
-                } else {
-                    position = findFreePosition(node, candidate, null, 0, accept);
+                if (radialDistance(candidate) > floor
+                    && parentSeparated
+                    && !collides(node, candidate.x, candidate.y)) {
+                    position = candidate;
                 }
             }
             if (!position) return false;
