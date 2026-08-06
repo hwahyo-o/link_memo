@@ -494,7 +494,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     };
 
     const reflowItemsOutward = () => {
-        const items = hierarchyNodes
+        const items = nodes
             .filter(node => node.kind === "item")
             .sort((left, right) => {
                 const leftParent = hierarchy.parents.get(left.id);
@@ -514,7 +514,18 @@ function packWithoutOverlap(nodes, positions, edges) {
         for (const node of items) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
-            if (!parent || !parentPosition || !placed.has(parent.id)) return false;
+            if (!parent || !parentPosition || !placed.has(parent.id)) {
+                const position = findFreePosition(
+                    node,
+                    layoutCenter,
+                    null,
+                    0,
+                    candidate => radialDistance(candidate) > itemBandFloor
+                );
+                if (!position) return false;
+                mark(node, position);
+                continue;
+            }
 
             const siblings = (childrenByParent.get(parent.id) || [])
                 .filter(sibling => sibling.kind === "item")
@@ -574,7 +585,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                         siblingEdgeAngleLimit(siblingCount)
                     );
             };
-            const position = findFreePosition(
+            let position = findFreePosition(
                 node,
                 positions.get(node.id),
                 parent,
@@ -587,6 +598,30 @@ function packWithoutOverlap(nodes, positions, edges) {
                 slotAngle,
                 Math.min(Math.PI / 3, Math.max(0.24, itemFanWidth / siblingCount * 0.75))
             );
+            if (!position && items.length > 8) {
+                position = findFreePosition(
+                    node,
+                    positions.get(node.id),
+                    parent,
+                    Math.max(
+                        siblingRadius,
+                        itemBandFloor + radialDistance(parentPosition) + 320
+                    ),
+                    candidate => (
+                        radialDistance(candidate) > itemBandFloor
+                        && hierarchyBandSatisfied(
+                            node,
+                            candidate,
+                            parentPosition,
+                            categoryPosition,
+                            node.kind,
+                            nodeGap
+                        )
+                    ),
+                    outwardAngle,
+                    Math.PI * 2
+                );
+            }
             if (!position) return false;
             mark(node, position);
         }
@@ -707,6 +742,66 @@ function packWithoutOverlap(nodes, positions, edges) {
         if (!radialHierarchySatisfied()) continue;
         if (!validateNoOverlap()) continue;
         if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return true;
+    }
+    const denseItems = nodes.filter(node => node.kind === "item");
+    if (denseItems.length > 8) {
+        for (let pass = 0; pass < 4; pass += 1) {
+            buckets.clear();
+            placed.clear();
+            nodes
+                .filter(node => node.kind !== "item")
+                .forEach(node => placed.add(node.id));
+            if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+            const subcategoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "subcategory")
+                    .map(node => radialDistance(positions.get(node.id)))
+            );
+            const itemFloor = subcategoryBand + radialBandGap + 32;
+            for (const node of denseItems) {
+                const position = positions.get(node.id);
+                const distance = radialDistance(position);
+                if (distance > itemFloor) continue;
+                const direction = {
+                    x: position.x || Math.cos(hashSeed(node.id) * Math.PI * 2),
+                    y: position.y || Math.sin(hashSeed(node.id) * Math.PI * 2)
+                };
+                const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                const amount = itemFloor - distance + 1;
+                position.x += direction.x / length * amount;
+                position.y += direction.y / length * amount;
+            }
+            normalizeToCanvasCenter();
+            if (validateNoOverlap() && radialHierarchySatisfied()) return true;
+        }
+        for (let pass = 0; pass < 8; pass += 1) {
+            const subcategoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "subcategory")
+                    .map(node => radialDistance(positions.get(node.id)))
+            );
+            const floor = subcategoryBand + radialBandGap + 160;
+            let changed = false;
+            for (const node of denseItems) {
+                const position = positions.get(node.id);
+                const distance = radialDistance(position);
+                if (distance > floor) continue;
+                const direction = {
+                    x: position.x || Math.cos(hashSeed(node.id) * Math.PI * 2),
+                    y: position.y || Math.sin(hashSeed(node.id) * Math.PI * 2)
+                };
+                const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                const amount = floor - distance + 1;
+                position.x += direction.x / length * amount;
+                position.y += direction.y / length * amount;
+                changed = true;
+            }
+            normalizeToCanvasCenter();
+            if (!changed) break;
+        }
+        if (validateNoOverlap() && radialHierarchySatisfied()) return true;
     }
     return repackGlobally();
 }

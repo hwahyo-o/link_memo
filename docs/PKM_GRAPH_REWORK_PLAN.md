@@ -603,3 +603,57 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 이 turn에서는 사용자가 화면을 직접 확인한다고 했으므로 screenshot과 브라우저 화면 검증은 수행하지 않았다.
 - 원격 불필요 branch 정리 결과: `main`만 유지.
 - 상태: main 병합 완료, 배포 workflow 트리거 확인 대기.
+
+
+## 28. 2026-08-06 모든 item 유형 공통 외곽 재배치 계획
+
+### 문제 정의
+
+첨부 이미지에서 색상과 콘텐츠 유형이 서로 다른 item 노드들이 모두 하나의 item 계층임에도 캔버스 중심부에 섞여 있다. 따라서 색상, `contentKind`, facet, 연결 종류를 배치 기준으로 사용하지 않고 `kind === "item"` 전체를 동일한 계층으로 취급한다.
+
+### 구현 범위
+
+- category 좌표를 먼저 확정한다.
+- subcategory 좌표를 category보다 중심에서 멀고 자신의 category에 가장 가까운 위치에 확정한다.
+- 모든 item 좌표를 그 이후 계산하며, item의 부모 subcategory 좌표는 이동시키지 않는다.
+- item은 실제 최종 node bounds center 기준으로 subcategory band보다 바깥에 배치한다.
+- 모든 후보는 부모 도형 외곽, 부모 nearest, outward 방향, sibling fan, AABB 최소 42px을 만족해야 한다.
+- 저장, 외부 서비스, 의존성, 앱 시작 계층은 변경하지 않는다.
+
+### Phase Gate
+
+1. 메타데이터 Gate: 모든 item 유형이 `kind === "item"`과 부모 ID를 통해 분류된다.
+2. 계층 Gate: category < subcategory < item의 radial band가 전 item에 대해 성립한다.
+3. 관계 Gate: item이 다른 subcategory보다 자신의 부모 subcategory에 가깝다.
+4. 도형 Gate: 모든 노드 도형 사이 AABB 최소 42px 간격을 통과한다.
+5. 회귀 Gate: 혼합 유형·대량 item·고아 item·기존 네트워크 테스트가 통과한다.
+6. 배포 Gate: Branch CI, Pages test/build 성공 후 main 병합과 branch 정리를 수행한다.
+
+### 실패 수정 Loop
+
+후보 부족 시 item ring 반경과 sibling fan만 deterministic하게 확장한다. 부모 좌표를 이동시키거나 색상별 예외를 추가하지 않는다. Gate 실패가 반복되면 실패한 fixture와 수치를 문서화하고 해당 배치 단계만 수정한 뒤 전체 검증을 재실행한다.
+
+
+## 29. 2026-08-06 구현 및 검증 결과
+
+- 구현 기준: main의 기존 hierarchy/force/AABB packing을 유지하고, `reflowItemsOutward`의 대상만 `nodes.filter(node => node.kind === "item")`로 확장했다.
+- `contentKind`, 색상, facet, 연결 유형은 배치 분기 조건으로 사용하지 않는다.
+- 부모 subcategory가 확인되는 item은 기존 parent-nearest/outward/sibling fan/AABB 후보 탐색을 사용한다.
+- 부모가 없거나 계층 배치 대상에서 누락된 item은 canvas 외곽 ring 후보로 재시도한다.
+- item 수가 많은 경우에만 bounded dense retry와 최종 outer-band convergence를 수행한다. category/subcategory 좌표 및 저장·외부 서비스 계층은 변경하지 않았다.
+- AABB 검증의 기본 최소 여백은 `GRAPH_LAYOUT_RULES.minimumRadialBandGap = 42`와 기존 `preferredNodeGap = 42`를 따른다.
+
+### 실제 Gate 결과
+
+- 혼합 fixture: link/image/text/file `contentKind` 4종, item 24개 통과.
+- 전체 Vitest: 206 tests passed.
+- Branch CI run 612: success.
+- GitHub Pages test/build run 367: success.
+- secret scan: 변경 diff에 API key, token, private ID, credential 기록 없음.
+- screenshot 및 브라우저 화면 캡처: 생성하지 않음. 화면 확인은 사용자 수행 범위로 남겼다.
+
+### 인수인계 상태
+
+- 구현 커밋 head: `f7c54ad9e45e2d453c5280e7651dc7be50eb7be4`
+- PR: #75, base `main`, merge 전 검토 상태.
+- 다음 단계: PR #75 merge → main push 배포 workflow 확인 → 원격 branch를 main만 남기도록 정리.
