@@ -667,3 +667,27 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - PR 기준 Pages test/build run 367과 Branch CI run 612는 성공했다.
 - main push 배포 run의 상세 상태와 실제 서비스 화면은 연결 도구에서 제공되지 않아, live URL 도착 및 브라우저 화면은 검증 완료로 주장하지 않는다. 사용자가 화면을 직접 확인한다.
 - 다음 문서 커밋(PR #76) merge 후 원격 drill 삭제를 완료해 main만 유지한다.
+
+
+## 31. 2026-08-06 item 중심 잔류 재수정 계획
+
+### 추가 문제
+
+실제 그래프에서 다양한 contentKind의 item이 category/subcategory보다 캔버스 중심에 가까운 위치에 남는 사례가 재확인되었다. 기존 dense retry가 실패한 뒤 global repack으로 되돌아가면서 item outer-band 보장이 사라질 수 있다.
+
+### 수정 원칙
+
+- 모든 kind item을 색상·contentKind와 무관하게 단일 outer-band 대상으로 유지한다.
+- category와 subcategory의 확정 좌표를 item 재배치 중 이동시키지 않는다.
+- item 후보가 부족하면 global center repack을 사용하지 않고 item ring/fan만 확장한다.
+- 최종 bounds center를 다시 계산한 뒤 모든 item의 최소 반경을 재검증한다.
+- 실패 시 bounded retry를 반복하고, 검증되지 않은 좌표를 성공 결과로 반환하지 않는다.
+
+### Gate 및 Loop
+
+- Gate A: category max radius + 42px < subcategory min radius.
+- Gate B: subcategory max radius + 42px < every item radius.
+- Gate C: 각 item이 모든 subcategory 중 자신의 부모와 가장 가깝다.
+- Gate D: 모든 node AABB가 42px 여백으로 분리된다.
+- Gate 실패 시 item-only ring 확장 → bounds center 재계산 → 전체 검증 순서로 반복한다.
+- 기존 네트워크·저장·외부 서비스·앱 시작 계층은 수정하지 않는다.
