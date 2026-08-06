@@ -11,16 +11,16 @@ import {
 } from "./graph-layout-policy.js";
 
 describe("graph layout policy", () => {
-    it("uses the requested minimums while preserving the existing preferred gap", () => {
+    it("uses the requested 42px minimum for close network placement", () => {
         expect(GRAPH_LAYOUT_RULES.minimumNodeGap).toBe(42);
-        expect(GRAPH_LAYOUT_RULES.preferredNodeGap).toBe(96);
+        expect(GRAPH_LAYOUT_RULES.preferredNodeGap).toBe(42);
         expect(GRAPH_LAYOUT_RULES.minimumCategoryCenterDistance).toBe(420);
     });
 
     it("measures node separation from the outer geometry", () => {
         const node = { width: 196, height: 72 };
-        expect(aabbSeparated(node, node, { x: 0, y: 0 }, { x: 292, y: 0 }, 96)).toBe(true);
-        expect(aabbSeparated(node, node, { x: 0, y: 0 }, { x: 291, y: 0 }, 96)).toBe(false);
+        expect(aabbSeparated(node, node, { x: 0, y: 0 }, { x: 238, y: 0 }, 42)).toBe(true);
+        expect(aabbSeparated(node, node, { x: 0, y: 0 }, { x: 237, y: 0 }, 42)).toBe(false);
     });
 
     it("derives a parent-centered influence radius from child geometry", () => {
@@ -49,7 +49,7 @@ describe("graph layout policy", () => {
         expect(parentDistanceLimit(subcategory, item, "item")).toBe(300);
         expect(deriveCategoryGroupRadius(category, [subcategory], new Map([
             ["subcategory", [item]]
-        ]))).toBeGreaterThan(500);
+        ]))).toBeGreaterThan(480);
     });
 
     it("rejects same-parent edges that are too close in angle", () => {

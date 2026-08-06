@@ -1,6 +1,6 @@
 export const GRAPH_LAYOUT_RULES = Object.freeze({
     minimumNodeGap: 42,
-    preferredNodeGap: 96,
+    preferredNodeGap: 42,
     minimumCategoryCenterDistance: 420,
     maximumCategoryRadiusOverlap: 50,
     maximumSubcategoryDistance: 360,
@@ -49,30 +49,13 @@ export function deriveInfluenceRadius(parent, children = [], gap = GRAPH_LAYOUT_
     return nodeHalfDiagonal(parent) + gap + largestChild + Math.max(220, childSpread) * scale;
 }
 
-function minimumParentDistance(parent, child, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
+export function parentDistanceLimit(parent, child, kind, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
     const parentSize = nodeDimensions(parent);
     const childSize = nodeDimensions(child);
-    return Math.max(
+    const minimum = Math.max(
         (parentSize.width + childSize.width) / 2 + gap,
         (parentSize.height + childSize.height) / 2 + gap
     );
-}
-
-function deriveRingRadius(parent, children = [], gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
-    if (!children.length) return nodeHalfDiagonal(parent) + gap;
-    const minimum = children.reduce(
-        (radius, child) => Math.max(radius, minimumParentDistance(parent, child, gap)),
-        0
-    );
-    const circumference = children.reduce(
-        (length, child) => length + Math.max(nodeDimensions(child).width, nodeDimensions(child).height) + gap,
-        0
-    );
-    return Math.max(minimum, circumference / (Math.PI * 2));
-}
-
-export function parentDistanceLimit(parent, child, kind, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
-    const minimum = minimumParentDistance(parent, child, gap);
     const maximum = kind === "subcategory"
         ? GRAPH_LAYOUT_RULES.maximumSubcategoryDistance
         : kind === "item"
@@ -82,28 +65,6 @@ export function parentDistanceLimit(parent, child, kind, gap = GRAPH_LAYOUT_RULE
 }
 
 export function deriveCategoryGroupRadius(category, subcategories = [], childrenByParent = new Map(), gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
-    const subcategoryRadius = deriveRingRadius(category, subcategories, gap);
-    let radius = nodeHalfDiagonal(category) + gap;
-    radius = Math.max(
-        radius,
-        subcategoryRadius + subcategories.reduce(
-            (largest, subcategory) => Math.max(largest, nodeHalfDiagonal(subcategory)),
-            0
-        ) + gap
-    );
-    for (const subcategory of subcategories) {
-        const items = childrenByParent.get(subcategory.id) || [];
-        const itemRadius = deriveRingRadius(subcategory, items, gap);
-        const largestItem = items.reduce(
-            (largest, item) => Math.max(largest, nodeHalfDiagonal(item)),
-            0
-        );
-        radius = Math.max(radius, subcategoryRadius + itemRadius + largestItem + gap);
-    }
-    return radius;
-}
-
-export function deriveCategoryPlacementRadius(category, subcategories = [], childrenByParent = new Map(), gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
     let radius = nodeHalfDiagonal(category) + gap;
     for (const subcategory of subcategories) {
         const subcategoryDistance = parentDistanceLimit(category, subcategory, "subcategory", gap);
@@ -115,29 +76,6 @@ export function deriveCategoryPlacementRadius(category, subcategories = [], chil
         }
     }
     return radius;
-}
-
-export function deriveCategoryGroupEnvelope(category, members = [], positions = new Map(), gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {
-    const categoryPosition = positions.get(category.id);
-    if (!categoryPosition) return null;
-    const allMembers = [category, ...members.filter(member => member.id !== category.id)];
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let radius = 0;
-    for (const member of allMembers) {
-        const position = positions.get(member.id);
-        if (!position) continue;
-        const size = nodeDimensions(member);
-        minX = Math.min(minX, position.x - size.width / 2 - gap);
-        minY = Math.min(minY, position.y - size.height / 2 - gap);
-        maxX = Math.max(maxX, position.x + size.width / 2 + gap);
-        maxY = Math.max(maxY, position.y + size.height / 2 + gap);
-        radius = Math.max(radius, centerDistance(position, categoryPosition) + nodeHalfDiagonal(member) + gap);
-    }
-    if (!Number.isFinite(minX)) return null;
-    return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, radius };
 }
 
 export function categoryRegionContains(candidatePosition, node, categoryPosition, categoryRadius, gap = GRAPH_LAYOUT_RULES.preferredNodeGap) {

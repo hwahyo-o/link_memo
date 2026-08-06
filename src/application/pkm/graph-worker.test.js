@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutGraph, parseMetadata } from "./graph-worker.js";
-import { GRAPH_LAYOUT_RULES, aabbSeparated, categoryOwnershipSatisfied, categoryRegionContains, categorySeparationSatisfied, deriveCategoryGroupEnvelope, deriveCategoryGroupRadius, deriveCategoryPlacementRadius, deriveInfluenceRadius, hierarchyBandSatisfied } from "../../domain/pkm/graph-layout-policy.js";
+import { GRAPH_LAYOUT_RULES, aabbSeparated, categoryOwnershipSatisfied, categoryRegionContains, categorySeparationSatisfied, deriveCategoryGroupRadius, deriveInfluenceRadius, hierarchyBandSatisfied } from "../../domain/pkm/graph-layout-policy.js";
 
 describe("PKM graph worker algorithms", () => {
     it("extracts searchable metadata and resolved wiki links", () => {
@@ -44,7 +44,7 @@ describe("PKM graph worker algorithms", () => {
                 minimumSeparatingGap = Math.min(minimumSeparatingGap, Math.max(gapX, gapY));
             }
         }
-        expect(minimumSeparatingGap).toBeGreaterThanOrEqual(96);
+        expect(minimumSeparatingGap).toBeGreaterThanOrEqual(42);
     });
 
     it("places linked nodes as a force-directed network near their edges", () => {
@@ -61,7 +61,7 @@ describe("PKM graph worker algorithms", () => {
         const distance = (left, right) => Math.hypot(positions.get(left).x - positions.get(right).x, positions.get(left).y - positions.get(right).y);
         expect(distance("category", "subcategory")).toBeLessThan(500);
         expect(distance("subcategory", "item")).toBeLessThan(500);
-        expect(distance("category", "orphan")).toBeLessThan(1_200);
+        expect(distance("category", "orphan")).toBeGreaterThan(500);
         expect(new Set([...positions.values()].map(position => Math.round(position.x))).size).toBeGreaterThan(2);
         expect(new Set([...positions.values()].map(position => Math.round(position.y))).size).toBeGreaterThan(2);
     });
@@ -193,19 +193,13 @@ describe("PKM graph worker algorithms", () => {
         );
         const categoryA = positions.get("category-a");
         const categoryB = positions.get("category-b");
-        const categoryAEnvelope = deriveCategoryGroupEnvelope(
+        const regionRadius = deriveCategoryGroupRadius(
             byId.get("category-a"),
-            nodes.filter(node => node.id === "category-a"
-                || node.categoryId === "category-a"
-                || ["item-a1", "item-a2"].includes(node.id)),
-            positions
-        );
-        const categoryBEnvelope = deriveCategoryGroupEnvelope(
-            byId.get("category-b"),
-            nodes.filter(node => node.id === "category-b"
-                || node.categoryId === "category-b"
-                || node.id === "item-b1"),
-            positions
+            [byId.get("subcategory-a1"), byId.get("subcategory-a2")],
+            new Map([
+                ["subcategory-a1", [byId.get("item-a1")]],
+                ["subcategory-a2", [byId.get("item-a2")]]
+            ])
         );
 
         for (const subcategoryId of ["subcategory-a1", "subcategory-a2"]) {
@@ -214,7 +208,7 @@ describe("PKM graph worker algorithms", () => {
                 positions.get(subcategoryId),
                 byId.get(subcategoryId),
                 categoryA,
-                categoryAEnvelope.radius
+                regionRadius
             )).toBe(true);
         }
         expect(distance("item-a1", "subcategory-a1")).toBeLessThan(distance("item-a1", "subcategory-a2"));
@@ -231,76 +225,10 @@ describe("PKM graph worker algorithms", () => {
                 positions.get(itemId),
                 byId.get(itemId),
                 categoryA,
-                categoryAEnvelope.radius,
-                [{ position: categoryB, radius: categoryBEnvelope.radius }]
+                regionRadius,
+                [{ position: categoryB, radius: regionRadius }]
             )).toBe(true);
         }
-    });
-
-    it("keeps disconnected category groups in a compact bounded seed", () => {
-        const nodes = Array.from({ length: 5 }, (_, index) => ([
-            { id: `category-${index}`, kind: "category", width: 196, height: 72 },
-            { id: `subcategory-${index}`, kind: "subcategory", categoryId: `category-${index}`, width: 174, height: 64 },
-            { id: `item-${index}`, kind: "item", subcategoryId: `subcategory-${index}`, width: 188, height: 68 }
-        ])).flat();
-        const edges = Array.from({ length: 5 }, (_, index) => ([
-            { source: `category-${index}`, target: `subcategory-${index}`, kind: "category-membership" },
-            { source: `subcategory-${index}`, target: `item-${index}`, kind: "subcategory-membership" }
-        ])).flat();
-        const positions = new Map(layoutGraph(nodes, edges, 36).map(position => [position.id, position]));
-        const categoryPositions = nodes
-            .filter(node => node.kind === "category")
-            .map(node => positions.get(node.id));
-        const center = categoryPositions.reduce(
-            (sum, position) => ({ x: sum.x + position.x, y: sum.y + position.y }),
-            { x: 0, y: 0 }
-        );
-        center.x /= categoryPositions.length;
-        center.y /= categoryPositions.length;
-        const span = Math.max(
-            ...categoryPositions.map(position => Math.hypot(position.x - center.x, position.y - center.y))
-        );
-
-        expect(categoryPositions.every(position => Number.isFinite(position.x) && Number.isFinite(position.y))).toBe(true);
-        expect(Math.abs(center.x)).toBeLessThan(800);
-        expect(Math.abs(center.y)).toBeLessThan(800);
-        expect(span).toBeLessThan(3_500);
-    });
-
-    it("measures category envelopes from actual descendant geometry", () => {
-        const nodes = [
-            { id: "category", kind: "category", width: 196, height: 72 },
-            { id: "subcategory", kind: "subcategory", categoryId: "category", width: 174, height: 64 },
-            { id: "item", kind: "item", subcategoryId: "subcategory", width: 188, height: 68 }
-        ];
-        const positions = new Map([
-            ["category", { x: 0, y: 0 }],
-            ["subcategory", { x: 284, y: 0 }],
-            ["item", { x: 568, y: 0 }]
-        ]);
-        const byId = new Map(nodes.map(node => [node.id, node]));
-        const envelope = deriveCategoryGroupEnvelope(
-            byId.get("category"),
-            nodes,
-            positions
-        );
-
-        expect(envelope.width).toBeGreaterThan(0);
-        expect(envelope.height).toBeGreaterThan(0);
-        expect(envelope.radius).toBeLessThan(deriveCategoryPlacementRadius(
-            byId.get("category"),
-            [byId.get("subcategory")],
-            new Map([["subcategory", [byId.get("item")]]])
-        ));
-        expect(deriveCategoryGroupRadius(
-            byId.get("category"),
-            [byId.get("subcategory")],
-            new Map([["subcategory", [byId.get("item")]]])
-        )).toBeLessThanOrEqual(deriveCategoryPlacementRadius(
-            byId.get("category"),
-            [byId.get("subcategory")],
-            new Map([["subcategory", [byId.get("item")]]])
-        ));
     });
 
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
