@@ -824,34 +824,105 @@ function packWithoutOverlap(nodes, positions, edges) {
     }
 
     const forceItemsOutward = () => {
-        const items = nodes.filter(node => node.kind === "item");
-        for (let pass = 0; pass < 24; pass += 1) {
-            if (!normalizeToCanvasCenter()) return false;
-            const subcategoryBand = Math.max(
-                0,
-                ...nodes
-                    .filter(node => node.kind === "subcategory")
-                    .map(node => radialDistance(positions.get(node.id)))
-            );
-            const floor = subcategoryBand + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
-            let moved = false;
-            for (const node of items) {
+        const items = nodes
+            .filter(node => node.kind === "item")
+            .sort((left, right) => left.id.localeCompare(right.id));
+        buckets.clear();
+        placed.clear();
+        nodes
+            .filter(node => node.kind !== "item")
+            .forEach(node => {
                 const position = positions.get(node.id);
-                const distance = radialDistance(position);
-                if (distance > floor) continue;
-                const angle = Math.atan2(
-                    position.y || Math.sin(hashSeed(node.id) * Math.PI * 2),
-                    position.x || Math.cos(hashSeed(node.id) * Math.PI * 2)
+                if (position) {
+                    placed.add(node.id);
+                    addToBucket(node, position);
+                }
+            });
+        if (!normalizeToCanvasCenter()) return false;
+
+        const subcategoryBand = Math.max(
+            0,
+            ...nodes
+                .filter(node => node.kind === "subcategory")
+                .map(node => radialDistance(positions.get(node.id)))
+        );
+        const floor = subcategoryBand + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
+        for (const [index, node] of items.entries()) {
+            const parent = byId.get(hierarchy.parents.get(node.id));
+            const parentPosition = positions.get(parent?.id);
+            const siblings = parent
+                ? (childrenByParent.get(parent.id) || [])
+                    .filter(sibling => sibling.kind === "item")
+                    .sort((left, right) => left.id.localeCompare(right.id))
+                : [];
+            const siblingIndex = Math.max(0, siblings.findIndex(sibling => sibling.id === node.id));
+            const siblingCount = Math.max(1, siblings.length);
+            const parentAngle = parentPosition
+                ? Math.atan2(parentPosition.y, parentPosition.x)
+                : 2.399963229728653 * index;
+            const fanWidth = Math.min(
+                Math.PI * 2,
+                Math.max(Math.PI * 1.1, siblingCount * siblingEdgeAngleLimit(siblingCount))
+            );
+            let position = null;
+            for (let ring = 0; ring < 48 && !position; ring += 1) {
+                const radius = floor + 180 + ring * 240;
+                const angle = parent
+                    ? parentAngle
+                        + (((siblingIndex + 0.5) / siblingCount) - 0.5) * fanWidth
+                        + ring * 0.17
+                    : 2.399963229728653 * (index + ring * Math.max(1, items.length))
+                        + hashSeed(node.id) * 0.5;
+                const candidate = {
+                    x: Math.cos(angle) * radius,
+                    y: Math.sin(angle) * radius
+                };
+                const categoryId = categoryAncestor(node.id);
+                const category = categoryId ? byId.get(categoryId) : null;
+                const categoryPosition = category ? positions.get(category.id) : null;
+                const accept = nextPosition => (
+                    radialDistance(nextPosition) > floor
+                    && (!category || hierarchyBandSatisfied(
+                        node,
+                        nextPosition,
+                        parentPosition,
+                        categoryPosition,
+                        node.kind,
+                        nodeGap
+                    ))
+                    && (!parent || nearestParentSatisfied(
+                        nextPosition,
+                        parentPosition,
+                        nodes
+                            .filter(candidateNode => (
+                                candidateNode.kind === parent.kind
+                                && candidateNode.id !== parent.id
+                            ))
+                            .map(candidateNode => positions.get(candidateNode.id))
+                            .filter(Boolean)
+                    ))
                 );
-                const amount = floor - distance + 1;
-                position.x += Math.cos(angle) * amount;
-                position.y += Math.sin(angle) * amount;
-                moved = true;
+                if (parent) {
+                    position = findFreePosition(
+                        node,
+                        candidate,
+                        parent,
+                        Math.max(
+                            parentDistanceLimit(parent, node, node.kind, nodeGap),
+                            centerDistance(candidate, parentPosition) + nodeGap
+                        ),
+                        accept,
+                        angle,
+                        Math.PI * 2
+                    );
+                } else {
+                    position = findFreePosition(node, candidate, null, 0, accept);
+                }
             }
-            if (radialHierarchySatisfied() && validateNoOverlap()) return true;
-            if (!moved) break;
+            if (!position) return false;
+            mark(node, position);
         }
-        return radialHierarchySatisfied() && validateNoOverlap();
+        return true;
     };
 
     return forceItemsOutward();
