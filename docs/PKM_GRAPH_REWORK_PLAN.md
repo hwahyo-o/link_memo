@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 2026-08-06 계층별 radial band 강화 작업 진행 중
+> 상태: 계층별 radial band 강화 및 배포 완료
 
 ## 1. 목적
 
@@ -571,3 +571,14 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 저장·인증·동기화·외부 서비스·의존성·앱 시작 계층은 변경하지 않았다.
 - screenshot은 생성하지 않았다.
 - 현재 상태: PR #71 main 병합 대기.
+
+## 24. 2026-08-06 최종 radial band 강화 완료 기록
+
+- PR #71이 main에 병합되었다.
+- 기능 병합 commit: `f4630779da64ca7f9858dcb7b52316c248c18f33`.
+- Branch CI #514·#518, Pages test/build #321·#323이 성공했다.
+- category 최대 반경과 subcategory 최소 반경 사이에 최소 42px radial gap을 적용했다.
+- subcategory 최대 반경과 item 최소 반경 사이에 최소 42px radial gap을 적용했다.
+- item은 부모별 outward multi-ring과 strict nearest-parent 조건을 유지한다.
+- 공개 화면 확인은 사용자가 수행하며 screenshot은 생성하지 않는다.
+- 최종 원격 branch는 main만 유지한다.
