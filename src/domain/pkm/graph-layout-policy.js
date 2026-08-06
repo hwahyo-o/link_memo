@@ -151,12 +151,7 @@ export function categoryOwnershipSatisfied(
     gap = GRAPH_LAYOUT_RULES.preferredNodeGap
 ) {
     if (!categoryRegionContains(candidatePosition, node, ownCategoryPosition, ownCategoryRadius, gap)) return false;
-    const ownDistance = centerDistance(candidatePosition, ownCategoryPosition);
-    return otherRegions.filter(region => region?.position && Number.isFinite(region.radius)).every(region => {
-        const otherDistance = centerDistance(candidatePosition, region.position);
-        return otherDistance >= region.radius + nodeHalfDiagonal(node) + gap
-            && ownDistance < otherDistance;
-    });
+    return true;
 }
 
 export function hierarchyBandSatisfied(
