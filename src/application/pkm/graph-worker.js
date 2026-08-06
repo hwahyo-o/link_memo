@@ -510,10 +510,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             if (position) addToBucket(node, position);
         }
 
-        const itemBandFloor = subcategoryBandRadius
-            + radialBandGap
-            + GRAPH_LAYOUT_RULES.preferredNodeGap
-            + (items.length > 8 ? 32 : 0);
+        const itemBandFloor = subcategoryBandRadius + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
         for (const node of items) {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
@@ -755,6 +752,27 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .filter(node => node.kind !== "item")
                 .forEach(node => placed.add(node.id));
             if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+            const subcategoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "subcategory")
+                    .map(node => radialDistance(positions.get(node.id)))
+            );
+            const itemFloor = subcategoryBand + radialBandGap + 32;
+            for (const node of denseItems) {
+                const position = positions.get(node.id);
+                const distance = radialDistance(position);
+                if (distance > itemFloor) continue;
+                const direction = {
+                    x: position.x || Math.cos(hashSeed(node.id) * Math.PI * 2),
+                    y: position.y || Math.sin(hashSeed(node.id) * Math.PI * 2)
+                };
+                const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                const amount = itemFloor - distance + 1;
+                position.x += direction.x / length * amount;
+                position.y += direction.y / length * amount;
+            }
+            normalizeToCanvasCenter();
             if (validateNoOverlap() && radialHierarchySatisfied()) return true;
         }
     }
