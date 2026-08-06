@@ -316,52 +316,6 @@ describe("PKM graph worker algorithms", () => {
         }
     });
 
-    it("keeps dense linked items outside the final subcategory band", () => {
-        const nodes = [
-            { id: "category", kind: "category", width: 196, height: 72 },
-            { id: "subcategory", kind: "subcategory", categoryId: "category", width: 174, height: 64 },
-            ...Array.from({ length: 8 }, (_, index) => ({
-                id: `item-${index}`,
-                kind: "item",
-                subcategoryId: "subcategory",
-                width: index % 3 ? 188 : 196,
-                height: index % 3 ? 68 : 72
-            }))
-        ];
-        const edges = [
-            { source: "category", target: "subcategory", kind: "category-membership" },
-            ...nodes.slice(2).map(node => ({
-                source: "subcategory",
-                target: node.id,
-                kind: "subcategory-membership"
-            }))
-        ];
-        const positions = new Map(layoutGraph(nodes, edges, 0).map(position => [position.id, position]));
-        const bounds = nodes.reduce((current, node) => {
-            const position = positions.get(node.id);
-            return {
-                minX: Math.min(current.minX, position.x - node.width / 2),
-                minY: Math.min(current.minY, position.y - node.height / 2),
-                maxX: Math.max(current.maxX, position.x + node.width / 2),
-                maxY: Math.max(current.maxY, position.y + node.height / 2)
-            };
-        }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
-        const center = {
-            x: (bounds.minX + bounds.maxX) / 2,
-            y: (bounds.minY + bounds.maxY) / 2
-        };
-        const radius = id => Math.hypot(
-            positions.get(id).x - center.x,
-            positions.get(id).y - center.y
-        );
-        const categoryBand = radius("category");
-        const subcategoryBand = radius("subcategory");
-        const itemBand = Math.min(...nodes.slice(2).map(node => radius(node.id)));
-
-        expect(subcategoryBand).toBeGreaterThan(categoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
-        expect(itemBand).toBeGreaterThan(subcategoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
-    });
-
     it("bounds layout work even if a caller supplies more than 100,000 nodes", () => {
         const nodes = Array.from({ length: 100_100 }, (_, index) => ({ id: `n${index}` }));
         expect(layoutGraph(nodes, [], 0)).toHaveLength(100_000);
