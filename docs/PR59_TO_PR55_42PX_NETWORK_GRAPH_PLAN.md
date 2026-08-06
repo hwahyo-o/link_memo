@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: 2026-08-06 캔버스 중심 계층 재배치 작업 진행 중
+> 상태: PR #67 검증 완료·main 병합 대기
 
 ## 1. 목표와 범위
 
@@ -229,3 +229,18 @@
 - 무겹침 실패: AABB geometry와 spatial bucket을 확인하고 radial 조건과 함께 재검증한다.
 - category 분산 또는 변칙성 저하: 기존 force seed, stable hash, golden-angle 순서를 확인한다.
 - CI/build 실패: 실패한 테스트와 변경 계층만 재수정한 후 동일 Gate를 반복한다.
+
+## 17. 2026-08-06 캔버스 중심 계층 재배치 검증 기록
+
+- PR #67에서 category를 중심 주변 deterministic ring에 먼저 배치했다.
+- subcategory는 모든 category보다 큰 radial band에서, item은 모든 subcategory보다 큰 radial band에서 후보를 허용한다.
+- subcategory와 item은 배치가 끝난 모든 동일 종류 부모를 비교해 지정 부모가 엄격히 가장 가깝도록 검사한다.
+- 기존 실제 AABB 기준 42px 외곽 간격, 전역 무겹침 검증, force seed, golden-angle, stable hash, 부모 방향 규칙을 유지한다.
+- 첫 Branch CI #476은 기존 부모 거리 상한 회귀로 실패했고, category ring과 radial floor 계산을 수정했다.
+- 두 번째 Branch CI #480은 category envelope 분리 회귀로 실패했고, descendant envelope를 수용할 compact category ring 여유를 보정했다.
+- 최종 Branch CI #482와 Pages test/build #308은 성공했다.
+- 변경 파일은 이 문서들, graph-worker.js, graph-worker.test.js로 제한했다.
+- 화면·저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
+- API key, token, secret, 운영 식별자, 사용자 데이터는 문서와 fixture에 기록하지 않았다.
+- screenshot은 생성하지 않았으며 실제 화면 확인은 사용자에게 위임한다.
+- 현재 상태: PR #67 main 병합 대기.
