@@ -237,14 +237,15 @@ function packWithoutOverlap(nodes, positions, edges) {
     };
 
     const radialHierarchySatisfied = () => {
-        const categoryBand = Math.max(0, ...categories.map(category => radialDistance(positions.get(category.id))));
-        const subcategories = hierarchyNodes.filter(node => node.kind === "subcategory");
-        const items = hierarchyNodes.filter(node => node.kind === "item");
+        const categoryNodes = nodes.filter(node => node.kind === "category");
+        const subcategories = nodes.filter(node => node.kind === "subcategory");
+        const items = nodes.filter(node => node.kind === "item");
+        const categoryBand = Math.max(0, ...categoryNodes.map(node => radialDistance(positions.get(node.id))));
         const subcategoryBand = Math.max(0, ...subcategories.map(node => radialDistance(positions.get(node.id))));
         const nearestAssignedParent = node => {
             const parent = byId.get(hierarchy.parents.get(node.id));
             const parentPosition = positions.get(parent?.id);
-            if (!parent || !parentPosition) return false;
+            if (!parent || !parentPosition) return true;
             const peers = nodes
                 .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id)
                 .map(candidate => positions.get(candidate.id))
@@ -803,7 +804,17 @@ function packWithoutOverlap(nodes, positions, edges) {
         }
         if (validateNoOverlap() && radialHierarchySatisfied()) return true;
     }
-    return repackGlobally();
+    if (!nodes.some(node => node.kind === "item")) return repackGlobally();
+    buckets.clear();
+    placed.clear();
+    nodes
+        .filter(node => node.kind !== "item")
+        .forEach(node => placed.add(node.id));
+    for (let pass = 0; pass < 8; pass += 1) {
+        if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+        if (radialHierarchySatisfied() && validateNoOverlap()) return true;
+    }
+    return false;
 }
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
     nodes = nodes.slice(0, MAX_GRAPH_NODES);
