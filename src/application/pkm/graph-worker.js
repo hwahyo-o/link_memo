@@ -422,7 +422,10 @@ function packWithoutOverlap(nodes, positions, edges) {
             const outwardAngle = categoryPosition
                 ? Math.atan2(parentPosition.y - categoryPosition.y, parentPosition.x - categoryPosition.x)
                 : baseSlotAngle;
-            const itemFanWidth = Math.min(Math.PI * 1.1, Math.PI * 2);
+            const itemFanWidth = Math.min(
+                Math.PI * 2,
+                Math.max(Math.PI * 1.1, siblingCount * siblingEdgeAngleLimit(siblingCount))
+            );
             const slotAngle = node.kind === "item" && categoryPosition
                 ? outwardAngle + (((siblingIndex + 0.5) / siblingCount) - 0.5) * itemFanWidth
                 : baseSlotAngle;
@@ -532,7 +535,10 @@ function packWithoutOverlap(nodes, positions, edges) {
             const outwardAngle = categoryPosition
                 ? Math.atan2(parentPosition.y - categoryPosition.y, parentPosition.x - categoryPosition.x)
                 : Math.atan2(parentPosition.y, parentPosition.x);
-            const itemFanWidth = Math.min(Math.PI * 1.1, Math.PI * 2);
+            const itemFanWidth = Math.min(
+                Math.PI * 2,
+                Math.max(Math.PI * 1.1, siblingCount * siblingEdgeAngleLimit(siblingCount))
+            );
             const slotAngle = outwardAngle
                 + (((siblingIndex + 0.5) / siblingCount) - 0.5) * itemFanWidth;
             const outwardProjectionFactor = Math.max(0.5, Math.cos(itemFanWidth / 2));
