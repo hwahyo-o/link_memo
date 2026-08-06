@@ -394,3 +394,21 @@
 - item은 부모별 outward multi-ring과 strict nearest-parent 조건을 유지한다.
 - 공개 화면 확인은 사용자가 수행하며 screenshot은 생성하지 않는다.
 - 최종 원격 branch는 main만 유지한다.
+
+
+## 26. 2026-08-06 item-only 재배치 최종 검증 기록
+
+### 구현 결과
+
+- 첨부 이미지의 중심부 item 밀집 문제를 대상으로 category·subcategory 구조를 유지하고 item 좌표만 외곽 radial band로 재계산했다.
+- 모든 item 후보는 subcategory 부모와 가장 가까운 부모 관계, 부모 도형 외곽, 중심 기준 계층 순서, sibling 방향, AABB 최소 42px 여백을 통과해야 한다.
+- 다수 item은 sibling 수에 맞는 deterministic fan 폭과 multi-ring 탐색으로 배치한다.
+- canvas-center 정규화 후 계층 검증이 실패하면 item-only 재배치 Loop를 제한 횟수만 수행하며, 기존 global fallback 동작은 보존한다.
+
+### 검증 및 보안
+
+- Branch CI #552: 성공.
+- Pages test/build #338: 성공.
+- screenshot: 생성하지 않음.
+- 테스트 fixture와 문서에는 API key, token, secret, 사용자 식별자 등 비공개 정보를 기록하지 않음.
+- 상태: PR #73 main 병합 대기.
