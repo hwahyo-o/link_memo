@@ -438,7 +438,8 @@ function packWithoutOverlap(nodes, positions, edges) {
                 ? categoryBandRadius + radialBandGap
                 : subcategoryBandRadius + radialBandGap;
             const accept = candidate => {
-                const regionSatisfied = !category
+                const regionSatisfied = node.kind === "item"
+                    || !category
                     || categoryOwnershipSatisfied(
                         candidate,
                         node,
