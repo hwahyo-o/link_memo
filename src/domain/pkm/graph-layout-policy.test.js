@@ -16,6 +16,7 @@ describe("graph layout policy", () => {
         expect(GRAPH_LAYOUT_RULES.minimumNodeGap).toBe(42);
         expect(GRAPH_LAYOUT_RULES.preferredNodeGap).toBe(42);
         expect(GRAPH_LAYOUT_RULES.minimumCategoryCenterDistance).toBe(420);
+        expect(GRAPH_LAYOUT_RULES.minimumRadialBandGap).toBe(42);
     });
 
     it("measures node separation from the outer geometry", () => {
