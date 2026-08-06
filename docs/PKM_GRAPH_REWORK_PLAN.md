@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: 2026-08-06 전역 중심 계층 재배치 작업 진행 중
+> 상태: 전역 중심 계층 재배치 및 배포 완료
 
 ## 1. 목적
 
@@ -503,3 +503,14 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 화면·저장·인증·동기화·외부 서비스·의존성은 변경하지 않았다.
 - screenshot은 생성하지 않았다.
 - 현재 상태: PR #69 main 병합 대기.
+
+## 21. 2026-08-06 최종 완료 기록
+
+- PR #69가 main에 병합되었다.
+- 최종 main commit: `b32289e6c3a2ef7fb93dcf136dd7ac3b6c53d333`.
+- Branch CI #498, #502와 Pages test/build #315, #317이 성공했다.
+- 공개 root `https://hwahyo-o.github.io/link_memo/`: HTTP 200.
+- 공개 PKM 페이지 `https://hwahyo-o.github.io/link_memo/pkm.html`: HTTP 200.
+- 실제 화면 screenshot은 생성하지 않았다.
+- 최종 원격 branch는 `main`만 유지한다.
+- 변경하지 않은 계층: 화면 구조 외 저장·인증·동기화·외부 서비스·의존성·앱 시작.
