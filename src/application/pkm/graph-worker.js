@@ -672,6 +672,49 @@ function packWithoutOverlap(nodes, positions, edges) {
         return true;
     };
 
+    const repairItemRadialBand = () => {
+        const items = nodes.filter(node => node.kind === "item");
+        if (!items.length) return false;
+        for (let pass = 0; pass < 8; pass += 1) {
+            const center = deriveBoundsCenter();
+            const subcategoryBand = Math.max(
+                0,
+                ...nodes
+                    .filter(node => node.kind === "subcategory")
+                    .map(node => radialDistanceFrom(positions.get(node.id), center))
+            );
+            const denseBuffer = items.length > 8
+                ? Math.max(120, subcategoryBand * 0.5)
+                : 0;
+            const floor = subcategoryBand + radialBandGap + denseBuffer;
+            let changed = false;
+            for (const node of items) {
+                const position = positions.get(node.id);
+                if (!position) continue;
+                const distance = radialDistanceFrom(position, center);
+                if (distance > floor) continue;
+                const parent = byId.get(hierarchy.parents.get(node.id));
+                const parentPosition = positions.get(parent?.id);
+                const direction = {
+                    x: position.x - center.x || (parentPosition?.x || 0) - center.x || Math.cos(hashSeed(node.id) * Math.PI * 2),
+                    y: position.y - center.y || (parentPosition?.y || 0) - center.y || Math.sin(hashSeed(node.id) * Math.PI * 2)
+                };
+                const length = Math.max(1, Math.hypot(direction.x, direction.y));
+                const amount = floor - distance + 1;
+                position.x += direction.x / length * amount;
+                position.y += direction.y / length * amount;
+                changed = true;
+            }
+            const nextCenter = deriveBoundsCenter();
+            if (radialHierarchySatisfied(nextCenter)) {
+                translateToCenter(nextCenter);
+                return radialHierarchySatisfied() && validateNoOverlap();
+            }
+            if (!changed) break;
+        }
+        return false;
+    };
+
     const repackGlobally = () => {
         buckets.clear();
         placed.clear();
@@ -729,7 +772,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             }
         }
     }
-    return repackGlobally();
+    return repairItemRadialBand() || repackGlobally();
 }
 export function layoutGraph(nodes, edges, iterations = layoutIterationsFor(nodes.length)) {
     nodes = nodes.slice(0, MAX_GRAPH_NODES);
