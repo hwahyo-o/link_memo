@@ -422,7 +422,10 @@ function packWithoutOverlap(nodes, positions, edges) {
             const outwardAngle = categoryPosition
                 ? Math.atan2(parentPosition.y - categoryPosition.y, parentPosition.x - categoryPosition.x)
                 : baseSlotAngle;
-            const itemFanWidth = Math.min(Math.PI * 1.1, Math.PI * 2);
+            const itemFanWidth = Math.min(
+                Math.PI * 2,
+                Math.max(Math.PI * 1.1, siblingCount * siblingEdgeAngleLimit(siblingCount))
+            );
             const slotAngle = node.kind === "item" && categoryPosition
                 ? outwardAngle + (((siblingIndex + 0.5) / siblingCount) - 0.5) * itemFanWidth
                 : baseSlotAngle;
@@ -438,7 +441,8 @@ function packWithoutOverlap(nodes, positions, edges) {
                 ? categoryBandRadius + radialBandGap
                 : subcategoryBandRadius + radialBandGap;
             const accept = candidate => {
-                const regionSatisfied = !category
+                const regionSatisfied = node.kind === "item"
+                    || !category
                     || categoryOwnershipSatisfied(
                         candidate,
                         node,
@@ -485,6 +489,106 @@ function packWithoutOverlap(nodes, positions, edges) {
             if (!position) return false;
             mark(node, position);
             if (node.kind === "subcategory") subcategoryBandRadius = Math.max(subcategoryBandRadius, radialDistance(position));
+        }
+        return true;
+    };
+
+    const reflowItemsOutward = () => {
+        const items = hierarchyNodes
+            .filter(node => node.kind === "item")
+            .sort((left, right) => {
+                const leftParent = hierarchy.parents.get(left.id);
+                const rightParent = hierarchy.parents.get(right.id);
+                return String(leftParent).localeCompare(String(rightParent)) || left.id.localeCompare(right.id);
+            });
+        if (!items.length) return true;
+
+        buckets.clear();
+        for (const node of nodes) {
+            if (node.kind === "item" || orphanIds.has(node.id)) continue;
+            const position = positions.get(node.id);
+            if (position) addToBucket(node, position);
+        }
+
+        const itemBandFloor = subcategoryBandRadius + radialBandGap + GRAPH_LAYOUT_RULES.preferredNodeGap;
+        for (const node of items) {
+            const parent = byId.get(hierarchy.parents.get(node.id));
+            const parentPosition = positions.get(parent?.id);
+            if (!parent || !parentPosition || !placed.has(parent.id)) return false;
+
+            const siblings = (childrenByParent.get(parent.id) || [])
+                .filter(sibling => sibling.kind === "item")
+                .sort((left, right) => left.id.localeCompare(right.id));
+            const siblingIndex = siblings.findIndex(sibling => sibling.id === node.id);
+            const siblingCount = Math.max(1, siblings.length);
+            const siblingRadius = deriveParentPlacementRadius(parent, siblings, node.kind, nodeGap);
+            const categoryId = categoryAncestor(node.id);
+            const category = categoryId ? byId.get(categoryId) : null;
+            const categoryPosition = category ? positions.get(category.id) : null;
+            const categoryRadius = category ? getCategoryGroupRadius(category, 1) : null;
+            const otherRegions = categories
+                .filter(other => other.id !== categoryId && positions.get(other.id))
+                .map(other => ({
+                    position: positions.get(other.id),
+                    radius: getCategoryGroupRadius(other, 1)
+                }));
+            const outwardAngle = categoryPosition
+                ? Math.atan2(parentPosition.y - categoryPosition.y, parentPosition.x - categoryPosition.x)
+                : Math.atan2(parentPosition.y, parentPosition.x);
+            const itemFanWidth = Math.min(
+                Math.PI * 2,
+                Math.max(Math.PI * 1.1, siblingCount * siblingEdgeAngleLimit(siblingCount))
+            );
+            const slotAngle = outwardAngle
+                + (((siblingIndex + 0.5) / siblingCount) - 0.5) * itemFanWidth;
+            const outwardProjectionFactor = Math.max(0.5, Math.cos(itemFanWidth / 2));
+            const minimumItemParentRadius = Math.max(
+                0,
+                (itemBandFloor - radialDistance(parentPosition)) / outwardProjectionFactor + 1
+            );
+            const peerPositions = siblings
+                .slice(0, Math.max(0, siblingIndex))
+                .map(sibling => positions.get(sibling.id))
+                .filter(Boolean);
+            const parentPeerPositions = nodes
+                .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id)
+                .map(candidate => positions.get(candidate.id))
+                .filter(Boolean);
+            const accept = candidate => {
+                const hierarchySatisfied = !category
+                    || hierarchyBandSatisfied(
+                        node,
+                        candidate,
+                        parentPosition,
+                        categoryPosition,
+                        node.kind,
+                        nodeGap
+                    );
+                return hierarchySatisfied
+                    && radialDistance(candidate) > itemBandFloor
+                    && nearestParentSatisfied(candidate, parentPosition, parentPeerPositions)
+                    && parentEdgeAngleSeparated(
+                        candidate,
+                        parentPosition,
+                        peerPositions,
+                        siblingEdgeAngleLimit(siblingCount)
+                    );
+            };
+            const position = findFreePosition(
+                node,
+                positions.get(node.id),
+                parent,
+                Math.max(
+                    parentDistanceLimit(parent, node, node.kind, nodeGap),
+                    siblingRadius,
+                    minimumItemParentRadius
+                ),
+                accept,
+                slotAngle,
+                Math.min(Math.PI / 3, Math.max(0.24, itemFanWidth / siblingCount * 0.75))
+            );
+            if (!position) return false;
+            mark(node, position);
         }
         return true;
     };
@@ -575,6 +679,7 @@ function packWithoutOverlap(nodes, positions, edges) {
         placed.clear();
         if (!placeCategories() || !placeRoots() || !placeChildren(scale)) continue;
         if (!compactCategoryGroups()) continue;
+        if (!reflowItemsOutward()) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
             const centerOrdered = node.kind === "subcategory" || node.kind === "item";
@@ -595,7 +700,11 @@ function packWithoutOverlap(nodes, positions, edges) {
             mark(node, position);
             return true;
         })) continue;
-        if (!normalizeToCanvasCenter() || !radialHierarchySatisfied()) continue;
+        if (!normalizeToCanvasCenter()) continue;
+        for (let pass = 0; pass < 4 && !radialHierarchySatisfied(); pass += 1) {
+            if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+        }
+        if (!radialHierarchySatisfied()) continue;
         if (!validateNoOverlap()) continue;
         if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return true;
     }
