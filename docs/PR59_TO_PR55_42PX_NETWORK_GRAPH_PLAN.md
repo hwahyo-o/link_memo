@@ -411,4 +411,15 @@
 - Pages test/build #338: 성공.
 - screenshot: 생성하지 않음.
 - 테스트 fixture와 문서에는 API key, token, secret, 사용자 식별자 등 비공개 정보를 기록하지 않음.
-- 상태: PR #73 main 병합 대기.
+- 상태: PR #73 main 병합 완료; main push 배포 트리거 전파 확인 필요.
+
+
+## 27. 2026-08-06 최종 병합 및 인계 기록
+
+- PR #73 merge commit: `dfd0e40bd93e578568b6c93506a1c3b844a72a8e`.
+- 병합 전 Branch CI #552와 Pages test/build #338은 모두 성공했다.
+- main push 시 Pages 배포 workflow가 실행되도록 구성되어 있다.
+- screenshot 및 화면 캡처는 생성하지 않았다.
+- 원격 branch는 main만 남겼다.
+- 공개 문서에 비밀 키·token·사용자 식별자를 기록하지 않았다.
+- 상태: main 병합 완료, 배포 workflow 트리거 확인 대기.

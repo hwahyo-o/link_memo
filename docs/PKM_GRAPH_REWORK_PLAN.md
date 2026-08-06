@@ -592,4 +592,14 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 - 최종 canvas-center 정규화 후 radial 검증이 실패하면 item-only 재배치와 정규화를 최대 4회 반복하고, 기존 전역 fallback은 보존한다.
 - 변경 범위는 graph worker와 기존 worker 테스트이며 화면, 처리 외 계층의 저장·외부 서비스·의존성 연결은 변경하지 않았다.
 - 검증: Branch CI #552 성공, Pages test/build #338 성공. screenshot은 생성하지 않았다.
-- 상태: PR #73 main 병합 대기.
+- 상태: PR #73 main 병합 완료; main push 배포 트리거 전파 확인 필요.
+
+
+## 27. 2026-08-06 최종 병합 기록
+
+- PR #73은 main에 병합되었고 merge commit은 `dfd0e40bd93e578568b6c93506a1c3b844a72a8e`이다.
+- 병합 직전 검증: Branch CI #552 성공, Pages test/build #338 성공.
+- main push 기반 Pages 배포 workflow가 구성되어 있으며 병합으로 배포 트리거가 발생한다.
+- 이 turn에서는 사용자가 화면을 직접 확인한다고 했으므로 screenshot과 브라우저 화면 검증은 수행하지 않았다.
+- 원격 불필요 branch 정리 결과: `main`만 유지.
+- 상태: main 병합 완료, 배포 workflow 트리거 확인 대기.
