@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-05 KST
 > 작업 브랜치: `drill`
-> 상태: category 소유 영역·계층별 방사 배치·간선 방향 분리 구현 및 drill CI 검증 완료; main 병합 전
+> 상태: PR #61 main 병합 및 Pages 배포 완료; 42px 네트워크 그래프 정책 적용, 화면 직접 확인 대기
 
 ## 1. 목적
 
@@ -292,3 +292,15 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 3. main Pages workflow 성공을 확인한다.
 4. 공개 HTML과 최신 graph Worker asset HTTP 응답을 확인한다.
 5. GitHub connector가 branch ref 삭제를 지원하지 않으면 drill 삭제 필요 상태를 명시한다.
+
+
+## 12. 2026-08-06 PR #61 완료 기록
+
+- PR #59의 descendant envelope compact packing과 orphan 중앙 재배치를 제거했다.
+- PR #55의 변칙 네트워크 배치, deterministic seed, golden-angle 후보, spatial bucket, 부모·간선 규칙을 복원했다.
+- 일반 노드 외곽 AABB 간격은 42px 하드 최소값으로 적용했다.
+- Branch CI run 433과 434, Pages test/build run 286과 287, main Pages run 288이 성공했다.
+- main 병합 커밋은 `212b11a`이며 공개 root와 `pkm.html`은 HTTP 200으로 확인했다.
+- 화면 screenshot은 생성하지 않았고, 실제 화면 확인은 사용자에게 위임했다.
+- 저장·인증·Firestore·Cloudflare·Drive·외부 API·의존성은 변경하지 않았다.
+- 원격 브랜치는 `main`만 남겼다.
