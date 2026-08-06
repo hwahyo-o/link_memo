@@ -632,3 +632,28 @@ fixture는 가공된 구조와 일반 문자열만 사용한다.
 ### 실패 수정 Loop
 
 후보 부족 시 item ring 반경과 sibling fan만 deterministic하게 확장한다. 부모 좌표를 이동시키거나 색상별 예외를 추가하지 않는다. Gate 실패가 반복되면 실패한 fixture와 수치를 문서화하고 해당 배치 단계만 수정한 뒤 전체 검증을 재실행한다.
+
+
+## 29. 2026-08-06 구현 및 검증 결과
+
+- 구현 기준: main의 기존 hierarchy/force/AABB packing을 유지하고, `reflowItemsOutward`의 대상만 `nodes.filter(node => node.kind === "item")`로 확장했다.
+- `contentKind`, 색상, facet, 연결 유형은 배치 분기 조건으로 사용하지 않는다.
+- 부모 subcategory가 확인되는 item은 기존 parent-nearest/outward/sibling fan/AABB 후보 탐색을 사용한다.
+- 부모가 없거나 계층 배치 대상에서 누락된 item은 canvas 외곽 ring 후보로 재시도한다.
+- item 수가 많은 경우에만 bounded dense retry와 최종 outer-band convergence를 수행한다. category/subcategory 좌표 및 저장·외부 서비스 계층은 변경하지 않았다.
+- AABB 검증의 기본 최소 여백은 `GRAPH_LAYOUT_RULES.minimumRadialBandGap = 42`와 기존 `preferredNodeGap = 42`를 따른다.
+
+### 실제 Gate 결과
+
+- 혼합 fixture: link/image/text/file `contentKind` 4종, item 24개 통과.
+- 전체 Vitest: 206 tests passed.
+- Branch CI run 612: success.
+- GitHub Pages test/build run 367: success.
+- secret scan: 변경 diff에 API key, token, private ID, credential 기록 없음.
+- screenshot 및 브라우저 화면 캡처: 생성하지 않음. 화면 확인은 사용자 수행 범위로 남겼다.
+
+### 인수인계 상태
+
+- 구현 커밋 head: `f7c54ad9e45e2d453c5280e7651dc7be50eb7be4`
+- PR: #75, base `main`, merge 전 검토 상태.
+- 다음 단계: PR #75 merge → main push 배포 workflow 확인 → 원격 branch를 main만 남기도록 정리.
