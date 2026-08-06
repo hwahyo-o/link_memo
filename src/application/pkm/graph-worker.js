@@ -131,6 +131,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const otherRoots = roots.filter(node => node.kind !== "category");
     const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
     const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
+    const orphanIds = new Set(orphans.map(node => node.id));
 
     const bucketKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
     const collides = (node, x, y) => {
