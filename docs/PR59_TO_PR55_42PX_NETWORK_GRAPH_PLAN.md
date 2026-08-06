@@ -2,7 +2,7 @@
 
 > 기준 시각: 2026-08-06 KST
 > 작업 브랜치: `drill`
-> 상태: 승인 후 구현 진행 중
+> 상태: 구현·검증·main 병합·Pages 배포·브랜치 정리 완료
 
 ## 1. 목표와 범위
 
@@ -100,3 +100,17 @@
 ## 7. 보안·문서 규칙
 
 문서와 fixture에는 API key, OAuth secret/token, Firebase·Cloudflare 운영 식별자, 사용자 UID/email, 실제 메모 내용을 기록하지 않는다.
+
+
+## 8. 완료 결과
+
+- PR #61: `rollback: restore PR55 network graph with 42px spacing`
+- main 병합 커밋: `212b11a`
+- Branch CI run 433, 434: 성공
+- Test and Deploy GitHub Pages run 286, 287: 성공
+- main Pages run 288: test/build/deploy 성공
+- 공개 `https://hwahyo-o.github.io/link_memo/`와 `pkm.html`: HTTP 200
+- 공개 PKM JavaScript/CSS 및 외부 Cytoscape·CodeMirror asset: HTTP 200
+- secret pattern 검사: 발견 없음
+- screenshot: 생성하지 않음. 화면은 사용자가 직접 확인
+- 원격 브랜치: `main`만 유지
