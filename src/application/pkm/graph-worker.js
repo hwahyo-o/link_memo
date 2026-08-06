@@ -132,12 +132,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const hierarchyNodes = nodes.filter(node => hierarchy.parents.has(node.id));
     const orphans = nodes.filter(node => !hierarchy.parents.has(node.id) && !hierarchy.children.get(node.id)?.length);
     const orphanIds = new Set(orphans.map(node => node.id));
-    const layoutCenter = nodes.reduce((center, node) => {
-        const position = positions.get(node.id);
-        return position
-            ? { x: center.x + position.x / nodes.length, y: center.y + position.y / nodes.length }
-            : center;
-    }, { x: 0, y: 0 });
+    const layoutCenter = { x: 0, y: 0 };
     const radialDistance = position => centerDistance(position, layoutCenter);
     let categoryBandRadius = 0;
     let subcategoryBandRadius = 0;
@@ -360,8 +355,17 @@ function packWithoutOverlap(nodes, positions, edges) {
     };
 
     const placeCategories = () => {
-        for (const node of categories.slice().sort((left, right) => left.id.localeCompare(right.id))) {
-            const position = findFreePosition(node, layoutCenter);
+        const ordered = categories.slice().sort((left, right) => left.id.localeCompare(right.id));
+        const categoryRadius = ordered.length === 1
+            ? 0
+            : Math.max(240, ordered.length * 260 / (Math.PI * 2));
+        for (const [index, node] of ordered.entries()) {
+            const angle = index * Math.PI * 2 / ordered.length + (hashSeed(node.id) - 0.5) * 0.18;
+            const origin = {
+                x: layoutCenter.x + Math.cos(angle) * categoryRadius,
+                y: layoutCenter.y + Math.sin(angle) * categoryRadius
+            };
+            const position = findFreePosition(node, origin);
             if (!position) return false;
             mark(node, position);
         }
