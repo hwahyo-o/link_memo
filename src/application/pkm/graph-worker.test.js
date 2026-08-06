@@ -362,7 +362,6 @@ describe("PKM graph worker algorithms", () => {
         const categoryBand = Math.max(radius("category-a"), radius("category-b"));
         const subcategoryBand = Math.max(radius("subcategory-a"), radius("subcategory-b"));
         const itemBand = Math.min(...nodes.slice(4).map(node => radius(node.id)));
-        console.log("DEBUG_MIXED_BANDS", { center, categoryBand, subcategoryBand, itemBand });
         expect(subcategoryBand).toBeGreaterThan(categoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
         expect(itemBand).toBeGreaterThan(subcategoryBand + GRAPH_LAYOUT_RULES.minimumRadialBandGap);
     });
