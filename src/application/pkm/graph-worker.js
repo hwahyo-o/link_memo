@@ -698,7 +698,11 @@ function packWithoutOverlap(nodes, positions, edges) {
             mark(node, position);
             return true;
         })) continue;
-        if (!normalizeToCanvasCenter() || !radialHierarchySatisfied()) continue;
+        if (!normalizeToCanvasCenter()) continue;
+        for (let pass = 0; pass < 4 && !radialHierarchySatisfied(); pass += 1) {
+            if (!reflowItemsOutward() || !normalizeToCanvasCenter()) break;
+        }
+        if (!radialHierarchySatisfied()) continue;
         if (!validateNoOverlap()) continue;
         if (nodes.every(node => Number.isFinite(positions.get(node.id)?.x) && Number.isFinite(positions.get(node.id)?.y))) return true;
     }
