@@ -782,7 +782,7 @@ function packWithoutOverlap(nodes, positions, edges) {
                     .filter(node => node.kind === "subcategory")
                     .map(node => radialDistance(positions.get(node.id)))
             );
-            const floor = subcategoryBand + radialBandGap + 80;
+            const floor = subcategoryBand + radialBandGap + 160;
             let changed = false;
             for (const node of denseItems) {
                 const position = positions.get(node.id);
