@@ -677,6 +677,7 @@ function packWithoutOverlap(nodes, positions, edges) {
         placed.clear();
         if (!placeCategories() || !placeRoots() || !placeChildren(scale)) continue;
         if (!compactCategoryGroups()) continue;
+        if (!reflowItemsOutward()) continue;
         const orderedOrphans = orphans.slice().sort((left, right) => hashSeed(left.id) - hashSeed(right.id) || left.id.localeCompare(right.id));
         if (!orderedOrphans.every(node => {
             const centerOrdered = node.kind === "subcategory" || node.kind === "item";
