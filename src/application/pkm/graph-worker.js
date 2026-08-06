@@ -134,6 +134,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const orphanIds = new Set(orphans.map(node => node.id));
     const layoutCenter = { x: 0, y: 0 };
     const radialDistance = position => centerDistance(position, layoutCenter);
+    const radialBandGap = GRAPH_LAYOUT_RULES.minimumRadialBandGap;
     let categoryBandRadius = 0;
     let subcategoryBandRadius = 0;
 
@@ -250,8 +251,8 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .filter(Boolean);
             return nearestParentSatisfied(positions.get(node.id), parentPosition, peers);
         };
-        return subcategories.every(node => radialDistance(positions.get(node.id)) > categoryBand)
-            && items.every(node => radialDistance(positions.get(node.id)) > subcategoryBand)
+        return subcategories.every(node => radialDistance(positions.get(node.id)) > categoryBand + radialBandGap)
+            && items.every(node => radialDistance(positions.get(node.id)) > subcategoryBand + radialBandGap)
             && subcategories.every(nearestAssignedParent)
             && items.every(nearestAssignedParent);
     };
@@ -433,7 +434,9 @@ function packWithoutOverlap(nodes, positions, edges) {
                 .filter(candidate => candidate.kind === parent.kind && candidate.id !== parent.id && placed.has(candidate.id))
                 .map(candidate => positions.get(candidate.id))
                 .filter(Boolean);
-            const radialFloor = node.kind === "subcategory" ? categoryBandRadius : subcategoryBandRadius;
+            const radialFloor = node.kind === "subcategory"
+                ? categoryBandRadius + radialBandGap
+                : subcategoryBandRadius + radialBandGap;
             const accept = candidate => {
                 const regionSatisfied = !category
                     || categoryOwnershipSatisfied(
@@ -578,7 +581,7 @@ function packWithoutOverlap(nodes, positions, edges) {
             const radialFloor = node.kind === "subcategory"
                 ? categoryBandRadius
                 : node.kind === "item"
-                    ? Math.max(subcategoryBandRadius, 1200)
+                    ? Math.max(subcategoryBandRadius + radialBandGap, 1200)
                     : 0;
             const origin = centerOrdered ? layoutCenter : positions.get(node.id);
             const position = findFreePosition(
