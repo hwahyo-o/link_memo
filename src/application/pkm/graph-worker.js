@@ -675,7 +675,7 @@ function packWithoutOverlap(nodes, positions, edges) {
     const repairItemRadialBand = () => {
         const items = nodes.filter(node => node.kind === "item");
         if (!items.length) return false;
-        const smallConnectedLayer = items.length <= 4 && items.every(node => {
+        const smallConnectedLayer = items.length <= 2 && items.every(node => {
             const parent = byId.get(hierarchy.parents.get(node.id));
             return parent?.kind === "subcategory"
                 && byId.get(hierarchy.parents.get(parent.id))?.kind === "category";
@@ -703,9 +703,10 @@ function packWithoutOverlap(nodes, positions, edges) {
                 }
             }
 
+            const itemCenter = deriveBoundsCenter();
             const subcategoryBand = Math.max(
                 0,
-                ...subcategories.map(node => radialDistanceFrom(positions.get(node.id), center))
+                ...subcategories.map(node => radialDistanceFrom(positions.get(node.id), itemCenter))
             );
             const itemTargetRadius = subcategoryBand + radialBandGap + 240;
             for (const node of items) {
@@ -720,8 +721,8 @@ function packWithoutOverlap(nodes, positions, edges) {
                 };
                 const length = Math.max(1, Math.hypot(direction.x, direction.y));
                 const target = {
-                    x: center.x + direction.x / length * itemTargetRadius,
-                    y: center.y + direction.y / length * itemTargetRadius
+                    x: itemCenter.x + direction.x / length * itemTargetRadius,
+                    y: itemCenter.y + direction.y / length * itemTargetRadius
                 };
                 if (Math.hypot(target.x - parentPosition.x, target.y - parentPosition.y) <= 300) {
                     positions.get(node.id).x = target.x;
