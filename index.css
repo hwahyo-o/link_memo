@@ -240,6 +240,7 @@ body.is-subcategory-dragging .subcategory-panel {
 
 .image-preview-dialog,
 .modal-surface {
+    width: 80%;
     animation: scale-in 0.18s ease-out;
 }
 
