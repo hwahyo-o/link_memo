@@ -21,13 +21,13 @@ export function createModalController() {
         input.classList.add("hidden"); cancelButton.classList.add("hidden"); input.onkeydown = null;
         if (type === "prompt") {
             input.classList.remove("hidden"); cancelButton.classList.remove("hidden"); input.style.height = "auto";
-            setTimeout(() => { input.style.height = `${Math.min(input.scrollHeight, 200)}px`; input.focus(); }, 50);
+            setTimeout(() => { input.style.height = `${Math.max(200, Math.min(input.scrollHeight, 580))}px`; input.focus(); }, 50);
             input.onkeydown = event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); confirm(); } };
         } else if (type === "confirm") cancelButton.classList.remove("hidden");
         modal.classList.remove("hidden");
         if (type !== "prompt") setTimeout(() => confirmButton.focus(), 0);
     };
-    input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.min(input.scrollHeight, 200)}px`; });
+    input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = `${Math.max(200, Math.min(input.scrollHeight, 580))}px`; });
     confirmButton.onclick = confirm; cancelButton.onclick = close;
     return {
         customAlert: modalMessage => open({ type: "alert", modalTitle: "알림", modalMessage }),
