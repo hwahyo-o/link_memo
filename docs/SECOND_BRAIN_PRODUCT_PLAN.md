@@ -54,7 +54,7 @@ The first release is a knowledge workspace, not a full task-management replaceme
 - Note: Markdown body
 - Link: URL, title, source, fetched preview when available
 - Image: original image plus optional caption and extracted metadata
-- Document: original file plus extracted text where feasible
+- Document: PDF, DOCX, TXT, or MD original plus extracted/searchable text where feasible
 
 Other file formats, audio, video, automated transcription, and browser-wide web clipping are post-MVP candidates. They are not required for the first release. The confirmed first document types are PDF, DOCX, TXT, and MD.
 
@@ -146,8 +146,8 @@ A framework or database rewrite is out of scope unless the current implementatio
 
 These are technical checks, not product decisions:
 
-- Which document extensions should count as “common documents” in the first release.
-- Whether PDF and office-document text extraction can run in-browser without a paid service.
+- Whether PDF and DOCX text extraction can run in-browser without a paid service, including Korean text.
+- Whether other file types should be considered for a later attachment-only phase.
 - How attachments will be stored and referenced when Drive is disconnected or quota is exhausted.
 - Whether the backup worker should store attachment binaries or only safe metadata and references.
 - How current Canvas files and imported Link Memo records should appear in the new Library.
