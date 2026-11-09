@@ -55,7 +55,7 @@ The exact path format must pass the existing path normalizer. Metadata should no
   "capturedAt": 0,
   "updatedAt": 0,
   "legacyPath": null,
-  "attachmentIds": [],
+  "attachments": [],
   "relatedIds": [],
   "extract": {
     "state": "not-needed | pending | ready | partial | failed",
@@ -66,7 +66,7 @@ The exact path format must pass the existing path normalizer. Metadata should no
 }
 ```
 
-This is a field proposal, not a finalized API contract. Use IDs for relations rather than display names so renaming a tag, Area, or Project does not break references. Avoid storing derived graph coordinates or view-only UI state in the Vault.
+This is a field proposal, not a finalized API contract. In this proposal, attachment metadata records are nested in the item sidecar under `attachments`; binary content remains external. Use IDs for relations rather than display names so renaming a tag, Area, or Project does not break references. Avoid storing derived graph coordinates or view-only UI state in the Vault.
 
 ## Attachment metadata proposal
 
