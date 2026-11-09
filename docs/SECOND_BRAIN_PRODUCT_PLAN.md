@@ -4,7 +4,7 @@
 
 - Status: planning draft
 - Product scope: personal and work knowledge in one workspace
-- First capture scope: text, links, images, PDFs, and document files
+- First capture scope: text, links, images, PDF, DOCX, TXT, and MD
 - Cost target: no additional recurring cost
 - Rollout: staged replacement of the existing PKM page
 - This document does not authorize a production cutover or destructive data migration.
@@ -56,7 +56,7 @@ The first release is a knowledge workspace, not a full task-management replaceme
 - Image: original image plus optional caption and extracted metadata
 - Document: original file plus extracted text where feasible
 
-Audio, video, automated transcription, and browser-wide web clipping are post-MVP candidates. They are not required for the first release.
+Other file formats, audio, video, automated transcription, and browser-wide web clipping are post-MVP candidates. They are not required for the first release. The confirmed first document types are PDF, DOCX, TXT, and MD.
 
 ### Suggested item fields
 
@@ -76,7 +76,7 @@ Markdown files should remain exportable as Markdown. Structured fields should ha
 
 ### Included
 
-- Capture text, links, images, PDFs, and common document files.
+- Capture text, links, images, PDF, DOCX, TXT, and MD.
 - Keep uncategorized captures in an Inbox.
 - Assign and edit tags, Areas, Projects, and processing state.
 - Search titles, Markdown, extracted document text where supported, tags, and source metadata.
