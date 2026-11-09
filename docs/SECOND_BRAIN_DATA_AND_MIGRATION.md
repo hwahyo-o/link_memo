@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed design for implementation planning. It builds on the current PKM Vault, IndexedDB outbox, Firestore chunk repository, Google Drive image worker, and Cloudflare JSON backup worker. The user selected private Google Drive for document binaries; per-file quota and recovery rules remain to be finalized. No production data is changed by this document.
+Proposed design for implementation planning. It builds on the current PKM Vault, IndexedDB outbox, Firestore chunk repository, Google Drive image worker, and Cloudflare JSON backup worker. The user selected private Google Drive for document binaries; the 20 MiB per-file PDF/DOCX cap is selected; aggregate quota and recovery rules remain to be finalized. No production data is changed by this document.
 
 ## Design goals
 
@@ -114,7 +114,7 @@ The current Drive worker accepts image MIME types only, has a 20 MiB image limit
 Before implementing document uploads, define:
 
 - permitted MIME types and extension/MIME consistency checks;
-- a per-file size limit and batch limits;
+- a 20 MiB per-file limit for PDF/DOCX (selected), plus batch limits;
 - path and filename normalization;
 - UID ownership verification on upload, download, and delete;
 - upload timeouts, retry/idempotency behavior, and orphan cleanup;
@@ -159,6 +159,7 @@ These need resolution before document upload coding:
 | Choice | Recommended default | Why |
 |---|---|---|
 | Document file storage | **Selected:** private per-user Google Drive folder via a new worker route | The app already has a Drive OAuth flow; the existing image-only route cannot be reused unchanged. |
+| PDF/DOCX size cap | **Selected:** 20 MiB per file | Matches the current image-worker cap as a conservative first limit; revisit only after upload and extraction measurements. |
 | Offline binary handling | **Selected direction:** queue upload and show an unsynced state until Drive confirms upload; temporary local caching depends on browser quota | Prevent a false “saved everywhere” message and uncontrolled local storage growth. |
 | Binary backup | **Selected direction:** keep metadata and attachment manifest in R2; do not duplicate binaries there in the first release | Current backup API is JSON and should not be treated as a binary object store. |
 | Metadata sync | Existing Vault JSON sidecars and revisioned Firestore chunks | Reuse tested sync/conflict semantics and avoid a parallel sync engine in the first release. |
