@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed design for discussion and implementation planning. It builds on the current PKM Vault, IndexedDB outbox, Firestore chunk repository, Google Drive image worker, and Cloudflare JSON backup worker. No production data is changed by this document.
+Proposed design for implementation planning. It builds on the current PKM Vault, IndexedDB outbox, Firestore chunk repository, Google Drive image worker, and Cloudflare JSON backup worker. The user selected private Google Drive for document binaries; per-file quota and recovery rules remain to be finalized. No production data is changed by this document.
 
 ## Design goals
 
@@ -158,9 +158,9 @@ These need resolution before document upload coding:
 
 | Choice | Recommended default | Why |
 |---|---|---|
-| Document file storage | Private per-user Google Drive folder via a new worker route | The app already has a Drive OAuth flow; the existing image-only route cannot be reused unchanged. |
-| Offline binary handling | Queue metadata; temporarily cache the binary only if browser quota permits, and show an unsynced state | Prevent a false “saved everywhere” message and uncontrolled local storage growth. |
-| Binary backup | Keep a manifest in R2 first; decide on a separate binary backup after measuring storage and restore needs | Current backup API is JSON and should not be treated as a binary object store. |
+| Document file storage | **Selected:** private per-user Google Drive folder via a new worker route | The app already has a Drive OAuth flow; the existing image-only route cannot be reused unchanged. |
+| Offline binary handling | **Selected direction:** queue upload and show an unsynced state until Drive confirms upload; temporary local caching depends on browser quota | Prevent a false “saved everywhere” message and uncontrolled local storage growth. |
+| Binary backup | **Selected direction:** keep metadata and attachment manifest in R2; do not duplicate binaries there in the first release | Current backup API is JSON and should not be treated as a binary object store. |
 | Metadata sync | Existing Vault JSON sidecars and revisioned Firestore chunks | Reuse tested sync/conflict semantics and avoid a parallel sync engine in the first release. |
 | Legacy conversion | Read-only projection first, sidecar on edit | Keeps the prior PKM usable and avoids bulk rewrite risk. |
 | Extraction size | Bounded text with an explicit partial/truncated state | The Vault currently caps individual UTF-8 files at 2,000,000 bytes. |
