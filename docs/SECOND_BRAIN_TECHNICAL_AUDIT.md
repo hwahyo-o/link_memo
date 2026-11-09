@@ -43,16 +43,16 @@ This boundary supports offline-created metadata, clear upload retries, document 
 
 This is a recommendation, not a selected provider contract. Drive quota, retention, user disconnection, and restore behavior need explicit decisions before implementation.
 
-## Recommended first document types
+## Confirmed first document types
 
-Default proposal for MVP:
+The user selected this scope for the MVP:
 
 - `.pdf`: preview where feasible; attempt local text extraction.
 - `.docx`: retain original and attempt local text extraction.
 - `.txt` and `.md`: full text search; Markdown remains editable.
 - Other files: defer at first, or allow attachment-only storage after size and quota rules are settled.
 
-Do not promise full-text extraction for scanned PDFs, legacy `.doc`, spreadsheets, or slide decks until a local parser and representative Korean fixtures are reviewed. Unsupported files can still be retained by name if the user chooses attachment-only support.
+Do not promise full-text extraction for scanned PDFs or unusual encodings until a local parser and representative Korean fixtures are reviewed. Legacy `.doc`, spreadsheets, slide decks, and other types are deferred. Attachment-only support for other file types is not part of the confirmed MVP.
 
 ## Migration shape
 
@@ -66,8 +66,7 @@ Do not promise full-text extraction for scanned PDFs, legacy `.doc`, spreadsheet
 
 ## Decisions still needed before file-upload implementation
 
-- Whether the recommended PDF, DOCX, TXT, and MD set is the right MVP file scope.
-- Whether users should be allowed to save other types as attachment-only files.
+- Whether to add attachment-only support for other file types after the MVP.
 - A per-file size limit and a user-visible quota policy based on available free storage.
 - Expected behavior when Drive is not connected, quota is full, or an uploaded object is removed.
 - Whether attachments should be copied to R2 or backed up through metadata/reference manifests only.
