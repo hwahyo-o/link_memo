@@ -41,7 +41,7 @@ This boundary supports offline-created metadata, clear upload retries, document 
 6. Offer an export manifest and clear missing-file status if a Drive object is unavailable.
 7. Define how offline-only or Drive-disconnected users retain binaries before enabling document capture across devices.
 
-This is a recommendation, not a selected provider contract. Drive quota, retention, user disconnection, and restore behavior need explicit decisions before implementation.
+Selected direction: use a private Google Drive folder for document binaries and keep references/manifests in backups. Drive quota, retention, disconnected-account behavior, and restore behavior still need explicit implementation rules.
 
 ## Confirmed first document types
 
