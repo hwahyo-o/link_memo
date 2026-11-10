@@ -83,7 +83,7 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 - The capture form saves `areaIds`, `projectIds`, and `relatedIds`; detail pages resolve explicit relations and `[[wiki links]]`, show inbound backlinks, and draw a focused SVG graph around the selected item.
 - A separate preview page calls the item repository and queue for notes, links, images, PDF/DOCX, and TXT/MD import. It is reachable from the existing PKM header, while the original entry point remains in place. The legacy file tree and graph filter the reserved path. The preview has not been deployed or tested.
 - Document ownership and folder records must survive Drive credential disconnect so a reconnect can authorize existing Vault references. Explicit account-data deletion removes the user's recorded document rows and files.
-- PDF.js extracts selectable PDF text in a browser worker; Mammoth extracts DOCX raw text in the browser. Extracted text is capped at 300,000 UTF-8 bytes per attachment and indexed with the item's local search. Scanned PDFs or extraction failures keep the original attachment and show a non-ready state.
+- PDF.js `5.4.624` extracts selectable PDF text in a browser worker; Mammoth extracts DOCX raw text in the browser. The PDF.js version supports the repository's Node 20 deploy workflow. Extracted text is capped at 300,000 UTF-8 bytes per attachment and indexed with the item's local search. Scanned PDFs or extraction failures keep the original attachment and show a non-ready state.
 
 ## Next technical work
 
