@@ -6,6 +6,10 @@ const LEGACY_EXTENSION_KINDS = new Map([
     ["json", "structured"]
 ]);
 
+export function isSecondBrainPath(path) {
+    return String(path || "").startsWith(SECOND_BRAIN_ROOT);
+}
+
 function extensionOf(path) {
     const segment = String(path || "").split("/").pop() || "";
     return segment.includes(".") ? segment.split(".").pop().toLowerCase() : "";
@@ -28,7 +32,7 @@ export function projectLegacyVaultFiles(files) {
     const latestByPath = new Map();
     for (const file of Array.isArray(files) ? files : []) {
         if (!file?.path || file.deleted === true) continue;
-        if (file.path.startsWith(SECOND_BRAIN_ROOT)) continue;
+        if (isSecondBrainPath(file.path)) continue;
         const current = latestByPath.get(file.path);
         if (!current || stableClock(file, current) >= 0) latestByPath.set(file.path, file);
     }
