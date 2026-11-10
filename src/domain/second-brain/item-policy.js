@@ -50,11 +50,11 @@ function assertBodySize(bodyMarkdown) {
 export function normalizeSecondBrainItem(value, now = Date.now()) {
     if (!value || typeof value !== "object") throw new Error("SECOND_BRAIN_ITEM_INVALID");
 
-    const id = requireText(value.id, "SECOND_BRAIN_ID_INVALID");
     const kind = String(value.kind || "");
     if (!ALLOWED_KINDS.has(kind)) throw new Error("SECOND_BRAIN_KIND_INVALID");
 
     const legacyPath = value.legacyPath ? requireText(value.legacyPath, "SECOND_BRAIN_LEGACY_PATH_INVALID", 512) : null;
+    const id = requireText(value.id, "SECOND_BRAIN_ID_INVALID", legacyPath ? 520 : MAX_ID_LENGTH);
     if (LEGACY_KINDS.has(kind) && !legacyPath) throw new Error("SECOND_BRAIN_LEGACY_KIND_REQUIRED");
 
     const state = String(value.state || "inbox");
