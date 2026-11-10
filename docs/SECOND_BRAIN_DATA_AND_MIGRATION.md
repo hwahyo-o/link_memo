@@ -154,7 +154,7 @@ Before implementing document uploads, define:
 
 ## Open technical choices
 
-These need resolution before document upload coding:
+The product-level storage choices below are defined in `docs/SECOND_BRAIN_STORAGE_POLICY.md`. These remaining technical checks need resolution before document upload coding:
 
 | Choice | Recommended default | Why |
 |---|---|---|
