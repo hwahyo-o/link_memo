@@ -41,7 +41,7 @@ This boundary supports offline-created metadata, clear upload retries, document 
 6. Offer an export manifest and clear missing-file status if a Drive object is unavailable.
 7. Define how offline-only or Drive-disconnected users retain binaries before enabling document capture across devices.
 
-Selected direction: use a private Google Drive folder for document binaries and keep references/manifests in backups. The user selected 20 MiB as the per-file cap for PDF/DOCX. Aggregate Drive quota, retention, disconnected-account behavior, and restore behavior still need explicit implementation rules.
+Selected direction: use a private Google Drive folder for document binaries, with a 20 MiB PDF/DOCX cap and attachment references in backups. See `docs/SECOND_BRAIN_STORAGE_POLICY.md` for offline queue, quota failure, deletion, and restore rules. The remaining check is whether the current OAuth scope can expose an exact quota meter.
 
 ## Confirmed first document types
 
@@ -67,9 +67,8 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 ## Decisions still needed before file-upload implementation
 
 - Whether to add attachment-only support for other file types after the MVP.
-- A user-visible aggregate quota policy based on available free storage.
-- Expected behavior when Drive is not connected, quota is full, or an uploaded object is removed.
-- Whether attachments should be copied to R2 or backed up through metadata/reference manifests only.
+- Whether to expose an exact Drive-quota meter under the current OAuth scope; until verified, show upload state and provider errors rather than a guessed remaining-space figure.
+- Confirm deployed Worker route/body limits and browser storage behavior before rollout.
 - Whether OCR for scanned Korean PDFs is a later requirement; it may require an external service or substantial client-side processing.
 
 ## Next technical work
