@@ -5,6 +5,7 @@ import { createIdleSyncScheduler } from "../application/memos/idle-sync-schedule
 import { createIndexedDbVaultRepository } from "../infrastructure/pkm/indexeddb-vault-repository.js";
 import { createFirestoreVaultRepository } from "../infrastructure/pkm/firestore-vault-repository.js";
 import { createVaultSecondBrainItemRepository } from "../infrastructure/second-brain/vault-item-repository.js";
+import { createVaultSecondBrainContextRepository } from "../infrastructure/second-brain/vault-context-repository.js";
 import { createIndexedDbAttachmentQueue } from "../infrastructure/second-brain/indexeddb-attachment-queue.js";
 import { createDriveWorkerDocumentRepository } from "../infrastructure/http/drive-worker-document-repository.js";
 import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-worker-image-repository.js";
@@ -34,8 +35,13 @@ const documentRepository = createDriveWorkerDocumentRepository({
 let currentUser = null;
 let sessionId = 0;
 let itemRepository = null;
+let contextRepository = null;
+let areas = [];
+let projects = [];
+let cachedItems = [];
 let currentView = "inbox";
 let selectedId = null;
+let selectedContext = null;
 let driveConnected = false;
 let driveConnection = null;
 
@@ -47,7 +53,7 @@ const pkmSync = createPkmSyncService({
         if (auth?.currentUser?.uid !== userId || currentUser?.uid !== userId) return;
         vault.replace(snapshot);
         setSyncStatus("동기화 완료");
-        void renderItems();
+        void refreshContexts().then(renderItems);
     }
 });
 
@@ -86,6 +92,8 @@ function resetCapture() {
     byId("imageFile").value = "";
     byId("textFile").value = "";
     setCaptureKind("note");
+    if (selectedContext?.type === "area") byId("areaSelect").value = selectedContext.id;
+    if (selectedContext?.type === "project") byId("projectSelect").value = selectedContext.id;
     setNotice("");
     selectedId = null;
     void renderItems();
@@ -98,11 +106,189 @@ function createNode(tag, className, text) {
     return node;
 }
 
+function renderContextOptions() {
+    const areaSelect = byId("areaSelect");
+    const projectSelect = byId("projectSelect");
+    const relatedSelect = byId("relatedItems");
+    const selectedArea = areaSelect.value;
+    const selectedProject = projectSelect.value;
+    const selectedRelated = new Set([...relatedSelect.selectedOptions].map(option => option.value));
+    areaSelect.replaceChildren(new Option("분야 없음", ""));
+    projectSelect.replaceChildren(new Option("프로젝트 없음", ""));
+    areas.forEach(area => areaSelect.add(new Option(area.name, area.id)));
+    projects.forEach(project => projectSelect.add(new Option(project.name, project.id)));
+    areaSelect.value = selectedArea;
+    projectSelect.value = selectedProject;
+    const editingId = byId("itemId").value;
+    relatedSelect.replaceChildren(...cachedItems
+        .filter(item => item.id !== editingId)
+        .map(item => new Option(`${item.title} · ${kindLabel(item.kind)}`, item.id)));
+    [...relatedSelect.options].forEach(option => { option.selected = selectedRelated.has(option.value); });
+}
+
+async function refreshContexts(session = sessionId, ownerId = currentUser?.uid) {
+    if (!contextRepository || !ownerId) return;
+    const [areaResult, projectResult] = await Promise.all([
+        contextRepository.list("area"),
+        contextRepository.list("project")
+    ]);
+    if (!sessionIsCurrent(session, ownerId)) return;
+    areas = areaResult.contexts;
+    projects = projectResult.contexts;
+    renderContextNavigation();
+    renderContextOptions();
+    updateViewButtons();
+}
+
+function renderContextNavigation() {
+    const renderList = (container, values, type) => {
+        container.replaceChildren();
+        if (!values.length) {
+            container.append(createNode("span", "context-empty", type === "area" ? "분야를 추가해보세요" : "프로젝트를 추가해보세요"));
+            return;
+        }
+        values.forEach(context => {
+            const button = createNode("button", "context-link", context.name);
+            button.type = "button";
+            button.dataset.contextId = context.id;
+            button.dataset.contextType = type;
+            container.append(button);
+        });
+    };
+    renderList(byId("areaNavigation"), areas, "area");
+    renderList(byId("projectNavigation"), projects, "project");
+}
+
+function wikiTargetTitles(item) {
+    return [...String(item.bodyMarkdown || "").matchAll(/\[\[([^\]]+)\]\]/g)]
+        .map(match => match[1].trim().toLocaleLowerCase("ko-KR"))
+        .filter(Boolean);
+}
+
+function connectedItemsFor(item, items = cachedItems) {
+    const wikiTargets = new Set(wikiTargetTitles(item));
+    const outgoingIds = new Set(item.relatedIds || []);
+    items.forEach(candidate => {
+        if (wikiTargets.has(candidate.title.toLocaleLowerCase("ko-KR"))) outgoingIds.add(candidate.id);
+    });
+    outgoingIds.delete(item.id);
+    return [...outgoingIds].map(id => items.find(candidate => candidate.id === id)).filter(Boolean);
+}
+
+function backlinksFor(item, items = cachedItems) {
+    const title = item.title.toLocaleLowerCase("ko-KR");
+    return items.filter(candidate => candidate.id !== item.id
+        && ((candidate.relatedIds || []).includes(item.id) || wikiTargetTitles(candidate).includes(title)));
+}
+
+function appendItemContexts(item, panel) {
+    const names = [
+        ...item.areaIds.map(id => ({ type: "area", name: areas.find(area => area.id === id)?.name })),
+        ...item.projectIds.map(id => ({ type: "project", name: projects.find(project => project.id === id)?.name }))
+    ].filter(context => context.name);
+    if (!names.length) return;
+    const section = createNode("div", "detail-contexts");
+    names.forEach(context => section.append(createNode("span", "context-chip", `${context.type === "area" ? "분야" : "프로젝트"} · ${context.name}`)));
+    panel.append(section);
+}
+
+function appendItemConnections(item, panel) {
+    const outgoing = connectedItemsFor(item);
+    const incoming = backlinksFor(item);
+    const section = createNode("section", "connection-list");
+    section.append(createNode("h4", "", "연결된 자료"));
+    appendItemLinkButtons(section, outgoing, "직접 연결된 자료가 없어요.");
+    section.append(createNode("h4", "backlink-heading", "이 자료를 참조하는 백링크"));
+    appendItemLinkButtons(section, incoming, "이 자료를 참조하는 항목이 없어요.");
+    panel.append(section);
+}
+
+function appendItemLinkButtons(container, items, emptyText) {
+    if (!items.length) {
+        container.append(createNode("p", "connection-empty", emptyText));
+        return;
+    }
+    const links = createNode("div", "connection-links");
+    items.forEach(item => {
+        const button = createNode("button", "detail-related-link", item.title);
+        button.type = "button";
+        button.dataset.openItem = item.id;
+        links.append(button);
+    });
+    container.append(links);
+}
+
+function appendConnectionGraph(item, panel) {
+    const neighbors = [...new Map([...connectedItemsFor(item), ...backlinksFor(item)].map(node => [node.id, node])).values()].slice(0, 12);
+    const section = createNode("section", "connection-graph-section");
+    section.append(createNode("h4", "", "연결 지도"));
+    if (!neighbors.length) {
+        section.append(createNode("p", "connection-empty", "다른 자료를 연결하면 이곳에 지도가 나타나요."));
+        panel.append(section);
+        return;
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 480 280");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `${item.title} 연결 그래프`);
+    const center = { x: 240, y: 130 };
+    neighbors.forEach((neighbor, index) => {
+        const angle = (2 * Math.PI * index) / neighbors.length - Math.PI / 2;
+        const point = { x: center.x + Math.cos(angle) * 92, y: center.y + Math.sin(angle) * 92 };
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        line.setAttribute("x1", String(center.x));
+        line.setAttribute("y1", String(center.y));
+        line.setAttribute("x2", String(point.x));
+        line.setAttribute("y2", String(point.y));
+        line.setAttribute("class", "graph-edge");
+        svg.append(line);
+    });
+    const nodes = [{ ...item, isRoot: true }, ...neighbors];
+    nodes.forEach((node, index) => {
+        const point = node.isRoot
+            ? center
+            : (() => {
+                const angle = (2 * Math.PI * (index - 1)) / neighbors.length - Math.PI / 2;
+                return { x: center.x + Math.cos(angle) * 92, y: center.y + Math.sin(angle) * 92 };
+            })();
+        const group = document.createElementNS(svg.namespaceURI, "g");
+        group.setAttribute("class", node.isRoot ? "graph-node graph-node-root" : "graph-node");
+        if (!node.isRoot) {
+            group.setAttribute("tabindex", "0");
+            group.setAttribute("role", "button");
+            group.setAttribute("aria-label", `열기: ${node.title}`);
+            group.dataset.openItem = node.id;
+        }
+        const circle = document.createElementNS(svg.namespaceURI, "circle");
+        circle.setAttribute("cx", String(point.x));
+        circle.setAttribute("cy", String(point.y));
+        circle.setAttribute("r", node.isRoot ? "35" : "28");
+        const label = document.createElementNS(svg.namespaceURI, "text");
+        label.setAttribute("x", String(point.x));
+        label.setAttribute("y", String(point.y + 48));
+        label.textContent = node.title.length > 14 ? `${node.title.slice(0, 14)}…` : node.title;
+        group.append(circle, label);
+        if (!node.isRoot) {
+            group.addEventListener("keydown", event => {
+                if (!['Enter', ' '].includes(event.key)) return;
+                event.preventDefault();
+                selectedId = node.id;
+                void renderItems();
+            });
+        }
+        svg.append(group);
+    });
+    section.append(svg, createNode("p", "graph-help", "점을 선택하면 해당 자료로 이동합니다."));
+    panel.append(section);
+}
+
 function visibleItems(items) {
     const query = byId("itemSearch").value.trim().toLocaleLowerCase("ko-KR");
     return items.filter(item => {
         if (currentView === "trash" ? !item.deleted : item.deleted) return false;
         if (currentView === "inbox" && item.state !== "inbox") return false;
+        if (selectedContext?.type === "area" && !item.areaIds.includes(selectedContext.id)) return false;
+        if (selectedContext?.type === "project" && !item.projectIds.includes(selectedContext.id)) return false;
         if (!query) return true;
         const attachmentText = (item.attachments || []).map(attachment => attachment.extractedText || "");
         const text = [item.title, item.bodyMarkdown, item.sourceUrl, ...attachmentText, ...(item.tags || [])].join(" ").toLocaleLowerCase("ko-KR");
@@ -116,6 +302,8 @@ async function renderItems() {
     const session = sessionId;
     const result = await itemRepository.list({ includeDeleted: true });
     if (!sessionIsCurrent(session, ownerId)) return;
+    cachedItems = result.items.filter(item => !item.deleted);
+    renderContextOptions();
     byId("inboxCount").textContent = String(result.items.filter(item => !item.deleted && item.state === "inbox").length);
     byId("invalidNotice").classList.toggle("hidden", result.invalid.length === 0);
     byId("invalidNotice").textContent = result.invalid.length
@@ -135,6 +323,8 @@ async function renderItems() {
         row.append(createNode("span", "item-row-title", item.title));
         const meta = createNode("span", "item-row-meta");
         meta.append(createNode("span", "item-kind", kindLabel(item.kind)), createNode("time", "", formatDate(item.updatedAt)));
+        const contextLabel = [...item.areaIds.map(id => areas.find(area => area.id === id)?.name), ...item.projectIds.map(id => projects.find(project => project.id === id)?.name)].filter(Boolean).join(" · ");
+        if (contextLabel) meta.append(createNode("span", "item-context-label", contextLabel));
         row.append(meta);
         list.append(row);
     }
@@ -147,8 +337,8 @@ async function renderDetail(item, session = sessionId) {
     if (!item) {
         const empty = createNode("div", "detail-empty");
         empty.append(createNode("span", "empty-mark", "✳"));
-        empty.append(createNode("strong", "", "자료를 선택하거나 새 기록을 시작해보세요."));
-        empty.append(createNode("span", "", "저장한 자료는 오프라인에서도 이 기기에서 볼 수 있어요."));
+        empty.append(createNode("strong", "", currentView === "graph" ? "연결 지도를 볼 자료를 선택해보세요." : "자료를 선택하거나 새 기록을 시작해보세요."));
+        empty.append(createNode("span", "", currentView === "graph" ? "선택한 자료와 연결된 항목을 보여드려요." : "저장한 자료는 오프라인에서도 이 기기에서 볼 수 있어요."));
         panel.append(empty);
         return;
     }
@@ -174,7 +364,10 @@ async function renderDetail(item, session = sessionId) {
         item.tags.forEach(tag => tags.append(createNode("span", "tag-chip", `#${tag}`)));
         panel.append(tags);
     }
+    appendItemContexts(item, panel);
     await renderAttachments(item, panel, session);
+    appendItemConnections(item, panel);
+    if (currentView === "graph") appendConnectionGraph(item, panel);
 
     const actions = createNode("div", "detail-actions");
     const edit = createNode("button", "", "편집");
@@ -392,6 +585,10 @@ function fillCaptureForm(item) {
     byId("sourceUrl").value = item.sourceUrl || "";
     byId("itemBody").value = item.bodyMarkdown || "";
     byId("itemTags").value = (item.tags || []).join(", ");
+    byId("areaSelect").value = item.areaIds?.[0] || "";
+    byId("projectSelect").value = item.projectIds?.[0] || "";
+    const relatedIds = new Set(item.relatedIds || []);
+    [...byId("relatedItems").options].forEach(option => { option.selected = relatedIds.has(option.value); });
     byId("documentFile").value = "";
     byId("imageFile").value = "";
     byId("saveItemButton").textContent = "수정 내용 저장";
@@ -408,7 +605,15 @@ function updateViewButtons() {
         button.classList.toggle("is-active", active);
         button.setAttribute("aria-current", active ? "page" : "false");
     });
-    byId("libraryHeading").textContent = ({ inbox: "받은함", all: "전체 자료", trash: "삭제 항목" })[currentView];
+    const contextName = selectedContext?.type === "area"
+        ? areas.find(context => context.id === selectedContext.id)?.name
+        : selectedContext?.type === "project" ? projects.find(context => context.id === selectedContext.id)?.name : null;
+    byId("libraryHeading").textContent = currentView === "context"
+        ? contextName || "맥락 자료"
+        : ({ inbox: "받은함", all: "전체 자료", graph: "연결 그래프", trash: "삭제 항목" })[currentView] || "전체 자료";
+    document.querySelectorAll("[data-context-id]").forEach(button => {
+        button.classList.toggle("is-active", button.dataset.contextId === selectedContext?.id && button.dataset.contextType === selectedContext?.type);
+    });
 }
 
 function sessionIsCurrent(session, userId) {
@@ -426,6 +631,11 @@ async function hydrateUser(user, session) {
         userId: user.uid,
         getCurrentUserId: () => auth?.currentUser?.uid
     });
+    contextRepository = createVaultSecondBrainContextRepository({
+        vault,
+        userId: user.uid,
+        getCurrentUserId: () => auth?.currentUser?.uid
+    });
     const local = await localVaultRepository.load(user.uid).catch(() => null);
     let snapshot = local?.snapshot || { schemaVersion: 1, files: [], updatedAt: 0 };
     let dirty = Boolean(local?.dirty);
@@ -438,6 +648,7 @@ async function hydrateUser(user, session) {
     }
     if (!sessionIsCurrent(session, user.uid)) return;
     vault.replace(snapshot);
+    await refreshContexts(session, user.uid);
     await renderItems();
     if (dirty) {
         setSyncStatus("동기화 대기 중", "saving");
@@ -581,6 +792,9 @@ byId("captureForm").addEventListener("submit", async event => {
             bodyMarkdown,
             sourceUrl,
             tags,
+            areaIds: byId("areaSelect").value ? [byId("areaSelect").value] : [],
+            projectIds: byId("projectSelect").value ? [byId("projectSelect").value] : [],
+            relatedIds: [...byId("relatedItems").selectedOptions].map(option => option.value),
             attachments,
             attachmentIds: [...new Set(attachmentIds)],
             state: existing?.state || "inbox",
@@ -617,10 +831,58 @@ byId("itemList").addEventListener("click", event => {
 });
 document.querySelectorAll("[data-view]").forEach(button => button.addEventListener("click", () => {
     currentView = button.dataset.view;
+    selectedContext = null;
     selectedId = null;
     updateViewButtons();
     void renderItems();
 }));
+byId("contextNavigation").addEventListener("click", event => {
+    const contextButton = event.target.closest("[data-context-id]");
+    if (!contextButton) return;
+    currentView = "context";
+    selectedContext = { type: contextButton.dataset.contextType, id: contextButton.dataset.contextId };
+    selectedId = null;
+    updateViewButtons();
+    void renderItems();
+});
+document.querySelectorAll("[data-add-context]").forEach(button => button.addEventListener("click", () => {
+    const type = button.dataset.addContext;
+    byId("contextType").value = type;
+    byId("contextDialogTitle").textContent = type === "area" ? "새 분야 추가" : "새 프로젝트 추가";
+    byId("contextForm").reset();
+    byId("contextType").value = type;
+    byId("contextDialog").showModal();
+    byId("contextName").focus();
+}));
+byId("cancelContextButton").addEventListener("click", () => byId("contextDialog").close());
+byId("contextForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const ownerId = currentUser?.uid;
+    const session = sessionId;
+    const type = byId("contextType").value;
+    if (!ownerId || !contextRepository) return;
+    const name = byId("contextName").value.trim();
+    const description = byId("contextDescription").value.trim();
+    if (!name) return;
+    try {
+        await contextRepository.save({ id: crypto.randomUUID(), name, description }, type);
+        if (!sessionIsCurrent(session, ownerId)) return;
+        byId("contextDialog").close();
+        byId("contextForm").reset();
+        await refreshContexts(session, ownerId);
+        setNotice(`${type === "area" ? "분야" : "프로젝트"}를 추가했어요.`);
+        if (selectedContext) await renderItems();
+    } catch (error) {
+        if (sessionIsCurrent(session, ownerId)) setNotice(`저장하지 못했어요: ${error.message}`, "error");
+    }
+});
+byId("itemDetail").addEventListener("click", event => {
+    const link = event.target.closest("[data-open-item]");
+    if (!link) return;
+    selectedId = link.dataset.openItem;
+    if (currentView === "graph") void renderItems();
+    else void renderItems();
+});
 byId("syncButton").addEventListener("click", () => void syncNow());
 byId("connectDriveButton").addEventListener("click", async () => {
     if (!currentUser) return;
@@ -656,7 +918,19 @@ onAuthStateChanged(auth, user => {
     const session = ++sessionId;
     currentUser = user || null;
     selectedId = null;
+    selectedContext = null;
     itemRepository = null;
+    contextRepository = null;
+    areas = [];
+    projects = [];
+    cachedItems = [];
+    currentView = "inbox";
+    byId("itemSearch").value = "";
+    byId("contextDialog").close();
+    resetCapture();
+    renderContextNavigation();
+    renderContextOptions();
+    updateViewButtons();
     byId("itemList").replaceChildren();
     byId("itemDetail").replaceChildren();
     byId("authGate").classList.toggle("hidden", Boolean(user));
