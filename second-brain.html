@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#f5f6f4">
+    <title>세컨드 브레인 미리보기 | Link Memo</title>
+    <link rel="shortcut icon" href="./img/favicon-96x96.png" type="image/png">
+    <link rel="stylesheet" href="./styles/second-brain.css">
+</head>
+<body>
+    <div class="brain-shell">
+        <header class="brain-header">
+            <a class="brand" href="./second-brain.html" aria-label="세컨드 브레인 홈">
+                <span class="brand-icon" aria-hidden="true">✳</span>
+                <span><strong>second brain</strong><small>Link Memo · 미리보기</small></span>
+            </a>
+            <div class="header-actions">
+                <span id="syncStatus" class="sync-status" role="status" aria-live="polite">로그인 확인 중</span>
+                <button id="syncButton" class="quiet-button" type="button" disabled>지금 동기화</button>
+                <span id="userName" class="user-name"></span>
+                <a class="quiet-button back-link" href="./pkm.html">기존 PKM</a>
+            </div>
+        </header>
+
+        <main class="brain-layout">
+            <aside class="sidebar" aria-label="지식 탐색">
+                <div class="sidebar-intro">
+                    <span class="eyebrow">MY KNOWLEDGE SPACE</span>
+                    <h1>생각을 모으고,<br>필요할 때 꺼내요.</h1>
+                    <p>일과 일상을 한곳에 차곡차곡 담는 공간이에요.</p>
+                </div>
+                <nav class="view-nav" aria-label="보기">
+                    <button type="button" class="view-button is-active" data-view="inbox"><span>▣</span>받은함 <b id="inboxCount">0</b></button>
+                    <button type="button" class="view-button" data-view="all"><span>⌕</span>전체 자료</button>
+                    <button type="button" class="view-button" data-view="graph"><span>⌘</span>연결 그래프</button>
+                    <button type="button" class="view-button" data-view="trash"><span>⌫</span>삭제 항목</button>
+                </nav>
+                <section id="contextNavigation" class="context-navigation" aria-label="분야와 프로젝트">
+                    <div class="context-nav-heading"><span>분야</span><button type="button" data-add-context="area" aria-label="분야 추가">+</button></div>
+                    <div id="areaNavigation" class="context-link-list"></div>
+                    <div class="context-nav-heading"><span>프로젝트</span><button type="button" data-add-context="project" aria-label="프로젝트 추가">+</button></div>
+                    <div id="projectNavigation" class="context-link-list"></div>
+                </section>
+                <section class="drive-card" aria-labelledby="driveTitle">
+                    <div class="drive-mark" aria-hidden="true">D</div>
+                    <div class="drive-copy"><strong id="driveTitle">문서 보관</strong><span id="driveStatus">연결 상태 확인 중</span></div>
+                    <button id="connectDriveButton" type="button" class="icon-button" aria-label="Google Drive 연결">↗</button>
+                </section>
+                <p class="sidebar-footnote">현재 화면은 기존 PKM과 나란히 검토하는 미리보기예요.</p>
+            </aside>
+
+            <section class="content-column">
+                <section class="capture-card" aria-labelledby="captureHeading">
+                    <div class="section-heading">
+                        <div><span class="eyebrow">QUICK CAPTURE</span><h2 id="captureHeading">빠른 기록</h2></div>
+                        <button id="newItemButton" class="quiet-button" type="button">새 기록</button>
+                    </div>
+                    <form id="captureForm">
+                        <input id="itemId" type="hidden">
+                        <div class="form-row">
+                            <label class="field type-field">종류
+                                <select id="itemKind">
+                                    <option value="note">메모</option>
+                                    <option value="link">링크</option>
+                                    <option value="image">이미지</option>
+                                    <option value="document">문서</option>
+                                    <option value="daily">일일 기록</option>
+                                </select>
+                            </label>
+                            <label class="field title-field">제목
+                                <input id="itemTitle" required maxlength="300" placeholder="나중에 찾기 쉬운 제목을 적어주세요">
+                            </label>
+                        </div>
+                        <label id="sourceUrlField" class="field hidden">링크 주소
+                            <input id="sourceUrl" type="url" inputmode="url" placeholder="https://">
+                        </label>
+                        <label class="field">내용
+                            <textarea id="itemBody" rows="5" placeholder="떠오른 생각이나 핵심 내용을 기록해보세요. Markdown을 사용할 수 있어요."></textarea>
+                        </label>
+                        <div class="form-row context-fields">
+                            <label class="field">분야
+                                <select id="areaSelect"><option value="">분야 없음</option></select>
+                            </label>
+                            <label class="field">프로젝트
+                                <select id="projectSelect"><option value="">프로젝트 없음</option></select>
+                            </label>
+                            <label class="field related-field">관련 자료
+                                <select id="relatedItems" multiple size="3" aria-describedby="relatedHelp"></select>
+                                <small id="relatedHelp">여러 자료를 선택하면 양방향 연결과 백링크가 생겨요.</small>
+                            </label>
+                        </div>
+                        <div class="form-row lower-row">
+                            <label class="field tags-field">태그
+                                <input id="itemTags" placeholder="쉼표로 구분 · 예: 디자인, 아이디어">
+                            </label>
+                            <label id="documentFileField" class="file-field hidden">PDF 또는 DOCX 첨부
+                                <input id="documentFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                                <span>최대 20 MiB · 업로드 전 이 기기에 보관돼요</span>
+                            </label>
+                            <label id="imageFileField" class="file-field hidden">이미지 첨부
+                                <input id="imageFile" type="file" accept="image/*">
+                                <span>Drive 연결 시 다른 기기에서도 볼 수 있어요</span>
+                            </label>
+                            <label class="text-import-field">TXT 또는 MD 가져오기
+                                <input id="textFile" type="file" accept=".txt,.md,text/plain,text/markdown">
+                            </label>
+                            <button id="saveItemButton" class="primary-button" type="submit">받은함에 저장</button>
+                        </div>
+                    </form>
+                    <p id="notice" class="notice" role="status" aria-live="polite"></p>
+                </section>
+
+                <section class="library-card" aria-labelledby="libraryHeading">
+                    <div class="section-heading library-heading">
+                        <div><span class="eyebrow">YOUR LIBRARY</span><h2 id="libraryHeading">받은함</h2></div>
+                        <label class="search-box"><span aria-hidden="true">⌕</span><input id="itemSearch" type="search" placeholder="제목, 내용, 태그 검색"></label>
+                    </div>
+                    <div id="invalidNotice" class="invalid-notice hidden"></div>
+                    <div class="library-body">
+                        <div id="itemList" class="item-list" aria-label="자료 목록"></div>
+                        <section id="itemDetail" class="item-detail" aria-label="선택한 자료" aria-live="polite">
+                            <div class="detail-empty"><span class="empty-mark">✳</span><strong>자료를 선택하거나 새 기록을 시작해보세요.</strong><span>저장한 자료는 오프라인에서도 이 기기에서 볼 수 있어요.</span></div>
+                        </section>
+                    </div>
+                </section>
+            </section>
+        </main>
+
+        <dialog id="contextDialog" class="context-dialog">
+            <form id="contextForm" method="dialog">
+                <h2 id="contextDialogTitle">새 분야 추가</h2>
+                <input id="contextType" type="hidden" value="area">
+                <label class="field">이름<input id="contextName" required maxlength="120" placeholder="예: 디자인"></label>
+                <label class="field">설명<textarea id="contextDescription" rows="3" maxlength="4000" placeholder="이 분야나 프로젝트 설명(선택)"></textarea></label>
+                <div class="dialog-actions"><button id="cancelContextButton" class="quiet-button" type="button">취소</button><button class="primary-button" type="submit">저장</button></div>
+            </form>
+        </dialog>
+        <div id="authGate" class="auth-gate hidden">
+            <div class="auth-card"><span class="empty-mark">✳</span><h2>Link Memo 로그인이 필요해요.</h2><p>기존 PKM에서 로그인한 뒤 이 페이지로 돌아오면 계정과 동기화가 이어집니다.</p><a class="primary-button" href="./pkm.html">기존 PKM에서 로그인하기</a></div>
+        </div>
+    </div>
+    <script type="module" src="./src/bootstrap/second-brain-main.js"></script>
+</body>
+</html>

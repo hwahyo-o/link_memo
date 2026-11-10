@@ -9,7 +9,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL('index.html', import.meta.url)),
-        pkm: fileURLToPath(new URL('pkm.html', import.meta.url))
+        pkm: fileURLToPath(new URL('pkm.html', import.meta.url)),
+        'second-brain': fileURLToPath(new URL('second-brain.html', import.meta.url))
       }
     }
   }

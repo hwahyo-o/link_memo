@@ -1,3 +1,5 @@
+import { isSecondBrainPath } from "../../domain/second-brain/legacy-projection.js";
+
 function basename(path) {
     return path.split("/").pop();
 }
@@ -36,7 +38,7 @@ export function createWorkspace({
 
     function renderTree() {
         const filter = fileFilter.value.trim().toLocaleLowerCase();
-        const allFiles = vault.list();
+        const allFiles = vault.list().filter(file => !isSecondBrainPath(file.path));
         const matchingFiles = allFiles.filter(file => !filter || file.path.toLocaleLowerCase().includes(filter));
         const visibleFiles = matchingFiles.slice(0, TREE_RENDER_LIMIT);
         fileCount.textContent = String(allFiles.length);
