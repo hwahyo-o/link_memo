@@ -79,15 +79,17 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 - New D1 tables use `CREATE TABLE/INDEX IF NOT EXISTS`; no existing table is altered. Account-data deletion also removes the user's recorded documents and folder.
 - A client repository computes file SHA-256, resumes stored upload sessions, sends binary chunks, and updates the separate IndexedDB queue with progress and receipts.
 - A Vault-backed item repository stores each validated item as a versioned JSON file under `Second Brain/items/`, preserving the existing Vault sync, revision checks, and tombstone behavior.
+- A context repository stores Areas and Projects as versioned JSON under `Second Brain/areas/` and `Second Brain/projects/`. The preview filters by either context and preserves the old PKM boundary.
+- The capture form saves `areaIds`, `projectIds`, and `relatedIds`; detail pages resolve explicit relations and `[[wiki links]]`, show inbound backlinks, and draw a focused SVG graph around the selected item.
 - A separate preview page calls the item repository and queue for notes, links, images, PDF/DOCX, and TXT/MD import. It is reachable from the existing PKM header, while the original entry point remains in place. The legacy file tree and graph filter the reserved path. The preview has not been deployed or tested.
 - Document ownership and folder records must survive Drive credential disconnect so a reconnect can authorize existing Vault references. Explicit account-data deletion removes the user's recorded document rows and files.
 - PDF.js extracts selectable PDF text in a browser worker; Mammoth extracts DOCX raw text in the browser. Extracted text is capped at 300,000 UTF-8 bytes per attachment and indexed with the item's local search. Scanned PDFs or extraction failures keep the original attachment and show a non-ready state.
 
 ## Next technical work
 
-1. Review and validate the preview's sync, session-change, offline, and reserved-path filter behavior before exposing it to users.
+1. Validate context filtering, links/backlinks, graph navigation, sync, session changes, offline capture, and the reserved-path filter with representative Vault data.
 2. Validate PDF/DOCX extraction with representative Korean, large, scanned, and malformed files; extraction failure must not block saving the original.
 3. Add backup manifests, migration, restore/relink, and parity review on non-production data.
 4. Complete upload/security checks and deploy the preview only after the user can still return to the existing PKM and restore the old data.
 
-No tests or deployment have been run for the draft Worker changes. Do not merge or deploy until the next integration and release checks are complete.
+The production build passed, with pre-existing CSS `@import` order warnings in the existing app stylesheet. No test suite or deployment has been run for the draft Worker and preview. Do not merge or deploy until the next integration and release checks are complete.
