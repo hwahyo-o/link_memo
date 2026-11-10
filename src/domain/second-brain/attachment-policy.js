@@ -1,4 +1,5 @@
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+export const MAX_EXTRACTED_TEXT_BYTES = 300_000;
 
 const DOCUMENT_TYPES = new Map([
     [".pdf", "application/pdf"],
@@ -71,6 +72,10 @@ export function normalizeDocumentAttachment(value, now = Date.now()) {
     if (!["pending", "ready", "partial", "failed", "unsupported"].includes(extractState)) {
         throw new Error("DOCUMENT_ATTACHMENT_EXTRACT_STATE_INVALID");
     }
+    const extractedText = typeof value.extractedText === "string" ? value.extractedText : "";
+    if (new TextEncoder().encode(extractedText).byteLength > MAX_EXTRACTED_TEXT_BYTES) {
+        throw new Error("DOCUMENT_ATTACHMENT_TEXT_TOO_LARGE");
+    }
 
     const createdAt = Number(value.createdAt);
     const updatedAt = Number(value.updatedAt);
@@ -85,6 +90,7 @@ export function normalizeDocumentAttachment(value, now = Date.now()) {
         providerFileId,
         uploadState,
         extractState,
+        extractedText,
         createdAt: Number.isFinite(createdAt) && createdAt >= 0 ? Math.trunc(createdAt) : now,
         updatedAt: Number.isFinite(updatedAt) && updatedAt >= 0 ? Math.trunc(updatedAt) : now,
         mutationId: String(value.mutationId || "").trim().slice(0, 256),
