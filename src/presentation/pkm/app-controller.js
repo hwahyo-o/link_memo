@@ -1,6 +1,7 @@
 import { classifyGraphMatches } from "../../domain/pkm/graph-highlight-rules.js";
 import { searchMetadata } from "../../domain/pkm/search-engine.js";
 import { mergeVaultSnapshots } from "../../domain/pkm/vault-policy.js";
+import { isSecondBrainPath } from "../../domain/second-brain/legacy-projection.js";
 import { isNonPcDevice } from "../../domain/sync/device-policy.js";
 import { readViewportProfile, subscribeNonPcViewport } from "../../infrastructure/browser/viewport-profile.js";
 import { mainMemoToVaultFiles } from "../../infrastructure/pkm/schema-discovery.js";
@@ -136,7 +137,7 @@ export function createPkmApp({
 
     async function renderGraph() {
         const sequence = ++renderSequence;
-        const files = vault.list();
+        const files = vault.list().filter(file => !isSecondBrainPath(file.path));
         const metadata = await metadataCache.index(files.filter(file => !isLinkMemoGraphIndexPath(file.path)));
         if (sequence !== renderSequence) return;
         currentMetadata = metadata;
