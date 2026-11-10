@@ -1,3 +1,5 @@
+const SECOND_BRAIN_ROOT = "Second Brain/";
+
 const LEGACY_EXTENSION_KINDS = new Map([
     ["md", "note"],
     ["canvas", "canvas"],
@@ -26,6 +28,7 @@ export function projectLegacyVaultFiles(files) {
     const latestByPath = new Map();
     for (const file of Array.isArray(files) ? files : []) {
         if (!file?.path || file.deleted === true) continue;
+        if (file.path.startsWith(SECOND_BRAIN_ROOT)) continue;
         const current = latestByPath.get(file.path);
         if (!current || stableClock(file, current) >= 0) latestByPath.set(file.path, file);
     }
