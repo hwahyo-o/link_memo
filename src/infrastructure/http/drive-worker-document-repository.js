@@ -15,12 +15,15 @@ function createHttpError(body, status) {
 export function createDriveWorkerDocumentRepository({
     auth,
     queue,
+    driveCodeProvider,
     baseUrl = import.meta.env.VITE_DRIVE_WORKER_URL
 } = {}) {
-    async function request(path, options = {}, forceRefresh = false) {
+    async function request(path, options = {}, forceRefresh = false, expectedUserId = null) {
         const user = auth?.currentUser;
         if (!user) throw new Error("DRIVE_WORKER_AUTH_REQUIRED");
+        if (expectedUserId && user.uid !== expectedUserId) throw new Error("AUTH_SESSION_CHANGED");
         const idToken = await user.getIdToken(forceRefresh);
+        if (expectedUserId && auth?.currentUser?.uid !== expectedUserId) throw new Error("AUTH_SESSION_CHANGED");
         try {
             return await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
                 ...options,
@@ -31,10 +34,10 @@ export function createDriveWorkerDocumentRepository({
         }
     }
 
-    async function authorizedFetch(path, options = {}) {
+    async function authorizedFetch(path, options = {}, expectedUserId = null) {
         if (!baseUrl) throw new Error("DRIVE_WORKER_URL_MISSING");
-        let response = await request(path, options);
-        if (response.status === 401) response = await request(path, options, true);
+        let response = await request(path, options, false, expectedUserId);
+        if (response.status === 401) response = await request(path, options, true, expectedUserId);
         if (!response.ok) {
             let body = null;
             try { body = await response.json(); } catch { /* response body may be empty */ }
@@ -43,8 +46,8 @@ export function createDriveWorkerDocumentRepository({
         return response;
     }
 
-    async function readJson(path, options, settings) {
-        const response = await authorizedFetch(path, options, settings);
+    async function readJson(path, options, expectedUserId = null) {
+        const response = await authorizedFetch(path, options, expectedUserId);
         try {
             return await response.json();
         } catch (cause) {
@@ -52,7 +55,7 @@ export function createDriveWorkerDocumentRepository({
         }
     }
 
-    async function startUpload(attachment, checksumSha256) {
+    async function startUpload(attachment, checksumSha256, userId) {
         return readJson("/documents/uploads", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -63,14 +66,14 @@ export function createDriveWorkerDocumentRepository({
                 size: attachment.sizeBytes,
                 checksumSha256
             })
-        });
+        }, userId);
     }
 
-    async function getUploadStatus(uploadId) {
-        return readJson(`/documents/uploads/${encodeURIComponent(uploadId)}`);
+    async function getUploadStatus(uploadId, userId) {
+        return readJson(`/documents/uploads/${encodeURIComponent(uploadId)}`, {}, userId);
     }
 
-    async function uploadChunk(uploadId, file, start, chunkBytes) {
+    async function uploadChunk(uploadId, file, start, chunkBytes, userId) {
         const end = Math.min(start + chunkBytes, file.size) - 1;
         const chunk = await file.slice(start, end + 1).arrayBuffer();
         return readJson(`/documents/uploads/${encodeURIComponent(uploadId)}`, {
@@ -80,7 +83,7 @@ export function createDriveWorkerDocumentRepository({
                 "Content-Range": `bytes ${start}-${end}/${file.size}`
             },
             body: chunk
-        });
+        }, userId);
     }
 
     async function finishQueueRecord(userId, attachmentId, result, checksumSha256) {
@@ -95,6 +98,27 @@ export function createDriveWorkerDocumentRepository({
     }
 
     return {
+        async connect() {
+            if (!driveCodeProvider?.requestCode) throw new Error("DRIVE_OAUTH_PROVIDER_REQUIRED");
+            const user = auth?.currentUser;
+            if (!user) throw new Error("DRIVE_WORKER_AUTH_REQUIRED");
+            const userId = user.uid;
+            const authorizationCode = await driveCodeProvider.requestCode({ loginHint: user.email || "" });
+            if (auth?.currentUser?.uid !== userId) throw new Error("AUTH_SESSION_CHANGED");
+            return readJson("/connect", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "link-memo"
+                },
+                body: JSON.stringify({ authorizationCode })
+            }, userId);
+        },
+
+        async restoreSession() {
+            return readJson("/session");
+        },
+
         async uploadPending(userId, attachmentId) {
             const ownerId = String(userId || "").trim();
             if (!ownerId) throw new Error("ATTACHMENT_QUEUE_USER_REQUIRED");
@@ -113,7 +137,7 @@ export function createDriveWorkerDocumentRepository({
             try {
                 if (uploadId) {
                     try {
-                        const status = await getUploadStatus(uploadId);
+                        const status = await getUploadStatus(uploadId, ownerId);
                         if (status.completed) {
                             if (status.deleted) throw new Error("DOCUMENT_ALREADY_TRASHED");
                             return await finishQueueRecord(ownerId, attachmentId, status, checksumSha256);
@@ -127,7 +151,7 @@ export function createDriveWorkerDocumentRepository({
                 }
 
                 if (!uploadId) {
-                    const session = await startUpload(attachment, checksumSha256);
+                    const session = await startUpload(attachment, checksumSha256, ownerId);
                     if (session.completed) {
                         if (session.deleted) throw new Error("DOCUMENT_ALREADY_TRASHED");
                         return await finishQueueRecord(ownerId, attachmentId, session, checksumSha256);
@@ -140,7 +164,7 @@ export function createDriveWorkerDocumentRepository({
 
                 const chunkBytes = DEFAULT_CHUNK_BYTES;
                 while (nextOffset < file.size) {
-                    const result = await uploadChunk(uploadId, file, nextOffset, chunkBytes);
+                    const result = await uploadChunk(uploadId, file, nextOffset, chunkBytes, ownerId);
                     if (result.completed) return await finishQueueRecord(ownerId, attachmentId, result, checksumSha256);
                     const updatedOffset = Number(result.nextOffset);
                     if (!Number.isSafeInteger(updatedOffset) || updatedOffset <= nextOffset || updatedOffset > file.size) {
@@ -150,7 +174,7 @@ export function createDriveWorkerDocumentRepository({
                     await queue.updateUploadSession(ownerId, attachmentId, { uploadId, nextOffset });
                 }
 
-                const status = await getUploadStatus(uploadId);
+                const status = await getUploadStatus(uploadId, ownerId);
                 if (status.completed) return await finishQueueRecord(ownerId, attachmentId, status, checksumSha256);
                 throw new Error("DOCUMENT_UPLOAD_INCOMPLETE");
             } catch (error) {
