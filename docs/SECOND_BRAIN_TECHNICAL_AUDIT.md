@@ -13,7 +13,7 @@ This is a read-only audit of the current `main` source tree for planning a stage
 | Firestore sync | `src/infrastructure/pkm/firestore-vault-repository.js` writes serialized file records in 320,000-byte chunks, up to 20 chunks per batch. It uploads new chunks, swaps the revision pointer transactionally, then deletes old chunks. | Keep item metadata/text in bounded documents. Do not place binary documents or base64 attachments inside the Vault JSON/chunks. Preserve revision conflict handling and old-revision availability during writes. |
 | Conflict and deletion | `vault-policy.js` merges by path using `updatedAt` and `mutationId`; deletions remain as tombstones. | New item IDs and attachment references need deterministic merge semantics. Physical file deletion must not happen before all references and retention rules are understood. |
 | Google Drive upload | The existing image route uses `drive.file`, stores files under `link-memo-img`, rejects non-image MIME types, and caps an image upload at 20 MiB. The draft second-brain branch adds a separate `link-memo-files` route and D1 ownership records for PDF/DOCX. | Keep image behavior unchanged. The new document route is still draft code and is not deployed or connected to the app. |
-| Client attachment flow | `src/infrastructure/http/drive-worker-image-repository.js` calls an image-oriented worker API using Firebase ID tokens. | Keep current image behavior intact. Introduce a distinct attachment repository contract for documents rather than widening image-specific methods without a migration. |
+| Client attachment flow | Existing images use `drive-worker-image-repository.js`. The draft adds a separate document repository and queue plus a parallel `second-brain.html` preview. | Keep image behavior intact and keep binary document upload isolated from the image API. The preview page is not deployed. |
 | Cloudflare backups | `cloudflare-backup-worker/README.md` exposes JSON backup and checkpoint APIs backed by private R2. The application backup service wraps JSON payloads with schema and checksums. | Back up metadata and stable attachment references. Binary backup is a separate storage decision and should not be inferred from the existing JSON endpoint. |
 | Search metadata | `PKM_ARCHITECTURE.md` and the graph worker describe Markdown extraction for title, body, hashtags, HTML comments, wiki links, and URLs. | PDF/office text extraction is new functionality. Search should record extraction status and remain useful by filename/title when extraction is unsupported or fails. |
 
@@ -77,14 +77,15 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 - The API accepts PDF and DOCX only, enforces the 20 MiB limit, checks the file signature, binds uploads to a stable attachment ID, and verifies the completed Drive object's SHA-256 before recording it.
 - Upload-session URLs are encrypted with the existing Worker key. D1 stores per-user file ownership, attachment ID, MIME, size, and verified checksum. Download and delete require a matching UID/file-ID row.
 - New D1 tables use `CREATE TABLE/INDEX IF NOT EXISTS`; no existing table is altered. Account-data deletion also removes the user's recorded documents and folder.
-- A client repository now computes the file SHA-256, resumes a stored upload session, sends binary chunks, and updates the separate IndexedDB queue with progress and upload receipts. It is not connected to any capture or detail screen.
-- A Vault-backed item repository stores each validated item as a versioned JSON file under `Second Brain/items/`, preserving the existing Vault sync, revision checks, and tombstone behavior. It is not called by the UI; confirm legacy file-tree visibility before connecting it.
+- A client repository computes file SHA-256, resumes stored upload sessions, sends binary chunks, and updates the separate IndexedDB queue with progress and receipts.
+- A Vault-backed item repository stores each validated item as a versioned JSON file under `Second Brain/items/`, preserving the existing Vault sync, revision checks, and tombstone behavior.
+- A separate preview page calls the item repository and queue for notes, links, images, PDF/DOCX, and TXT/MD import. It is reachable from the existing PKM header, while the original entry point remains in place. The legacy file tree and graph filter the reserved path. The preview has not been deployed or tested.
 
 ## Next technical work
 
-1. Review and validate the draft Worker and client API, including interruption/resume, ownership isolation, quota errors, and account cleanup.
-2. Connect the item and attachment repositories to capture and detail screens with visible pending, retry, restore, and missing-file states.
-3. Add local PDF/DOCX text extraction and searchable text metadata; extraction failure must not block saving the original.
-4. Add attachment preview, migration, backup manifests, restore/relink, and a staged UI cutover after rollback behavior is reviewed.
+1. Review and validate the preview's sync, session-change, offline, and reserved-path filter behavior before exposing it to users.
+2. Add local PDF/DOCX text extraction and searchable text metadata; extraction failure must not block saving the original.
+3. Add backup manifests, migration, restore/relink, and parity review on non-production data.
+4. Complete upload/security checks and deploy the preview only after the user can still return to the existing PKM and restore the old data.
 
 No tests or deployment have been run for the draft Worker changes. Do not merge or deploy until the next integration and release checks are complete.
