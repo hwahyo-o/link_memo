@@ -80,6 +80,7 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 - A client repository computes file SHA-256, resumes stored upload sessions, sends binary chunks, and updates the separate IndexedDB queue with progress and receipts.
 - A Vault-backed item repository stores each validated item as a versioned JSON file under `Second Brain/items/`, preserving the existing Vault sync, revision checks, and tombstone behavior.
 - A separate preview page calls the item repository and queue for notes, links, images, PDF/DOCX, and TXT/MD import. It is reachable from the existing PKM header, while the original entry point remains in place. The legacy file tree and graph filter the reserved path. The preview has not been deployed or tested.
+- Document ownership and folder records must survive Drive credential disconnect so a reconnect can authorize existing Vault references. Explicit account-data deletion removes the user's recorded document rows and files.
 
 ## Next technical work
 
