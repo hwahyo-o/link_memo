@@ -33,8 +33,15 @@
                 <nav class="view-nav" aria-label="보기">
                     <button type="button" class="view-button is-active" data-view="inbox"><span>▣</span>받은함 <b id="inboxCount">0</b></button>
                     <button type="button" class="view-button" data-view="all"><span>⌕</span>전체 자료</button>
+                    <button type="button" class="view-button" data-view="graph"><span>⌘</span>연결 그래프</button>
                     <button type="button" class="view-button" data-view="trash"><span>⌫</span>삭제 항목</button>
                 </nav>
+                <section id="contextNavigation" class="context-navigation" aria-label="분야와 프로젝트">
+                    <div class="context-nav-heading"><span>분야</span><button type="button" data-add-context="area" aria-label="분야 추가">+</button></div>
+                    <div id="areaNavigation" class="context-link-list"></div>
+                    <div class="context-nav-heading"><span>프로젝트</span><button type="button" data-add-context="project" aria-label="프로젝트 추가">+</button></div>
+                    <div id="projectNavigation" class="context-link-list"></div>
+                </section>
                 <section class="drive-card" aria-labelledby="driveTitle">
                     <div class="drive-mark" aria-hidden="true">D</div>
                     <div class="drive-copy"><strong id="driveTitle">문서 보관</strong><span id="driveStatus">연결 상태 확인 중</span></div>
@@ -71,6 +78,18 @@
                         <label class="field">내용
                             <textarea id="itemBody" rows="5" placeholder="떠오른 생각이나 핵심 내용을 기록해보세요. Markdown을 사용할 수 있어요."></textarea>
                         </label>
+                        <div class="form-row context-fields">
+                            <label class="field">분야
+                                <select id="areaSelect"><option value="">분야 없음</option></select>
+                            </label>
+                            <label class="field">프로젝트
+                                <select id="projectSelect"><option value="">프로젝트 없음</option></select>
+                            </label>
+                            <label class="field related-field">관련 자료
+                                <select id="relatedItems" multiple size="3" aria-describedby="relatedHelp"></select>
+                                <small id="relatedHelp">여러 자료를 선택하면 양방향 연결과 백링크가 생겨요.</small>
+                            </label>
+                        </div>
                         <div class="form-row lower-row">
                             <label class="field tags-field">태그
                                 <input id="itemTags" placeholder="쉼표로 구분 · 예: 디자인, 아이디어">
@@ -108,6 +127,15 @@
             </section>
         </main>
 
+        <dialog id="contextDialog" class="context-dialog">
+            <form id="contextForm" method="dialog">
+                <h2 id="contextDialogTitle">새 분야 추가</h2>
+                <input id="contextType" type="hidden" value="area">
+                <label class="field">이름<input id="contextName" required maxlength="120" placeholder="예: 디자인"></label>
+                <label class="field">설명<textarea id="contextDescription" rows="3" maxlength="4000" placeholder="이 분야나 프로젝트 설명(선택)"></textarea></label>
+                <div class="dialog-actions"><button id="cancelContextButton" class="quiet-button" type="button">취소</button><button class="primary-button" type="submit">저장</button></div>
+            </form>
+        </dialog>
         <div id="authGate" class="auth-gate hidden">
             <div class="auth-card"><span class="empty-mark">✳</span><h2>Link Memo 로그인이 필요해요.</h2><p>기존 PKM에서 로그인한 뒤 이 페이지로 돌아오면 계정과 동기화가 이어집니다.</p><a class="primary-button" href="./pkm.html">기존 PKM에서 로그인하기</a></div>
         </div>
