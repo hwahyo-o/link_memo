@@ -10,13 +10,18 @@ function extensionOf(name) {
     return match?.[0] || "";
 }
 
+function hasUnsafeFileName(name) {
+    return name.includes("/") || name.includes(String.fromCharCode(92))
+        || [...name].some(character => character.charCodeAt(0) < 32);
+}
+
 export function validateDocumentAttachment(file) {
     if (!file || typeof file !== "object") {
         return { ok: false, error: "DOCUMENT_FILE_REQUIRED" };
     }
 
     const name = String(file.name || "").trim();
-    if (!name || name.length > 180 || /[\\/\\\\\\0-\\x1f]/.test(name)) {
+    if (!name || name.length > 180 || hasUnsafeFileName(name)) {
         return { ok: false, error: "DOCUMENT_NAME_INVALID" };
     }
 
