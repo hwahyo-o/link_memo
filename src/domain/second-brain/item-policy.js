@@ -1,3 +1,5 @@
+import { normalizeDocumentAttachment } from "./attachment-policy.js";
+
 const SCHEMA_VERSION = 1;
 const MAX_BODY_BYTES = 2_000_000;
 const MAX_TITLE_LENGTH = 300;
@@ -70,6 +72,17 @@ export function normalizeSecondBrainItem(value, now = Date.now()) {
     const updatedAt = normalizeTimestamp(value.updatedAt, now);
     const capturedAt = normalizeTimestamp(value.capturedAt, updatedAt);
     const mutationId = String(value.mutationId || "").trim().slice(0, 256);
+    const rawAttachments = Array.isArray(value.attachments) ? value.attachments : [];
+    if (rawAttachments.length > MAX_RELATION_COUNT) throw new Error("SECOND_BRAIN_ATTACHMENTS_INVALID");
+    const attachments = rawAttachments.map(attachment => {
+        const normalized = normalizeDocumentAttachment(attachment, now);
+        if (normalized.itemId !== id) throw new Error("SECOND_BRAIN_ATTACHMENT_ITEM_MISMATCH");
+        return normalized;
+    });
+    const attachmentIds = normalizeTextList([
+        ...(Array.isArray(value.attachmentIds) ? value.attachmentIds : []),
+        ...attachments.map(attachment => attachment.id)
+    ], MAX_ID_LENGTH, "SECOND_BRAIN_ATTACHMENTS_INVALID");
 
     return {
         schemaVersion: SCHEMA_VERSION,
@@ -83,7 +96,8 @@ export function normalizeSecondBrainItem(value, now = Date.now()) {
         areaIds: normalizeTextList(value.areaIds, MAX_ID_LENGTH, "SECOND_BRAIN_AREAS_INVALID"),
         projectIds: normalizeTextList(value.projectIds, MAX_ID_LENGTH, "SECOND_BRAIN_PROJECTS_INVALID"),
         relatedIds: normalizeTextList(value.relatedIds, MAX_ID_LENGTH, "SECOND_BRAIN_RELATIONS_INVALID"),
-        attachmentIds: normalizeTextList(value.attachmentIds, MAX_ID_LENGTH, "SECOND_BRAIN_ATTACHMENTS_INVALID"),
+        attachmentIds,
+        attachments,
         state,
         capturedAt,
         updatedAt,
