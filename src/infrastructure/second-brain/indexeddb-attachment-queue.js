@@ -1,7 +1,13 @@
+import {
+    normalizeDocumentAttachment,
+    validateDocumentAttachment
+} from "../../domain/second-brain/attachment-policy.js";
+
 const DATABASE_NAME = "second_brain_attachments";
 const DATABASE_VERSION = 1;
 const QUEUE_STORE = "uploadQueue";
 const USER_INDEX = "byUserId";
+const UPLOAD_STATES = new Set(["queued", "uploading", "uploaded", "failed"]);
 
 function openDatabase() {
     return new Promise((resolve, reject) => {
@@ -32,7 +38,7 @@ async function transact(mode, operation) {
 
         transaction.oncomplete = () => {
             database.close();
-            resolve(result);
+            resolve(result && typeof result === "object" && "result" in result ? result.result : result);
         };
         transaction.onerror = () => {
             database.close();
@@ -65,16 +71,67 @@ function requireAttachmentId(id) {
     return value;
 }
 
+function withoutFile(record) {
+    if (!record) return null;
+    const { file, userId, ...metadata } = record;
+    return metadata;
+}
+
+function updateOwnedRecord(userId, attachmentId, update) {
+    return openDatabase().then(database => new Promise((resolve, reject) => {
+        const transaction = database.transaction(QUEUE_STORE, "readwrite");
+        const store = transaction.objectStore(QUEUE_STORE);
+        let result = null;
+
+        transaction.oncomplete = () => {
+            database.close();
+            resolve(result);
+        };
+        transaction.onerror = () => {
+            database.close();
+            reject(transaction.error);
+        };
+        transaction.onabort = () => {
+            database.close();
+            reject(transaction.error || new Error("ATTACHMENT_QUEUE_ABORTED"));
+        };
+
+        const request = store.get(attachmentId);
+        request.onsuccess = () => {
+            const current = request.result;
+            if (!current || current.userId !== userId) return;
+
+            const next = update(current);
+            if (!next) {
+                store.delete(attachmentId);
+                result = true;
+                return;
+            }
+
+            store.put(next);
+            result = withoutFile(next);
+        };
+    }));
+}
+
 export function createIndexedDbAttachmentQueue() {
     return {
         async savePending({ userId, attachment, file }) {
             const ownerId = requireUserId(userId);
             const attachmentId = requireAttachmentId(attachment?.id);
-            if (!file || typeof file.size !== "number") throw new Error("ATTACHMENT_QUEUE_FILE_REQUIRED");
+            const validation = validateDocumentAttachment(file);
+            if (!validation.ok) throw new Error(validation.error);
 
-            const record = {
+            const normalized = normalizeDocumentAttachment({
                 ...attachment,
-                id: attachmentId,
+                ...validation.value,
+                uploadState: "queued",
+                provider: "drive",
+                providerFileId: null,
+                sha256: null
+            });
+            const record = {
+                ...normalized,
                 userId: ownerId,
                 file,
                 retryCount: 0,
@@ -84,13 +141,13 @@ export function createIndexedDbAttachmentQueue() {
             };
 
             await transact("readwrite", store => store.put(record));
-            return { ...record, file: undefined };
+            return withoutFile(record);
         },
 
         async listPending(userId) {
             const ownerId = requireUserId(userId);
             const records = await transact("readonly", store => store.index(USER_INDEX).getAll(ownerId));
-            return records.map(({ file, ...record }) => record);
+            return records.map(withoutFile);
         },
 
         async loadFile(userId, id) {
@@ -101,29 +158,34 @@ export function createIndexedDbAttachmentQueue() {
             return record.file || null;
         },
 
-        async markAttempt(userId, id, { errorCode = null } = {}) {
+        updateState(userId, id, state) {
             const ownerId = requireUserId(userId);
             const attachmentId = requireAttachmentId(id);
-            const current = await transact("readonly", store => store.get(attachmentId));
-            if (!current || current.userId !== ownerId) return null;
-
-            const updated = {
+            if (!UPLOAD_STATES.has(state)) throw new Error("ATTACHMENT_QUEUE_STATE_INVALID");
+            return updateOwnedRecord(ownerId, attachmentId, current => ({
                 ...current,
-                retryCount: Number(current.retryCount || 0) + 1,
-                lastErrorCode: errorCode ? String(errorCode).slice(0, 120) : null,
+                uploadState: state,
+                lastErrorCode: null,
                 updatedAt: Date.now()
-            };
-            await transact("readwrite", store => store.put(updated));
-            return { ...updated, file: undefined };
+            }));
+        },
+
+        markAttempt(userId, id, errorCode = "UPLOAD_FAILED") {
+            const ownerId = requireUserId(userId);
+            const attachmentId = requireAttachmentId(id);
+            return updateOwnedRecord(ownerId, attachmentId, current => ({
+                ...current,
+                uploadState: "failed",
+                retryCount: Number(current.retryCount || 0) + 1,
+                lastErrorCode: String(errorCode || "UPLOAD_FAILED").slice(0, 120),
+                updatedAt: Date.now()
+            }));
         },
 
         async removePending(userId, id) {
             const ownerId = requireUserId(userId);
             const attachmentId = requireAttachmentId(id);
-            const current = await transact("readonly", store => store.get(attachmentId));
-            if (!current || current.userId !== ownerId) return false;
-            await transact("readwrite", store => store.delete(attachmentId));
-            return true;
+            return Boolean(await updateOwnedRecord(ownerId, attachmentId, () => null));
         }
     };
 }
