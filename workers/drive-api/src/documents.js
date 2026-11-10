@@ -67,7 +67,7 @@ async function startUpload(request, user, env, deps) {
     "SELECT file_id, name, mime_type, size_bytes, checksum_sha256, deleted_at FROM drive_document_files WHERE uid = ? AND attachment_id = ?"
   ).bind(user.uid, attachmentId).first();
   if (existingFile) {
-    if (existingFile.checksum_sha256 !== checksumSha256 || existingFile.size_bytes !== body.size) fail("ATTACHMENT_ID_CONFLICT", 409);
+    if (existingFile.checksum_sha256 !== checksumSha256 || existingFile.size_bytes !== body.size || existingFile.mime_type !== mimeType) fail("ATTACHMENT_ID_CONFLICT", 409);
     return deps.json({ completed: true, deleted: Boolean(existingFile.deleted_at), file: { id: existingFile.file_id, name: existingFile.name, mimeType: existingFile.mime_type, size: existingFile.size_bytes, checksumSha256 } });
   }
   const existingUpload = await env.DRIVE_CREDENTIALS.prepare(

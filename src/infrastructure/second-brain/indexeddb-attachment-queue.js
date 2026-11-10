@@ -136,6 +136,8 @@ export function createIndexedDbAttachmentQueue() {
                 file,
                 retryCount: 0,
                 lastErrorCode: null,
+                uploadId: null,
+                nextOffset: 0,
                 queuedAt: Date.now(),
                 updatedAt: Date.now()
             };
@@ -165,6 +167,41 @@ export function createIndexedDbAttachmentQueue() {
             return updateOwnedRecord(ownerId, attachmentId, current => ({
                 ...current,
                 uploadState: state,
+                lastErrorCode: null,
+                updatedAt: Date.now()
+            }));
+        },
+
+        updateUploadSession(userId, id, { uploadId, nextOffset = 0 } = {}) {
+            const ownerId = requireUserId(userId);
+            const attachmentId = requireAttachmentId(id);
+            const normalizedUploadId = uploadId ? String(uploadId).trim() : null;
+            const offset = Number(nextOffset);
+            if (normalizedUploadId && normalizedUploadId.length > 128) throw new Error("ATTACHMENT_UPLOAD_ID_INVALID");
+            if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("ATTACHMENT_UPLOAD_OFFSET_INVALID");
+            return updateOwnedRecord(ownerId, attachmentId, current => ({
+                ...current,
+                uploadId: normalizedUploadId,
+                nextOffset: offset,
+                updatedAt: Date.now()
+            }));
+        },
+
+        markUploaded(userId, id, { providerFileId, sha256 } = {}) {
+            const ownerId = requireUserId(userId);
+            const attachmentId = requireAttachmentId(id);
+            const fileId = String(providerFileId || "").trim();
+            const checksum = String(sha256 || "").trim().toLowerCase();
+            if (!fileId || fileId.length > 256) throw new Error("DOCUMENT_ATTACHMENT_FILE_ID_INVALID");
+            if (!/^[a-f0-9]{64}$/.test(checksum)) throw new Error("DOCUMENT_ATTACHMENT_CHECKSUM_INVALID");
+            return updateOwnedRecord(ownerId, attachmentId, current => ({
+                ...current,
+                uploadState: "uploaded",
+                provider: "drive",
+                providerFileId: fileId,
+                sha256: checksum,
+                uploadId: null,
+                nextOffset: current.sizeBytes,
                 lastErrorCode: null,
                 updatedAt: Date.now()
             }));

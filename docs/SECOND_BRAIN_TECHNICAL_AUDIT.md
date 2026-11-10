@@ -77,11 +77,12 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 - The API accepts PDF and DOCX only, enforces the 20 MiB limit, checks the file signature, binds uploads to a stable attachment ID, and verifies the completed Drive object's SHA-256 before recording it.
 - Upload-session URLs are encrypted with the existing Worker key. D1 stores per-user file ownership, attachment ID, MIME, size, and verified checksum. Download and delete require a matching UID/file-ID row.
 - New D1 tables use `CREATE TABLE/INDEX IF NOT EXISTS`; no existing table is altered. Account-data deletion also removes the user's recorded documents and folder.
+- A client repository now computes the file SHA-256, resumes a stored upload session, sends binary chunks, and updates the separate IndexedDB queue with progress and upload receipts. It is not connected to any capture or detail screen.
 
 ## Next technical work
 
-1. Review and validate this draft Worker API, including upload interruption, ownership isolation, quota errors, and account cleanup.
-2. Add the client document repository and connect the existing offline queue to start/status/chunk/retry/delete endpoints.
+1. Review and validate the draft Worker and client API, including interruption/resume, ownership isolation, quota errors, and account cleanup.
+2. Connect the queue/repository to capture and detail screens with visible pending, retry, restore, and missing-file states.
 3. Add local PDF/DOCX text extraction and searchable text metadata; extraction failure must not block saving the original.
 4. Add attachment preview, migration, backup manifests, restore/relink, and a staged UI cutover after rollback behavior is reviewed.
 
