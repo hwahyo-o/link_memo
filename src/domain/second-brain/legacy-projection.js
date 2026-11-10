@@ -10,10 +10,10 @@ function extensionOf(path) {
 }
 
 function titleFromMarkdown(content, path) {
-    const heading = String(content || "").match(/^#\\s+(.+)$/m);
+    const heading = String(content || "").match(/^#\s+(.+)$/m);
     if (heading) return heading[1].trim();
     const fileName = String(path || "").split("/").pop() || "가져온 자료";
-    return fileName.replace(/\\.[^.]+$/, "") || "가져온 자료";
+    return fileName.replace(/\.[^.]+$/, "") || "가져온 자료";
 }
 
 function stableClock(left, right) {
