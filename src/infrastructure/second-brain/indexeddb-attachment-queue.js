@@ -16,7 +16,7 @@ function openDatabase() {
         request.onupgradeneeded = () => {
             const database = request.result;
             if (database.objectStoreNames.contains(QUEUE_STORE)) return;
-            const store = database.createObjectStore(QUEUE_STORE, { keyPath: "id" });
+            const store = database.createObjectStore(QUEUE_STORE, { keyPath: ["userId", "id"] });
             store.createIndex(USER_INDEX, "userId", { unique: false });
         };
 
@@ -96,14 +96,14 @@ function updateOwnedRecord(userId, attachmentId, update) {
             reject(transaction.error || new Error("ATTACHMENT_QUEUE_ABORTED"));
         };
 
-        const request = store.get(attachmentId);
+        const request = store.get([userId, attachmentId]);
         request.onsuccess = () => {
             const current = request.result;
             if (!current || current.userId !== userId) return;
 
             const next = update(current);
             if (!next) {
-                store.delete(attachmentId);
+                store.delete([userId, attachmentId]);
                 result = true;
                 return;
             }
@@ -153,8 +153,8 @@ export function createIndexedDbAttachmentQueue() {
         async loadFile(userId, id) {
             const ownerId = requireUserId(userId);
             const attachmentId = requireAttachmentId(id);
-            const record = await transact("readonly", store => store.get(attachmentId));
-            if (!record || record.userId !== ownerId) return null;
+            const record = await transact("readonly", store => store.get([ownerId, attachmentId]));
+            if (!record) return null;
             return record.file || null;
         },
 
