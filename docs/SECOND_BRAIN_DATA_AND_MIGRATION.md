@@ -94,18 +94,17 @@ Keep credentials and OAuth tokens out of these records. A provider file ID is an
 
 ## Local database evolution
 
-Do not replace the current `vaultSnapshots` or `vaultOutbox` stores.
+Do not change the current `pkm_index_db`, `vaultSnapshots`, or `vaultOutbox` stores for the first implementation pass.
 
-Proposed additive IndexedDB upgrade:
+The draft branch adds a separate `second_brain_attachments` IndexedDB database with an `uploadQueue` store:
 
-- Increment `pkm_index_db` to version 2.
-- Keep the existing stores and records unchanged.
-- Add `attachmentQueue` for pending binary upload metadata and retry state.
-- Add `attachmentBlobs` only if browser quota and cleanup rules permit temporary offline binary retention.
-- If storing blobs is declined, label the local-only file clearly and do not report it as synced.
-- Make the upgrade additive and safe to resume after browser closure; never clear existing outbox entries.
+- Queue records use a compound `userId + attachmentId` key so one account cannot overwrite another account's pending attachment.
+- Each queued record stores normalized attachment metadata, retry status, and the local File/Blob until Drive confirms upload.
+- The pending binary is removed only after the Drive file ID and checksum have been persisted to the synced item metadata.
+- Browser quota failures remain visible and must not be reported as successful local or cloud saves.
+- The queue repository is a draft foundation; it is not yet wired to the PKM UI or upload Worker.
 
-The second-brain metadata itself remains in the existing Vault snapshot/outbox initially so it inherits the current sync, conflict, and backup path.
+New item metadata is still intended to use the existing Vault snapshot/outbox so it inherits the current sync, conflict, and backup path. This choice avoids an upgrade to the active PKM database during the first screen-preview stage.
 
 ## Binary storage and privacy
 
@@ -168,10 +167,10 @@ The product-level storage choices below are defined in `docs/SECOND_BRAIN_STORAG
 
 ## Implementation sequence after review
 
-1. Specify the exact attachment MIME allowlist and size/quota policy.
-2. Implement schema validation and pure migration/projection policies.
-3. Add IndexedDB stores additively without touching existing snapshots or outbox rows.
-4. Implement a separate attachment repository and authenticated worker routes.
+1. Storage policy, file types, and 20 MiB per-file cap are documented.
+2. Draft domain validators, legacy projection, and isolated IndexedDB upload queue are on the feature branch; they are not wired into UI or Worker yet.
+3. Add pure migration and synchronization integration while keeping the existing Vault database unchanged.
+4. Implement the separate authenticated Drive document route with resumable transfer and account ownership checks.
 5. Add local PDF/DOCX/TXT extraction with clear partial and failed states.
-6. Add the new Library projector and Inbox UI over legacy and new records.
+6. Connect the Library projector and Inbox UI to legacy and new records.
 7. Validate sync, backup, restore, offline retries, and old-page compatibility before cutover.
