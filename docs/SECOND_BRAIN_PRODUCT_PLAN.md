@@ -11,7 +11,7 @@
 
 ## Current implementation checkpoint
 
-The draft PR contains product and migration documents, domain policies for second-brain items and PDF/DOCX validation, a read-only projector for existing Vault files, and a separate IndexedDB queue for local pending document uploads. A separate Drive Worker API and client repository now define resumable upload, checksum verification, ownership checks, download, trash, and restore. They are not connected to the PKM capture/detail UI, and the Worker is not deployed. The PR has not been merged.
+The draft PR contains product and migration documents, domain policies for second-brain items and PDF/DOCX validation, a read-only projector for existing Vault files, and a separate IndexedDB queue for local pending document uploads. A Vault-backed item repository stores versioned metadata as JSON under the reserved `Second Brain/items/` path, preserving the current sync and tombstone model. A separate Drive Worker API and client repository define resumable upload, checksum verification, ownership checks, download, trash, and restore. These modules are not connected to the PKM capture/detail UI, and the Worker is not deployed. The PR has not been merged.
 
 ## Product statement
 
@@ -160,6 +160,6 @@ These are technical checks, not product decisions:
 ## Immediate next work
 
 1. Review and validate the draft Worker and client upload flow before any deployment.
-2. Define and implement the second-brain item repository and versioned metadata sync path without changing the current Vault.
+2. Review the Vault-backed item repository against current conflict, tombstone, export, and legacy-view behavior.
 3. Connect the new repository and attachment queue to a parallel capture and detail UI, with a clear route back to the existing PKM.
 4. Add local PDF/DOCX extraction and search indexing, then migration, backup, restore, and parity review on non-production data.
