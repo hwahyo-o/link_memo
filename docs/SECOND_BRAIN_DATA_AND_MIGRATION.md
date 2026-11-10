@@ -2,175 +2,74 @@
 
 ## Status
 
-Proposed design for implementation planning. It builds on the current PKM Vault, IndexedDB outbox, Firestore chunk repository, Google Drive image worker, and Cloudflare JSON backup worker. The user selected private Google Drive for document binaries; the 20 MiB per-file PDF/DOCX cap is selected; aggregate quota and recovery rules remain to be finalized. No production data is changed by this document.
+This document records the current draft implementation and the migration work still required. The feature remains a parallel preview: no production deployment, bulk migration, or cutover has occurred. The selected product constraints are private Google Drive for document binaries, PDF/DOCX up to 20 MiB each, and no additional recurring service cost.
 
-## Design goals
+## Data boundary
 
-- Preserve existing Markdown and Canvas files without rewriting them.
-- Let the previous PKM page continue to read its current data during the preview period.
-- Store structured metadata as small, versioned text records.
-- Keep binary attachments outside Firestore Vault chunks and JSON backup payloads.
-- Preserve per-user access checks, offline metadata edits, retries, tombstones, and export.
-- Make unsupported extraction visible without blocking storage of the original file.
+- The existing PKM Vault remains the sync and conflict-resolution layer for small JSON records.
+- New knowledge items are versioned JSON documents at `Second Brain/items/{encoded-id}.json`.
+- Areas and Projects are versioned JSON documents at `Second Brain/areas/{encoded-id}.json` and `Second Brain/projects/{encoded-id}.json`.
+- The original Markdown, Canvas, and structured Vault records remain at their current paths. The legacy projector exposes them read-only in the preview with stable `legacy:{path}` IDs; it does not rewrite their source files.
+- PDF/DOCX binary data is stored separately in the private Drive document folder. Item metadata stores an attachment manifest and bounded extracted text, not the binary.
+- TXT/MD imports become editable knowledge items. Existing image capture uses the existing image route and remains separate from PDF/DOCX upload.
+- Relations use item IDs. Explicit related-item references, `[[title]]` wiki references, backlinks, and a focused graph are presentation features; derived graph coordinates are not stored.
 
-## Proposed Vault representation
-
-Continue using the existing Vault repository and file merge semantics for the initial release.
-
-- Existing files remain in place and remain authoritative for legacy content.
-- A new note is a Markdown file in a dedicated `Second Brain/Items/` namespace.
-- Structured fields are a paired JSON sidecar in `Second Brain/Metadata/`.
-- A PDF or DOCX is represented by a Markdown item/record plus attachment metadata. Its binary stays in the attachment store.
-- TXT can be indexed as text while the original remains an attachment; MD remains editable Markdown.
-- The graph and search projector reads Markdown body and relationships; a second-brain projector reads sidecar metadata and joins it to the Markdown file.
-
-Example layout:
+Example Vault layout:
 
 ```text
 Second Brain/
-  Items/
-    {item-id}.md
-  Metadata/
-    {item-id}.json
+  items/
+    {encoded-id}.json
+  areas/
+    {encoded-id}.json
+  projects/
+    {encoded-id}.json
 ```
 
-The exact path format must pass the existing path normalizer. Metadata should not be injected into a note body as YAML front matter until the current Markdown editor and parsers explicitly support that format.
+## Versioned item fields
 
-## Knowledge-item metadata proposal
+The implemented item validator normalizes these fields: `schemaVersion`, `id`, `kind`, `title`, `bodyMarkdown`, `sourceUrl`, `sourceLabel`, `tags`, `areaIds`, `projectIds`, `relatedIds`, `attachmentIds`, `attachments`, `state`, `capturedAt`, `updatedAt`, `mutationId`, `legacyPath`, and `deleted`.
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "stable-item-id",
-  "kind": "note | link | image | document | daily",
-  "title": "Human-readable title",
-  "source": {
-    "url": null,
-    "label": null
-  },
-  "tags": [],
-  "areaIds": [],
-  "projectIds": [],
-  "state": "inbox | processed | archived",
-  "capturedAt": 0,
-  "updatedAt": 0,
-  "legacyPath": null,
-  "attachments": [],
-  "relatedIds": [],
-  "extract": {
-    "state": "not-needed | pending | ready | partial | failed",
-    "textPath": null
-  },
-  "mutationId": "device-and-sequence",
-  "deleted": false
-}
-```
+Allowed kinds are note, link, image, document, daily, canvas, and structured. Legacy Canvas/structured items require a source path and remain projection-only. A knowledge-item JSON record is capped to fit the existing Vault file limit; extracted attachment text is capped at 300,000 UTF-8 bytes.
 
-This is a field proposal, not a finalized API contract. In this proposal, attachment metadata records are nested in the item sidecar under `attachments`; binary content remains external. Use IDs for relations rather than display names so renaming a tag, Area, or Project does not break references. Avoid storing derived graph coordinates or view-only UI state in the Vault.
+Attachment metadata includes the stable attachment/item IDs, name, MIME type, byte size, SHA-256, Drive file ID when uploaded, upload/extraction states, extracted text, timestamps, mutation ID, and tombstone. OAuth credentials never belong in Vault records. Every remote read/delete must be authorized against the Firebase user and the Worker’s per-user ownership record.
 
-## Attachment metadata proposal
+Areas and Projects have stable IDs, names, descriptions, active/archived state, timestamps, mutation IDs, and tombstones. Items reference them by ID so a rename does not break assignments.
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "stable-attachment-id",
-  "itemId": "stable-item-id",
-  "name": "original-file-name.pdf",
-  "mimeType": "application/pdf",
-  "sizeBytes": 0,
-  "sha256": "hex-checksum",
-  "provider": "drive",
-  "providerFileId": "opaque-provider-id",
-  "uploadState": "queued | uploading | uploaded | failed",
-  "extractState": "pending | ready | partial | failed | unsupported",
-  "createdAt": 0,
-  "updatedAt": 0,
-  "mutationId": "device-and-sequence",
-  "deleted": false
-}
-```
+## Local and cloud storage
 
-Keep credentials and OAuth tokens out of these records. A provider file ID is an opaque reference, not a credential. Validate every fetch/delete against the authenticated UID in the worker.
+The current PKM Vault database and its outbox are reused for item/context JSON records; the existing database schema is not upgraded by this feature. A separate `second_brain_attachments` IndexedDB database stores pending PDF/DOCX blobs under a user + attachment key, with upload session ID, accepted offset, retry state, and error code. The local blob is cleared only after upload succeeds and the app records the Drive receipt.
 
-## Local database evolution
+The feature branch contains a separate authenticated Worker API for resumable PDF/DOCX upload, progress lookup, download, trash, and pending-session cancellation. It checks ownership, file size/type/signature, and SHA-256. The API is draft code and must be deployed and exercised in a non-production environment before it can be used. Do not count an attachment as cloud-saved until Drive and the item manifest both confirm the file ID and checksum.
 
-Do not change the current `pkm_index_db`, `vaultSnapshots`, or `vaultOutbox` stores for the first implementation pass.
+## Legacy projection and staged migration
 
-The draft branch adds a separate `second_brain_attachments` IndexedDB database with an `uploadQueue` store:
+1. Keep all existing Vault paths and the old PKM page available.
+2. Project supported legacy Markdown, Canvas, and JSON files read-only with stable path-based IDs; ignore the reserved Second Brain namespace.
+3. Keep pending outbox writes and deletion tombstones in the current Vault merge flow.
+4. Save new or edited second-brain items under the reserved JSON namespace without mutating unrelated legacy records.
+5. Before considering a conversion tool, compare old and projected item counts, Markdown content, Canvas/JSON parse errors, wiki-link resolution, and image/document references.
+6. Implement export/backup manifest and restore/relink handling on non-production data.
+7. Perform any bulk migration only after a recoverable backup and parity report exist. Keep the previous page available until the user explicitly chooses a cutover.
 
-- Queue records use a compound `userId + attachmentId` key so one account cannot overwrite another account's pending attachment.
-- Each queued record stores normalized attachment metadata, retry status, and the local File/Blob until Drive confirms upload.
-- The pending binary is removed only after the Drive file ID and checksum have been persisted to the synced item metadata.
-- Browser quota failures remain visible and must not be reported as successful local or cloud saves.
-- The queue repository is a draft foundation; it is not yet wired to the PKM UI or upload Worker.
+## Backup and recovery
 
-New item metadata is still intended to use the existing Vault snapshot/outbox so it inherits the current sync, conflict, and backup path. This choice avoids an upgrade to the active PKM database during the first screen-preview stage.
+The current backup path is JSON-based. A future second-brain backup must include item/context records and attachment manifests with checksums and Drive IDs; it must not embed document bytes as base64. Restore must verify each Drive reference, mark missing originals, and provide a relink or re-upload path. An independent binary backup is not selected, so full recovery after permanent Drive deletion cannot be promised.
 
-## Binary storage and privacy
+## Current implementation status
 
-The current Drive worker accepts image MIME types only, has a 20 MiB image limit, and uses the `link-memo-img` folder. Document upload must use an explicit document route and a private folder policy. Keep the existing image endpoint behavior unchanged.
+- Done in draft branch: versioned item/context validators and Vault repositories, read-only legacy projection, reserved-path exclusion, separate pending-attachment queue, document Worker routes, browser PDF/DOCX text extraction, and the parallel Inbox/Library/Trash preview with context and relation navigation.
+- Build: `npm run build` succeeds locally. Existing CSS import-order warnings in the legacy stylesheet remain.
+- Not verified: representative browser flows, multi-device sync/conflict, offline queue recovery, upload interruption/resume, near-limit file handling, user-isolation checks against a deployed Worker, Drive disconnect/reconnect, and backup/restore.
+- Not done: production migration, cutover, and deployment.
 
-Before implementing document uploads, define:
+## Next sequence
 
-- permitted MIME types and extension/MIME consistency checks;
-- a 20 MiB per-file limit for PDF/DOCX (selected), plus batch limits;
-- path and filename normalization;
-- UID ownership verification on upload, download, and delete;
-- upload timeouts, retry/idempotency behavior, and orphan cleanup;
-- quota warnings and behavior when Drive is disconnected or full;
-- whether local offline binaries are temporary or durable.
+1. Manually validate the preview with a small synthetic Vault: capture/edit/delete/restore, Area/Project filtering, explicit and wiki relations, backlinks, graph navigation, and legacy path exclusion.
+2. Validate sign-in changes and two-user isolation, including clearing stale view state when accounts switch.
+3. Exercise PDF/DOCX fixtures (Korean text, scanned PDF, malformed file, and near the 20 MiB cap); verify original retention when extraction fails.
+4. Deploy the Worker only to a non-production environment and test upload, interruption/resume, download, trash/restore, quota failure, and cross-user denial.
+5. Verify sync, backup manifest, restore/relink, disconnect/reconnect, and old-page compatibility.
+6. Publish a parity report and review the rollback path before requesting merge or production deployment.
 
-## Text extraction
-
-- PDF and DOCX extraction is best-effort and must not block saving the original.
-- TXT is indexed as text using an explicit encoding strategy.
-- MD remains editable and indexed through the existing Markdown path.
-- Record extraction state and parser version so reprocessing is possible.
-- Treat scanned PDFs and unsupported Korean encodings as partial/unsupported; do not claim searchable text when extraction fails.
-- Avoid copying a full extracted document into multiple records. Store one bounded text representation, or chunk it explicitly if the existing 2 MB Vault file limit would be exceeded.
-- A later OCR feature must be evaluated separately because a free, reliable Korean OCR path is not established by the current repository.
-
-## Backup and export
-
-- Existing Cloudflare backups remain JSON payloads in private R2.
-- Include item metadata, attachment manifests, checksums, and original source paths in the backup payload.
-- Do not base64-encode document binaries into the JSON backup.
-- Drive files remain separate objects; restore must verify each referenced object and mark missing files rather than silently dropping them.
-- Provide an export manifest with relative item paths, attachment names, MIME types, checksums, and extraction states.
-- Decide whether an independent binary backup is needed before promising complete recovery after Drive deletion or account disconnection.
-
-## Legacy data projection
-
-1. Project existing `.md`, `.json`, and `.canvas` files into the new Library without moving them.
-2. Give each projected item a stable ID mapping and record its original Vault path as `legacyPath`.
-3. Do not create a duplicate Markdown body for an unchanged legacy note.
-4. Create sidecar metadata lazily when the user processes or edits a legacy item.
-5. Keep old path references and existing `[[wiki links]]` resolvable.
-6. Treat malformed Canvas or conflicted duplicate paths as visible exceptions for review.
-7. Keep deletion tombstones and pending outbox writes in the original merge flow.
-8. During preview, compare legacy and projected item counts, link resolution, and attachment references.
-9. Cut over only after export and restore can reconstruct item metadata and locate every expected attachment.
-
-## Open technical choices
-
-The product-level storage choices below are defined in `docs/SECOND_BRAIN_STORAGE_POLICY.md`. These remaining technical checks need resolution before document upload coding:
-
-| Choice | Recommended default | Why |
-|---|---|---|
-| Document file storage | **Selected:** private per-user Google Drive folder via a new worker route | The app already has a Drive OAuth flow; the existing image-only route cannot be reused unchanged. |
-| PDF/DOCX size cap | **Selected:** 20 MiB per file | Matches the current image-worker cap as a conservative first limit; revisit only after upload and extraction measurements. |
-| Offline binary handling | **Selected direction:** queue upload and show an unsynced state until Drive confirms upload; temporary local caching depends on browser quota | Prevent a false “saved everywhere” message and uncontrolled local storage growth. |
-| Binary backup | **Selected direction:** keep metadata and attachment manifest in R2; do not duplicate binaries there in the first release | Current backup API is JSON and should not be treated as a binary object store. |
-| Metadata sync | Existing Vault JSON sidecars and revisioned Firestore chunks | Reuse tested sync/conflict semantics and avoid a parallel sync engine in the first release. |
-| Legacy conversion | Read-only projection first, sidecar on edit | Keeps the prior PKM usable and avoids bulk rewrite risk. |
-| Extraction size | Bounded text with an explicit partial/truncated state | The Vault currently caps individual UTF-8 files at 2,000,000 bytes. |
-
-## Implementation sequence after review
-
-1. Storage policy, file types, and 20 MiB per-file cap are documented.
-2. Draft domain validators, legacy projection, and isolated IndexedDB upload queue are on the feature branch; they are not wired into UI or Worker yet.
-3. Add pure migration and synchronization integration while keeping the existing Vault database unchanged.
-4. Implement the separate authenticated Drive document route with resumable transfer and account ownership checks.
-5. Add local PDF/DOCX/TXT extraction with clear partial and failed states.
-6. Connect the Library projector and Inbox UI to legacy and new records.
-7. Validate sync, backup, restore, offline retries, and old-page compatibility before cutover.
+Do not merge, deploy to production, or migrate user data until the remaining checks pass.
