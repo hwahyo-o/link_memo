@@ -9,6 +9,7 @@ import { createIndexedDbAttachmentQueue } from "../infrastructure/second-brain/i
 import { createDriveWorkerDocumentRepository } from "../infrastructure/http/drive-worker-document-repository.js";
 import { createDriveWorkerImageRepository } from "../infrastructure/http/drive-worker-image-repository.js";
 import { createDriveImageService } from "../application/drive/drive-image-service.js";
+import { extractDocumentText } from "../infrastructure/documents/document-text-extractor.js";
 import { imageRepository } from "../infrastructure/browser/indexeddb-image-repository.js";
 import { createGoogleDriveCodeProvider } from "../infrastructure/google/google-drive-code-provider.js";
 
@@ -103,7 +104,8 @@ function visibleItems(items) {
         if (currentView === "trash" ? !item.deleted : item.deleted) return false;
         if (currentView === "inbox" && item.state !== "inbox") return false;
         if (!query) return true;
-        const text = [item.title, item.bodyMarkdown, item.sourceUrl, ...(item.tags || [])].join(" ").toLocaleLowerCase("ko-KR");
+        const attachmentText = (item.attachments || []).map(attachment => attachment.extractedText || "");
+        const text = [item.title, item.bodyMarkdown, item.sourceUrl, ...attachmentText, ...(item.tags || [])].join(" ").toLocaleLowerCase("ko-KR");
         return text.includes(query);
     }).sort((left, right) => Number(right.updatedAt) - Number(left.updatedAt));
 }
@@ -228,7 +230,21 @@ async function renderAttachments(item, panel, session) {
             : localRecord ? (attachment.uploadState === "failed" ? "업로드 실패 · 이 기기에 보관됨" : "이 기기에서 업로드 대기 중")
                 : "원본 파일이 이 기기에 없습니다.";
         info.append(createNode("small", "", attachmentState));
+        const extractionState = ({
+            ready: "문서 내용 검색 가능",
+            partial: "일부 문서 내용 검색 가능",
+            unsupported: "검색 가능한 텍스트가 없어요",
+            failed: "문서 내용 추출 실패 · 원본은 보관됨",
+            pending: "문서 내용 추출 대기 중"
+        })[attachment.extractState] || "문서 내용 상태 확인 필요";
+        info.append(createNode("small", "attachment-extraction-state", extractionState));
         card.append(info);
+        if (attachment.extractedText) {
+            const extracted = createNode("details", "extracted-text");
+            extracted.append(createNode("summary", "", "검색되는 문서 내용"));
+            extracted.append(createNode("pre", "", attachment.extractedText));
+            card.append(extracted);
+        }
         const actions = createNode("div", "attachment-actions");
         if (attachment.providerFileId || localRecord) {
             const openButton = createNode("button", "", attachment.providerFileId ? "열기" : "기기에서 열기");
@@ -528,6 +544,9 @@ byId("captureForm").addEventListener("submit", async event => {
         }
         let attachments = [...(existing?.attachments || [])];
         if (file) {
+            setNotice("문서 텍스트를 읽고 있어요. 추출이 안 되어도 원본 파일은 그대로 첨부됩니다.");
+            const extraction = await extractDocumentText(file);
+            if (!sessionIsCurrent(session, user.uid)) throw new Error("AUTH_SESSION_CHANGED");
             queuedAttachmentId = crypto.randomUUID();
             const createdAt = Date.now();
             const attachment = {
@@ -540,7 +559,8 @@ byId("captureForm").addEventListener("submit", async event => {
                 provider: "drive",
                 providerFileId: null,
                 uploadState: "queued",
-                extractState: "pending",
+                extractState: extraction.state,
+                extractedText: extraction.text,
                 createdAt,
                 updatedAt: createdAt
             };
