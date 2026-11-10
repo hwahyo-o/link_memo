@@ -81,11 +81,12 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 - A Vault-backed item repository stores each validated item as a versioned JSON file under `Second Brain/items/`, preserving the existing Vault sync, revision checks, and tombstone behavior.
 - A separate preview page calls the item repository and queue for notes, links, images, PDF/DOCX, and TXT/MD import. It is reachable from the existing PKM header, while the original entry point remains in place. The legacy file tree and graph filter the reserved path. The preview has not been deployed or tested.
 - Document ownership and folder records must survive Drive credential disconnect so a reconnect can authorize existing Vault references. Explicit account-data deletion removes the user's recorded document rows and files.
+- PDF.js extracts selectable PDF text in a browser worker; Mammoth extracts DOCX raw text in the browser. Extracted text is capped at 300,000 UTF-8 bytes per attachment and indexed with the item's local search. Scanned PDFs or extraction failures keep the original attachment and show a non-ready state.
 
 ## Next technical work
 
 1. Review and validate the preview's sync, session-change, offline, and reserved-path filter behavior before exposing it to users.
-2. Add local PDF/DOCX text extraction and searchable text metadata; extraction failure must not block saving the original.
+2. Validate PDF/DOCX extraction with representative Korean, large, scanned, and malformed files; extraction failure must not block saving the original.
 3. Add backup manifests, migration, restore/relink, and parity review on non-production data.
 4. Complete upload/security checks and deploy the preview only after the user can still return to the existing PKM and restore the old data.
 
