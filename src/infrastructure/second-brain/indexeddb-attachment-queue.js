@@ -207,6 +207,15 @@ export function createIndexedDbAttachmentQueue() {
             }));
         },
 
+        clearLocalFile(userId, id) {
+            const ownerId = requireUserId(userId);
+            const attachmentId = requireAttachmentId(id);
+            return updateOwnedRecord(ownerId, attachmentId, current => {
+                const { file, ...metadata } = current;
+                return { ...metadata, updatedAt: Date.now() };
+            });
+        },
+
         markAttempt(userId, id, errorCode = "UPLOAD_FAILED") {
             const ownerId = requireUserId(userId);
             const attachmentId = requireAttachmentId(id);
