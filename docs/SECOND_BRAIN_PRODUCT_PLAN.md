@@ -2,12 +2,16 @@
 
 ## Status
 
-- Status: planning draft
+- Status: implementation foundation draft on a feature branch; not merged or wired into the production PKM UI
 - Product scope: personal and work knowledge in one workspace
 - First capture scope: text, links, images, PDF, DOCX, TXT, and MD
 - Cost target: no additional recurring cost
 - Rollout: staged replacement of the existing PKM page
 - This document does not authorize a production cutover or destructive data migration.
+
+## Current implementation checkpoint
+
+The draft PR contains domain policies for second-brain items and PDF/DOCX validation, a read-only projector for existing Vault files, and a separate IndexedDB queue for local pending document uploads. These modules are not yet connected to the PKM UI or Drive Worker, and the PR has not been merged.
 
 ## Product statement
 
