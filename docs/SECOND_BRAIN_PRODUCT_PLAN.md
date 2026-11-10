@@ -2,7 +2,7 @@
 
 ## Status
 
-- Status: implementation foundation draft on a feature branch; not merged or wired into the production PKM UI
+- Status: implementation foundation and parallel preview are on a draft feature branch; linked from the existing PKM header in that branch, but not merged or deployed
 - Product scope: personal and work knowledge in one workspace
 - First capture scope: text, links, images, PDF, DOCX, TXT, and MD
 - Cost target: no additional recurring cost
@@ -107,8 +107,8 @@ Prefer incremental changes inside the current repository and current stack for t
 - Keep Vite and the existing Vanilla JavaScript modules for the PKM interface.
 - Keep IndexedDB for immediate local writes and offline operation.
 - Keep Firebase Auth and the existing Firestore user boundary for sync.
-- Reuse the existing Cloudflare backup path for metadata after confirming its size and restore behavior.
-- Reuse the private Google Drive integration only after confirming that its OAuth scope and worker can safely support non-image documents. Do not assume the current image folder or quota is sufficient for every document type.
+- Reuse the existing Cloudflare JSON backup path for item/context metadata and attachment manifests; backup/restore parity is still a release gate.
+- Keep image uploads on the existing image route. PDF/DOCX use a separate authenticated resumable Drive Worker route and private folder; deploy and verify it in a non-production environment before preview rollout.
 - Keep presentation, application, domain, and storage responsibilities separate as in the current PKM architecture.
 
 A framework or database rewrite is out of scope unless the current implementation audit reveals a concrete blocker.
@@ -146,20 +146,26 @@ A framework or database rewrite is out of scope unless the current implementatio
 - No production cutover occurs until migration, sync, and rollback paths are confirmed.
 - The prior PKM experience remains reachable through the preview period.
 
-## Open implementation checks
+## Resolved design choices
 
-These are technical checks, not product decisions:
+- PDF/DOCX extraction runs in the browser with PDF.js and Mammoth; extracted text is bounded, and extraction failure does not block keeping the original.
+- PDF/DOCX originals use a separate private Google Drive route with a 20 MiB per-file cap. TXT/MD are imported as text; other document types and OCR are deferred.
+- Offline PDF/DOCX uploads remain in a per-user IndexedDB queue until Drive confirms receipt. Drive quota is authoritative; the app does not guess available storage.
+- Backups include metadata and attachment manifests only. Binary backup is not part of the MVP.
+- Legacy Markdown, Canvas, and JSON records appear through a read-only projection; the old source files remain in place.
 
-- Whether PDF and DOCX text extraction can run in-browser without a paid service, including Korean text.
-- Whether other file types should be considered for a later attachment-only phase.
-- How attachments will be stored and referenced when Drive is disconnected or quota is exhausted.
-- Whether the backup worker should store attachment binaries or only safe metadata and references.
-- How current Canvas files and imported Link Memo records should appear in the new Library.
-- Which mobile capture flow is feasible within the current deployment and authentication setup.
+## Remaining implementation checks
+
+- Verify mobile capture usability on supported viewport sizes.
+- Verify multi-device sync/conflict, tombstone behavior, and backup/restore parity using non-production data.
+- Verify the document Worker’s body-size/runtime behavior, ownership checks, and reconnect behavior after deployment to a non-production environment.
+- Compare projected legacy counts, content, links, and attachments with the original Vault before any cutover.
 
 ## Immediate next work
 
-1. Validate context filtering, linked-item/backlink behavior, and graph navigation with a representative Vault.
-2. Validate local PDF/DOCX extraction, Worker upload, disconnect/reconnect, and user-boundary behavior before any deployment.
-3. Review Vault sync conflicts, tombstone/export behavior, and verify the reserved-path filter in the legacy PKM.
-4. Add backup manifests, migration, restore, and parity review on non-production data before any opt-in deployment.
+1. Manually validate capture, editing, delete/restore, Area/Project filters, explicit relations, wiki links, backlinks, graph navigation, and legacy path exclusion with a representative Vault.
+2. Verify sign-in transitions and account isolation, including stale-state clearing.
+3. Check Korean PDF/DOCX extraction, scanned and malformed documents, file-size boundaries, and original retention when extraction fails.
+4. Deploy the Worker only to a non-production environment; validate upload, interruption/resume, download, trash/restore, quota failure, and cross-user denial.
+5. Complete sync, backup manifest, restore/relink, disconnect/reconnect, old-page compatibility, and migration parity review.
+6. Publish the release-gate results and rollback path before asking to merge or deploy.
