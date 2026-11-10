@@ -26,8 +26,7 @@ ON drive_reconciliation_state(status, lease_until);
 CREATE TABLE IF NOT EXISTS drive_document_storage (
   uid TEXT PRIMARY KEY NOT NULL,
   folder_id TEXT NOT NULL,
-  updated_at INTEGER NOT NULL,
-  FOREIGN KEY(uid) REFERENCES drive_credentials(uid) ON DELETE CASCADE
+  updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS drive_document_uploads (
@@ -41,8 +40,7 @@ CREATE TABLE IF NOT EXISTS drive_document_uploads (
   session_ciphertext TEXT NOT NULL,
   session_iv TEXT NOT NULL,
   next_offset INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY(uid) REFERENCES drive_credentials(uid) ON DELETE CASCADE
+  created_at INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS drive_document_uploads_attachment_idx
@@ -60,8 +58,7 @@ CREATE TABLE IF NOT EXISTS drive_document_files (
   size_bytes INTEGER NOT NULL,
   checksum_sha256 TEXT NOT NULL,
   deleted_at INTEGER,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY(uid) REFERENCES drive_credentials(uid) ON DELETE CASCADE
+  created_at INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS drive_document_files_uid_idx
