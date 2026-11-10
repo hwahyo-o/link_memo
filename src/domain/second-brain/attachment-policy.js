@@ -6,7 +6,7 @@ const DOCUMENT_TYPES = new Map([
 ]);
 
 function extensionOf(name) {
-    const match = String(name || "").toLowerCase().match(/\\.[^.]+$/);
+    const match = String(name || "").toLowerCase().match(/\.[^.]+$/);
     return match?.[0] || "";
 }
 
@@ -16,7 +16,9 @@ export function validateDocumentAttachment(file) {
     }
 
     const name = String(file.name || "").trim();
-    if (!name || name.length > 180) return { ok: false, error: "DOCUMENT_NAME_INVALID" };
+    if (!name || name.length > 180 || /[\\/\\\\\\0-\\x1f]/.test(name)) {
+        return { ok: false, error: "DOCUMENT_NAME_INVALID" };
+    }
 
     const expectedMimeType = DOCUMENT_TYPES.get(extensionOf(name));
     if (!expectedMimeType) return { ok: false, error: "DOCUMENT_TYPE_UNSUPPORTED" };
@@ -52,10 +54,21 @@ export function normalizeDocumentAttachment(value, now = Date.now()) {
     }
 
     const providerFileId = String(value.providerFileId || "").trim() || null;
-    if (uploadState === "uploaded" && !providerFileId) throw new Error("DOCUMENT_ATTACHMENT_FILE_ID_REQUIRED");
+    if (providerFileId && providerFileId.length > 256) throw new Error("DOCUMENT_ATTACHMENT_FILE_ID_INVALID");
 
     const checksum = String(value.sha256 || "").trim().toLowerCase();
     if (checksum && !/^[a-f0-9]{64}$/.test(checksum)) throw new Error("DOCUMENT_ATTACHMENT_CHECKSUM_INVALID");
+    if (uploadState === "uploaded" && (!providerFileId || !checksum)) {
+        throw new Error("DOCUMENT_ATTACHMENT_UPLOAD_RECEIPT_REQUIRED");
+    }
+
+    const extractState = String(value.extractState || "pending");
+    if (!["pending", "ready", "partial", "failed", "unsupported"].includes(extractState)) {
+        throw new Error("DOCUMENT_ATTACHMENT_EXTRACT_STATE_INVALID");
+    }
+
+    const createdAt = Number(value.createdAt);
+    const updatedAt = Number(value.updatedAt);
 
     return {
         schemaVersion: 1,
@@ -66,9 +79,9 @@ export function normalizeDocumentAttachment(value, now = Date.now()) {
         provider: "drive",
         providerFileId,
         uploadState,
-        extractState: String(value.extractState || "pending"),
-        createdAt: Number.isFinite(Number(value.createdAt)) ? Math.trunc(Number(value.createdAt)) : now,
-        updatedAt: Number.isFinite(Number(value.updatedAt)) ? Math.trunc(Number(value.updatedAt)) : now,
+        extractState,
+        createdAt: Number.isFinite(createdAt) && createdAt >= 0 ? Math.trunc(createdAt) : now,
+        updatedAt: Number.isFinite(updatedAt) && updatedAt >= 0 ? Math.trunc(updatedAt) : now,
         mutationId: String(value.mutationId || "").trim().slice(0, 256),
         deleted: value.deleted === true
     };
