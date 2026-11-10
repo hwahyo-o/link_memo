@@ -124,6 +124,10 @@ button { color: inherit; }
 .attachment-info { display: grid; gap: 4px; flex: 1; min-width: 0; }
 .attachment-info strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .attachment-info small { color: var(--muted); font-size: 10px; }
+.attachment-info .attachment-extraction-state { color: var(--accent-dark); }
+.extracted-text { flex: 1 0 100%; min-width: 0; padding: 10px 12px; border-radius: 10px; background: #f7f8f5; color: var(--muted); font-size: 11px; }
+.extracted-text summary { color: var(--ink); cursor: pointer; font-weight: 650; }
+.extracted-text pre { max-height: 260px; margin: 10px 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .attachment-actions { display: flex; gap: 6px; }
 .attachment-actions button, .detail-actions button { min-height: 31px; border: 1px solid var(--line); border-radius: 9px; padding: 0 9px; background: white; color: #68736b; font-size: 10px; cursor: pointer; }
 .detail-actions { display: flex; gap: 7px; margin-top: 20px; }
