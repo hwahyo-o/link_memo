@@ -53,6 +53,13 @@ Rules:
 - If the Drive account is disconnected after upload, retain metadata and file IDs. Offer reconnect; do not silently delete local metadata or remote files.
 - Removing Drive credentials must not cascade-delete document ownership rows or the document-folder reference. Reconnection to the same verified Google account must restore access to existing uploads. Full account-data deletion remains a separate explicit cleanup that removes the user's document rows and Drive files.
 
+## Local text extraction
+
+- PDF.js and Mammoth run in the browser; document contents are not sent to an extraction service.
+- Keep at most 300,000 UTF-8 bytes of extracted text per attachment in the Vault item metadata.
+- Mark extraction as ready, partial, unsupported, or failed. A scanned PDF without a text layer remains attached but is not promised to be searchable; OCR is out of the first release.
+- Extraction failure must not block saving the original file and attachment metadata.
+
 ## Transfer path
 
 The existing Worker accepts image MIME types only and handles a file through an image-specific route. Preserve that route for existing images.
