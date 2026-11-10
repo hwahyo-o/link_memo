@@ -11,7 +11,7 @@
 
 ## Current implementation checkpoint
 
-The draft PR contains product and migration documents, domain policies for second-brain items and PDF/DOCX validation, a read-only projector for existing Vault files, and a separate IndexedDB queue for local pending document uploads. A Vault-backed item repository stores versioned metadata as JSON under the reserved `Second Brain/items/` path, preserving the current sync and tombstone model. The new `second-brain.html` preview provides quick capture, Inbox, Library, edit, delete/restore, TXT/MD import, image capture, and PDF/DOCX attachment queue flows. The existing PKM file tree and graph hide this reserved path so new records do not clutter the legacy view. A separate Drive Worker API and client repository define resumable upload, checksum verification, ownership checks, download, trash, and restore. The preview and Worker code have not been deployed; the Worker is not connected to the live service. The PR has not been merged.
+The draft PR contains product and migration documents, domain policies for second-brain items and PDF/DOCX validation, a read-only projector for existing Vault files, and a separate IndexedDB queue for local pending document uploads. A Vault-backed item repository stores versioned metadata as JSON under the reserved `Second Brain/items/` path, preserving the current sync and tombstone model. The new `second-brain.html` preview provides quick capture, Inbox, Library, edit, delete/restore, TXT/MD import, image capture, and PDF/DOCX attachment queue flows. PDF/DOCX text is extracted in the browser and indexed within attachment metadata, with bounded text size and explicit ready/partial/unsupported/failed states. The existing PKM file tree and graph hide this reserved path so new records do not clutter the legacy view. A separate Drive Worker API and client repository define resumable upload, checksum verification, ownership checks, download, trash, and restore. The preview and Worker code have not been deployed; the Worker is not connected to the live service. The PR has not been merged.
 
 ## Product statement
 
@@ -159,7 +159,7 @@ These are technical checks, not product decisions:
 
 ## Immediate next work
 
-1. Review and validate the draft Worker and client upload flow before any deployment.
-2. Add local PDF/DOCX text extraction and search indexing, with failure states that keep the original file.
-3. Review Vault sync conflicts, tombstone/export behavior, and verify the reserved-path filter in the legacy PKM.
+1. Validate local PDF/DOCX extraction, Worker upload, disconnect/reconnect, and user-boundary behavior before any deployment.
+2. Review Vault sync conflicts, tombstone/export behavior, and verify the reserved-path filter in the legacy PKM.
+3. Add Areas, Projects, backlinks, and graph connections to the parallel experience.
 4. Add backup manifests, migration, restore, and parity review on non-production data before any opt-in deployment.
