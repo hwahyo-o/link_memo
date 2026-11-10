@@ -51,6 +51,7 @@ Rules:
 - Remove a temporary upload blob from the queue only after Drive confirms the object and local metadata is updated.
 - Cross-device access requires Drive upload completion. Offline reading of an already uploaded document is not guaranteed unless the user explicitly keeps a local copy; this is outside the initial MVP.
 - If the Drive account is disconnected after upload, retain metadata and file IDs. Offer reconnect; do not silently delete local metadata or remote files.
+- Removing Drive credentials must not cascade-delete document ownership rows or the document-folder reference. Reconnection to the same verified Google account must restore access to existing uploads. Full account-data deletion remains a separate explicit cleanup that removes the user's document rows and Drive files.
 
 ## Transfer path
 
@@ -109,4 +110,5 @@ Before rollout:
 - Confirm quota failures preserve local queue data and show the correct state.
 - Confirm a logged-in user cannot fetch, delete, or overwrite another UID's attachment.
 - Confirm Drive object IDs and checksums survive a sync, backup, and metadata restore.
+- Confirm disconnect/reconnect retains document ownership and restores access, while explicit account-data deletion removes the user's recorded document objects.
 - Confirm the existing image upload and image links are unchanged.
