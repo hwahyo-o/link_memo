@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { handleDocumentRequest } from "./documents.js";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const FOLDER_NAME = "link-memo-img";
@@ -17,8 +18,8 @@ function json(data, status = 200, headers = {}) {
 function corsHeaders(origin, env) {
   return {
     "Access-Control-Allow-Origin": origin === env.ALLOWED_ORIGIN ? origin : env.ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Link-Memo-File-Name, X-Requested-With",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Content-Range, X-Link-Memo-File-Name, X-Requested-With",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin"
   };
@@ -446,9 +447,20 @@ async function deleteAccountData(user, env) {
   ).bind(user.uid).first();
   if (!credential) return json({ deleted: false, notConnected: true });
   const accessToken = await driveAccessToken(user.uid, env);
+  const documentStorage = await env.DRIVE_CREDENTIALS.prepare(
+    "SELECT folder_id FROM drive_document_storage WHERE uid = ?"
+  ).bind(user.uid).first();
+  const documents = await env.DRIVE_CREDENTIALS.prepare(
+    "SELECT file_id FROM drive_document_files WHERE uid = ?"
+  ).bind(user.uid).all();
+  await Promise.all((documents.results || []).map(file => deleteDriveFile(accessToken, file.file_id)));
   if (credential.folder_id) await deleteDriveFile(accessToken, credential.folder_id);
+  if (documentStorage?.folder_id) await deleteDriveFile(accessToken, documentStorage.folder_id);
   await env.DRIVE_CREDENTIALS.batch([
     env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_reconciliation_state WHERE uid = ?").bind(user.uid),
+    env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_document_uploads WHERE uid = ?").bind(user.uid),
+    env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_document_files WHERE uid = ?").bind(user.uid),
+    env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_document_storage WHERE uid = ?").bind(user.uid),
     env.DRIVE_CREDENTIALS.prepare("DELETE FROM drive_credentials WHERE uid = ?").bind(user.uid)
   ]);
   accessTokenCache.delete(user.uid);
@@ -491,6 +503,15 @@ export default {
       const user = await requireFirebaseUser(request, env);
       let response;
       if (request.method === "POST" && path === "connect") response = await connect(request, user, env);
+      else if (path.startsWith("documents/")) {
+        response = await handleDocumentRequest(request, user, env, path, {
+          driveAccessToken,
+          driveFetch,
+          encrypt,
+          decrypt,
+          json
+        }) || json({ error: "NOT_FOUND" }, 404);
+      }
       else if (request.method === "GET" && path === "session") {
         const record = await env.DRIVE_CREDENTIALS.prepare("SELECT folder_id FROM drive_credentials WHERE uid = ?").bind(user.uid).first();
         if (record && new URL(request.url).searchParams.get("warm") === "1") await driveAccessToken(user.uid, env);

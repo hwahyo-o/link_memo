@@ -12,7 +12,7 @@ This is a read-only audit of the current `main` source tree for planning a stage
 | Local PKM storage | `src/infrastructure/pkm/indexeddb-vault-repository.js` uses `pkm_index_db` version 1 with per-user snapshot and outbox stores. | Preserve the outbox and offline-first behavior. Any DB changes need a versioned upgrade path that retains pending local writes. |
 | Firestore sync | `src/infrastructure/pkm/firestore-vault-repository.js` writes serialized file records in 320,000-byte chunks, up to 20 chunks per batch. It uploads new chunks, swaps the revision pointer transactionally, then deletes old chunks. | Keep item metadata/text in bounded documents. Do not place binary documents or base64 attachments inside the Vault JSON/chunks. Preserve revision conflict handling and old-revision availability during writes. |
 | Conflict and deletion | `vault-policy.js` merges by path using `updatedAt` and `mutationId`; deletions remain as tombstones. | New item IDs and attachment references need deterministic merge semantics. Physical file deletion must not happen before all references and retention rules are understood. |
-| Google Drive upload | `workers/drive-api/src/index.js` uses `drive.file`, stores files under `link-memo-img`, rejects non-image MIME types, and caps an image upload at 20 MiB. | The current route cannot store PDF or office documents. Add a separate validated document route and/or folder policy; do not silently route documents through the image API. |
+| Google Drive upload | The existing image route uses `drive.file`, stores files under `link-memo-img`, rejects non-image MIME types, and caps an image upload at 20 MiB. The draft second-brain branch adds a separate `link-memo-files` route and D1 ownership records for PDF/DOCX. | Keep image behavior unchanged. The new document route is still draft code and is not deployed or connected to the app. |
 | Client attachment flow | `src/infrastructure/http/drive-worker-image-repository.js` calls an image-oriented worker API using Firebase ID tokens. | Keep current image behavior intact. Introduce a distinct attachment repository contract for documents rather than widening image-specific methods without a migration. |
 | Cloudflare backups | `cloudflare-backup-worker/README.md` exposes JSON backup and checkpoint APIs backed by private R2. The application backup service wraps JSON payloads with schema and checksums. | Back up metadata and stable attachment references. Binary backup is a separate storage decision and should not be inferred from the existing JSON endpoint. |
 | Search metadata | `PKM_ARCHITECTURE.md` and the graph worker describe Markdown extraction for title, body, hashtags, HTML comments, wiki links, and URLs. | PDF/office text extraction is new functionality. Search should record extraction status and remain useful by filename/title when extraction is unsupported or fails. |
@@ -64,17 +64,25 @@ Do not promise full-text extraction for scanned PDFs or unusual encodings until 
 6. Report duplicate paths, missing Drive objects, malformed Canvas, and parse failures instead of discarding them.
 7. Retain old PKM access until metadata counts, links, attachments, offline edits, and restore behavior match.
 
-## Decisions still needed before file-upload implementation
+## Decisions and deployment checks still open
 
 - Whether to add attachment-only support for other file types after the MVP.
 - Whether to expose an exact Drive-quota meter under the current OAuth scope; until verified, show upload state and provider errors rather than a guessed remaining-space figure.
 - Confirm deployed Worker route/body limits and browser storage behavior before rollout.
 - Whether OCR for scanned Korean PDFs is a later requirement; it may require an external service or substantial client-side processing.
 
+## Implemented foundation on the draft branch
+
+- Separate authenticated routes create resumable Drive sessions, upload aligned chunks, query session progress, download owned files, move owned files to Drive Trash, and cancel pending uploads.
+- The API accepts PDF and DOCX only, enforces the 20 MiB limit, checks the file signature, binds uploads to a stable attachment ID, and verifies the completed Drive object's SHA-256 before recording it.
+- Upload-session URLs are encrypted with the existing Worker key. D1 stores per-user file ownership, attachment ID, MIME, size, and verified checksum. Download and delete require a matching UID/file-ID row.
+- New D1 tables use `CREATE TABLE/INDEX IF NOT EXISTS`; no existing table is altered. Account-data deletion also removes the user's recorded documents and folder.
+
 ## Next technical work
 
-1. Confirm the document-type boundary and attachment-only policy.
-2. Define item and attachment schemas plus versioned IndexedDB migration.
-3. Specify an authenticated document upload/download/delete worker API with explicit MIME, size, and ownership checks.
-4. Define extraction as a best-effort process whose failure never blocks saving the original attachment.
-5. Implement only after storage, quota, backup, and rollback behavior are reviewed.
+1. Review and validate this draft Worker API, including upload interruption, ownership isolation, quota errors, and account cleanup.
+2. Add the client document repository and connect the existing offline queue to start/status/chunk/retry/delete endpoints.
+3. Add local PDF/DOCX text extraction and searchable text metadata; extraction failure must not block saving the original.
+4. Add attachment preview, migration, backup manifests, restore/relink, and a staged UI cutover after rollback behavior is reviewed.
+
+No tests or deployment have been run for the draft Worker changes. Do not merge or deploy until the next integration and release checks are complete.

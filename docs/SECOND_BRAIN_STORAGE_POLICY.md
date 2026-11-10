@@ -62,10 +62,22 @@ Add a separate authenticated document upload/download route with:
 - strict PDF and DOCX type and 20 MiB size checks;
 - a private, app-managed Drive folder separate from the image folder;
 - server-side filename normalization;
-- resumable upload support;
-- checksum verification and idempotency for retries;
+- Drive resumable sessions with 2 MiB upload chunks and an endpoint that can query the accepted byte offset after interruption;
+- a stable attachment ID and client SHA-256 on session creation so repeated starts reuse the same session or completed file;
+- server-side SHA-256 verification of the completed Drive object before recording it as uploaded;
 - per-user checks on download and delete;
 - clear errors for quota, expired authentication, missing file, and transient network failure.
+
+Draft API shape on the feature branch:
+
+- `POST /documents/uploads` — start or retrieve an idempotent upload session. JSON fields: `attachmentId`, `name`, `mimeType`, `size`, `checksumSha256`.
+- `PUT /documents/uploads/{uploadId}` — send one binary chunk with `Content-Range`.
+- `GET /documents/uploads/{uploadId}` — query Drive's accepted offset or finish local receipt persistence if Drive completed before a connection was lost.
+- `DELETE /documents/uploads/{uploadId}` — cancel a pending session.
+- `GET /documents/{fileId}` and `DELETE /documents/{fileId}` — read or trash a file after checking its per-user ownership record.
+- `POST /documents/{fileId}/restore` — restore a trashed file while its attachment tombstone and ownership record are retained.
+
+The Worker performs a server-side SHA-256 readback after Drive completes the upload. This adds a download pass for each new file, so validate its memory and execution behavior with a file near the 20 MiB cap before release. The route is draft code only; it has not been deployed.
 
 Google recommends resumable uploads for files above 5 MB and for mobile or interruption-prone networks. See [Google Drive upload file data](https://developers.google.com/workspace/drive/api/guides/manage-uploads).
 
